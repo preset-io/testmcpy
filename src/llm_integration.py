@@ -628,13 +628,30 @@ class AnthropicProvider(LLMProvider):
             # Convert tool schemas to Anthropic format
             anthropic_tools = []
             for tool in tools:
+                # Handle OpenAI-style tool format
+                if "function" in tool:
+                    func = tool["function"]
+                    tool_dict = {
+                        "name": func.get("name", ""),
+                        "description": func.get("description", ""),
+                        "parameters": func.get("parameters", {})
+                    }
+                else:
+                    # Direct tool schema format
+                    tool_dict = tool
+
                 # Sanitize tool schema
-                sanitized_tool = MCPURLFilter.sanitize_tool_schema(tool)
+                sanitized_tool = MCPURLFilter.sanitize_tool_schema(tool_dict)
+
+                input_schema = sanitized_tool.get("inputSchema", sanitized_tool.get("parameters", {}))
+                # Ensure input_schema has required type field
+                if "type" not in input_schema:
+                    input_schema["type"] = "object"
 
                 anthropic_tools.append({
                     "name": sanitized_tool.get("name", ""),
                     "description": sanitized_tool.get("description", ""),
-                    "input_schema": sanitized_tool.get("inputSchema", sanitized_tool.get("parameters", {}))
+                    "input_schema": input_schema
                 })
 
             # Prepare Anthropic API request
@@ -693,11 +710,11 @@ class AnthropicProvider(LLMProvider):
             # Execute tool calls locally
             for tool_call in tool_calls:
                 try:
-                    result = await self.tool_discovery.execute_tool_call(tool_call)
-                    if not result.is_error:
-                        response_text += f"\n\nTool {tool_call['name']} executed successfully: {result.content}"
+                    tool_result = await self.tool_discovery.execute_tool_call(tool_call)
+                    if not tool_result.is_error:
+                        response_text += f"\n\nTool {tool_call['name']} executed successfully: {tool_result.content}"
                     else:
-                        response_text += f"\n\nTool {tool_call['name']} failed: {result.error_message}"
+                        response_text += f"\n\nTool {tool_call['name']} failed: {tool_result.error_message}"
                 except Exception as e:
                     response_text += f"\n\nTool {tool_call['name']} execution error: {e}"
 

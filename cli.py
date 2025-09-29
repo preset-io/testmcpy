@@ -270,10 +270,17 @@ def run(
         table.add_column("Details")
 
         total_passed = 0
+        total_cost = 0.0
+        total_tokens = 0
         for result in results:
             status = "[green]PASS[/green]" if result.passed else "[red]FAIL[/red]"
             if result.passed:
                 total_passed += 1
+
+            # Aggregate cost and tokens from TestResult
+            total_cost += result.cost
+            if result.token_usage and 'total' in result.token_usage:
+                total_tokens += result.token_usage['total']
 
             table.add_row(
                 result.test_name,
@@ -285,8 +292,14 @@ def run(
 
         console.print(table)
 
-        # Summary
-        console.print(f"\n[bold]Summary:[/bold] {total_passed}/{len(results)} tests passed")
+        # Summary with cost and tokens
+        summary_parts = [f"{total_passed}/{len(results)} tests passed"]
+        if total_tokens > 0:
+            summary_parts.append(f"{total_tokens:,} tokens")
+        if total_cost > 0:
+            summary_parts.append(f"${total_cost:.4f}")
+
+        console.print(f"\n[bold]Summary:[/bold] {' | '.join(summary_parts)}")
 
         # Save report if requested
         if output:

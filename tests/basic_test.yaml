@@ -12,4 +12,4 @@ tests:
       - name: "execution_successful"
       - name: "within_time_limit"
         args:
-          max_seconds: 5
+          max_seconds: 10

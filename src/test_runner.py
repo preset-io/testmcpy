@@ -7,10 +7,58 @@ import time
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, asdict, field
 import json
+import re
+from datetime import datetime, timedelta
 
 from src.mcp_client import MCPClient, MCPToolCall, MCPToolResult
 from src.llm_integration import LLMProvider, create_llm_provider
 from evals.base_evaluators import BaseEvaluator, EvalResult, create_evaluator
+
+
+class RateLimitTracker:
+    """Track token usage and manage rate limiting."""
+
+    def __init__(self, tokens_per_minute_limit: int = 50000):
+        self.tokens_per_minute_limit = tokens_per_minute_limit
+        self.token_usage_history = []  # List of (timestamp, tokens) tuples
+
+    def add_usage(self, tokens: int):
+        """Record token usage with timestamp."""
+        self.token_usage_history.append((datetime.now(), tokens))
+        # Clean up old entries (older than 1 minute)
+        cutoff = datetime.now() - timedelta(minutes=1)
+        self.token_usage_history = [(ts, tokens) for ts, tokens in self.token_usage_history if ts > cutoff]
+
+    def get_current_usage(self) -> int:
+        """Get token usage in the last minute."""
+        cutoff = datetime.now() - timedelta(minutes=1)
+        return sum(tokens for ts, tokens in self.token_usage_history if ts > cutoff)
+
+    def calculate_wait_time(self, next_request_tokens: int) -> float:
+        """Calculate how long to wait before next request."""
+        current_usage = self.get_current_usage()
+        projected_usage = current_usage + next_request_tokens
+
+        if projected_usage <= self.tokens_per_minute_limit:
+            return 0  # No wait needed
+
+        # Find oldest token usage in the last minute
+        cutoff = datetime.now() - timedelta(minutes=1)
+        recent_entries = [(ts, tokens) for ts, tokens in self.token_usage_history if ts > cutoff]
+
+        if not recent_entries:
+            return 0
+
+        # Wait until oldest entry is > 1 minute old, plus a small buffer
+        oldest_timestamp = min(ts for ts, _ in recent_entries)
+        wait_until = oldest_timestamp + timedelta(minutes=1, seconds=5)  # 5 second buffer
+        wait_time = (wait_until - datetime.now()).total_seconds()
+
+        return max(0, wait_time)
+
+    def is_rate_limit_error(self, error_message: str) -> bool:
+        """Check if error is a rate limiting error."""
+        return "rate_limit_error" in error_message or "429" in error_message
 
 
 @dataclass
@@ -48,6 +96,8 @@ class TestResult:
     tool_results: List[Dict[str, Any]] = field(default_factory=list)
     response: Optional[str] = None
     evaluations: List[Dict[str, Any]] = field(default_factory=list)
+    cost: float = 0.0
+    token_usage: Optional[Dict[str, int]] = None
     error: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -70,6 +120,7 @@ class TestRunner:
         self.mcp_url = mcp_url
         self.verbose = verbose
         self.llm_provider: Optional[LLMProvider] = None
+        self.rate_limiter = RateLimitTracker()
         self.mcp_client: Optional[MCPClient] = None
 
     async def initialize(self):
@@ -84,6 +135,57 @@ class TestRunner:
         if not self.mcp_client:
             self.mcp_client = MCPClient(self.mcp_url)
             await self.mcp_client.initialize()
+
+    async def _call_llm_with_rate_limiting(self, prompt: str, tools: List[Dict], timeout: float, max_retries: int = 3):
+        """Call LLM with intelligent rate limiting and retry logic."""
+        # Estimate tokens (rough approximation: 1 token ≈ 4 characters)
+        estimated_tokens = len(json.dumps(tools)) // 4 + len(prompt) // 4
+
+        for attempt in range(max_retries):
+            try:
+                # Check if we need to wait for rate limiting
+                wait_time = self.rate_limiter.calculate_wait_time(estimated_tokens)
+                if wait_time > 0:
+                    if self.verbose:
+                        print(f"  Rate limit protection: waiting {wait_time:.1f}s (current usage: {self.rate_limiter.get_current_usage():,} tokens/min)")
+                    await asyncio.sleep(wait_time)
+
+                # Make the LLM call
+                llm_result = await self.llm_provider.generate_with_tools(
+                    prompt=prompt,
+                    tools=tools,
+                    timeout=timeout
+                )
+
+                # Record successful token usage
+                if llm_result.token_usage and "total" in llm_result.token_usage:
+                    actual_tokens = llm_result.token_usage["total"]
+                    self.rate_limiter.add_usage(actual_tokens)
+                else:
+                    # Fallback to estimate
+                    self.rate_limiter.add_usage(estimated_tokens)
+
+                return llm_result
+
+            except Exception as e:
+                error_msg = str(e)
+                if self.rate_limiter.is_rate_limit_error(error_msg):
+                    if attempt < max_retries - 1:
+                        wait_time = 60 + (attempt * 30)  # Progressive backoff: 60s, 90s, 120s
+                        if self.verbose:
+                            print(f"  Rate limit hit (attempt {attempt + 1}/{max_retries}). Waiting {wait_time}s before retry...")
+                        await asyncio.sleep(wait_time)
+                        continue
+                    else:
+                        if self.verbose:
+                            print(f"  Rate limit exceeded after {max_retries} attempts")
+                        raise
+                else:
+                    # Non-rate-limit error, don't retry
+                    raise
+
+        # Should never reach here
+        raise Exception(f"Failed after {max_retries} attempts")
 
     async def run_test(self, test_case: TestCase) -> TestResult:
         """Run a single test case."""
@@ -114,8 +216,8 @@ class TestRunner:
                 print(f"Prompt: {test_case.prompt}")
                 print(f"Available tools: {len(formatted_tools)}")
 
-            # Get LLM response with tool calls
-            llm_result = await self.llm_provider.generate_with_tools(
+            # Get LLM response with tool calls (with rate limiting)
+            llm_result = await self._call_llm_with_rate_limiting(
                 prompt=test_case.prompt,
                 tools=formatted_tools,
                 timeout=test_case.timeout
@@ -130,12 +232,7 @@ class TestRunner:
                         arguments=tool_call.get("arguments", {})
                     )
                     result = await self.mcp_client.call_tool(mcp_tool_call)
-                    tool_results.append({
-                        "tool_call_id": result.tool_call_id,
-                        "content": result.content,
-                        "is_error": result.is_error,
-                        "error_message": result.error_message
-                    })
+                    tool_results.append(result)
 
             # Prepare context for evaluators
             context = {
@@ -168,9 +265,43 @@ class TestRunner:
                     "details": eval_result.details
                 })
 
+                if self.verbose:
+                    status = "PASS" if eval_result.passed else "FAIL"
+                    print(f"  Evaluator {evaluator.name}: {status} (score: {eval_result.score:.2f})")
+                    print(f"    Reason: {eval_result.reason}")
+                    if eval_result.details:
+                        print(f"    Details: {eval_result.details}")
+
                 if not eval_result.passed:
                     all_passed = False
                 total_score += eval_result.score
+
+            if self.verbose:
+                # Display LLM response
+                print(f"  LLM Response:")
+                response_lines = llm_result.response.split('\n')
+                for line in response_lines:
+                    print(f"    {line}")
+
+                # Display tool calls if any
+                if llm_result.tool_calls:
+                    print(f"  Tool Calls: {len(llm_result.tool_calls)}")
+                    for i, tool_call in enumerate(llm_result.tool_calls, 1):
+                        print(f"    {i}. {tool_call.get('name', 'unknown')}({tool_call.get('arguments', {})})")
+
+                # Display token usage and cost information
+                tokens = llm_result.token_usage
+                if tokens:
+                    print(f"  Token Usage:")
+                    if "prompt" in tokens:
+                        print(f"    Input: {tokens['prompt']} tokens")
+                    if "completion" in tokens:
+                        print(f"    Output: {tokens['completion']} tokens")
+                    if "total" in tokens:
+                        print(f"    Total: {tokens['total']} tokens")
+
+                if llm_result.cost > 0:
+                    print(f"  Cost: ${llm_result.cost:.4f}")
 
             avg_score = total_score / len(test_case.evaluators) if test_case.evaluators else 0.0
 
@@ -183,7 +314,9 @@ class TestRunner:
                 tool_calls=llm_result.tool_calls,
                 tool_results=tool_results,
                 response=llm_result.response,
-                evaluations=evaluations
+                evaluations=evaluations,
+                cost=llm_result.cost,
+                token_usage=llm_result.token_usage
             )
 
         except Exception as e:
@@ -203,12 +336,14 @@ class TestRunner:
         try:
             await self.initialize()
 
-            for test_case in test_cases:
+            for i, test_case in enumerate(test_cases):
                 result = await self.run_test(test_case)
                 results.append(result)
 
                 if self.verbose:
                     print(f"Test {test_case.name}: {'PASS' if result.passed else 'FAIL'} (score: {result.score:.2f})")
+
+                # Intelligent rate limiting now handled per-request, no fixed delays needed
 
         finally:
             await self.cleanup()

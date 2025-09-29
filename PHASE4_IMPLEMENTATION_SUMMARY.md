@@ -123,7 +123,8 @@ python cli.py chat --provider anthropic --model claude-3-5-sonnet-20241022
 ### Required for Anthropic API
 ```bash
 ANTHROPIC_API_KEY=sk-ant-...  # Required for anthropic provider
-ANTHROPIC_MODEL=claude-3-5-sonnet-20241022  # Optional, can be set via CLI
+#ANTHROPIC_MODEL=claude-3-5-sonnet-20241022  # Optional, can be set via CLI
+ANTHROPIC_MODEL=claude-3-5-haiku-2024102  # Optional, can be set via CLI
 ```
 
 ### Optional for Claude CLI
