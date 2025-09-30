@@ -204,6 +204,7 @@ def run(
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output report file"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Don't actually run tests"),
+    hide_tool_output: bool = typer.Option(False, "--hide-tool-output", help="Hide detailed tool call output in verbose mode"),
 ):
     """
     Run test cases against MCP service.
@@ -224,7 +225,8 @@ def run(
             model=model,
             provider=provider.value,
             mcp_url=mcp_url,
-            verbose=verbose
+            verbose=verbose,
+            hide_tool_output=hide_tool_output
         )
 
         # Load test cases

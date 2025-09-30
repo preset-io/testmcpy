@@ -654,22 +654,33 @@ class AnthropicProvider(LLMProvider):
                     "input_schema": input_schema
                 })
 
-            # Prepare Anthropic API request
+            # Prepare Anthropic API request with caching
             headers = {
                 "Content-Type": "application/json",
                 "x-api-key": self.api_key,
-                "anthropic-version": "2023-06-01"
+                "anthropic-version": "2023-06-01",
+                "anthropic-beta": "prompt-caching-2024-07-31"
             }
 
-            messages = [
-                {"role": "user", "content": prompt}
-            ]
+            # Create system message with cached tools - use top-level system parameter
+            messages = [{"role": "user", "content": prompt}]
 
             api_request = {
                 "model": self.model,
                 "max_tokens": 1000,
                 "messages": messages
             }
+
+            # Add system parameter if we have tools (not in messages array)
+            if anthropic_tools:
+                tools_description = f"You have access to these tools:\n{json.dumps(anthropic_tools, indent=2)}\n\nUse these tools to help answer the user's questions."
+                api_request["system"] = [
+                    {
+                        "type": "text",
+                        "text": tools_description,
+                        "cache_control": {"type": "ephemeral"}
+                    }
+                ]
 
             if anthropic_tools:
                 api_request["tools"] = anthropic_tools
@@ -723,7 +734,9 @@ class AnthropicProvider(LLMProvider):
             token_usage = {
                 "prompt": usage.get("input_tokens", 0),
                 "completion": usage.get("output_tokens", 0),
-                "total": usage.get("input_tokens", 0) + usage.get("output_tokens", 0)
+                "total": usage.get("input_tokens", 0) + usage.get("output_tokens", 0),
+                "cache_creation": usage.get("cache_creation_input_tokens", 0),
+                "cache_read": usage.get("cache_read_input_tokens", 0)
             }
 
             # Estimate cost (Claude pricing)
@@ -739,8 +752,31 @@ class AnthropicProvider(LLMProvider):
             )
 
         except Exception as e:
+            # Detailed error information for debugging
+            error_type = type(e).__name__
+            error_msg = str(e)
+
+            # Get more details if available
+            error_details = f"Error Type: {error_type}\nError Message: {error_msg}"
+
+            # If it's an HTTP error, try to get more details
+            if hasattr(e, 'response'):
+                try:
+                    error_details += f"\nHTTP Status: {e.response.status_code}"
+                    error_details += f"\nHTTP Response: {e.response.text}"
+                except:
+                    pass
+
+            # Check if it's a timeout
+            if "timeout" in error_msg.lower():
+                error_details += f"\nThis appears to be a timeout error. Consider increasing the timeout parameter."
+
+            # Check if it's a rate limit
+            if "rate" in error_msg.lower() or "429" in error_msg:
+                error_details += f"\nThis appears to be a rate limiting error. The system should have handled this automatically."
+
             return LLMResult(
-                response=f"Error: {str(e)}",
+                response=f"Error: {error_details}",
                 tool_calls=[],
                 duration=time.time() - start_time
             )
