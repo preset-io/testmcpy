@@ -9,6 +9,7 @@ running evaluation suites, and generating reports.
 import asyncio
 import json
 import os
+import logging
 from pathlib import Path
 from typing import Optional, List
 from enum import Enum
@@ -22,6 +23,9 @@ from rich.syntax import Syntax
 from rich import print as rprint
 import yaml
 from dotenv import load_dotenv
+
+# Suppress MCP notification validation warnings
+logging.getLogger().setLevel(logging.ERROR)
 
 # Load environment variables from .env file
 load_dotenv(Path(__file__).parent / ".env")
