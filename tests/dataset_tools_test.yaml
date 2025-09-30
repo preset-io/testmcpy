@@ -12,9 +12,6 @@ tests:
         args:
           tool_name: "list_datasets"  # Should pick list_datasets, not get_dataset_info
       - name: "execution_successful"
-      - name: "within_time_limit"
-        args:
-          max_seconds: 10
 
   # Test 2: Parameter inference - can LLM infer correct parameters from schema?
   - name: "test_search_parameter_inference"
@@ -25,9 +22,6 @@ tests:
         args:
           tool_name: "list_datasets"  # Should use search parameter from schema
       - name: "execution_successful"
-      - name: "within_time_limit"
-        args:
-          max_seconds: 10
 
   # Test 3: Required vs optional parameters - does schema make this clear?
   - name: "test_minimal_required_params"
@@ -38,9 +32,6 @@ tests:
         args:
           tool_name: "get_dataset_info"  # Should only pass required 'identifier' param
       - name: "execution_successful"
-      - name: "within_time_limit"
-        args:
-          max_seconds: 15
 
   # Test 4: Tool purpose clarity - description guides to correct tool choice
   - name: "test_filter_discovery_tool_choice"
@@ -51,9 +42,6 @@ tests:
         args:
           tool_name: "get_dataset_available_filters"  # Not list_datasets
       - name: "execution_successful"
-      - name: "within_time_limit"
-        args:
-          max_seconds: 10
 
   # Test 5: Complex parameter mapping - can LLM map natural language to schema fields?
   - name: "test_ordering_parameter_mapping"
@@ -64,9 +52,6 @@ tests:
         args:
           tool_name: "list_datasets"  # Should map to order_column and order_direction params
       - name: "execution_successful"
-      - name: "within_time_limit"
-        args:
-          max_seconds: 10
 
   # Test 6: Error-prone scenario - distinguishing similar tools
   - name: "test_list_vs_info_distinction"
@@ -77,9 +62,6 @@ tests:
         args:
           tool_name: "list_datasets"  # Should choose list (all) not get_dataset_info (specific)
       - name: "execution_successful"
-      - name: "within_time_limit"
-        args:
-          max_seconds: 15
 
   # Test 7: Multi-step workflow - can LLM chain tools appropriately?
   - name: "test_workflow_tool_chaining"
@@ -87,9 +69,6 @@ tests:
     timeout: 20
     evaluators:
       - name: "execution_successful"  # Should call list_datasets then get_dataset_info
-      - name: "within_time_limit"
-        args:
-          max_seconds: 20
 
   # Test 8: Parameter type handling - boolean, enum, etc.
   - name: "test_cache_parameter_handling"
@@ -100,9 +79,6 @@ tests:
         args:
           tool_name: "list_datasets"  # Should set force_refresh=true from schema
       - name: "execution_successful"
-      - name: "within_time_limit"
-        args:
-          max_seconds: 15
 
   # Test 9: Edge case - empty/minimal requests
   - name: "test_minimal_request_handling"
@@ -113,9 +89,6 @@ tests:
         args:
           tool_name: "list_datasets"  # Should work with default parameters
       - name: "execution_successful"
-      - name: "within_time_limit"
-        args:
-          max_seconds: 10
 
   # Test 10: Disambiguation - when request could match multiple tools
   - name: "test_tool_disambiguation"
@@ -123,6 +96,3 @@ tests:
     timeout: 15
     evaluators:
       - name: "execution_successful"  # Should pick the most appropriate tool(s)
-      - name: "within_time_limit"
-        args:
-          max_seconds: 15
