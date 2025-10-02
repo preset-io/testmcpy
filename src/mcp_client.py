@@ -7,12 +7,18 @@ specifically designed for testing LLM tool calling capabilities.
 
 import asyncio
 import os
+import logging
+import warnings
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Union
 from dataclasses import dataclass
 from fastmcp import Client
 from mcp.types import Tool as MCPToolDef
 import httpx
+
+# Suppress MCP notification validation warnings
+logging.getLogger('root').setLevel(logging.ERROR)
+warnings.filterwarnings('ignore', message='Failed to validate notification')
 
 
 class MCPError(Exception):

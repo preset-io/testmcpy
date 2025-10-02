@@ -131,10 +131,10 @@ class ExecutionSuccessful(BaseEvaluator):
 
         errors = []
         for result in tool_results:
-            if result.get("is_error", False):
+            if result.is_error:
                 errors.append({
-                    "tool": result.get("tool_call_id", "unknown"),
-                    "error": result.get("error_message", "Unknown error")
+                    "tool": result.tool_call_id,
+                    "error": result.error_message or "Unknown error"
                 })
 
         if errors:
@@ -390,10 +390,10 @@ class WasSupersetChartCreated(BaseEvaluator):
             if any(tool in call.get("name", "") for tool in chart_tools):
                 if i < len(tool_results):
                     result = tool_results[i]
-                    if not result.get("is_error", False):
+                    if not result.is_error:
                         chart_created = True
                         # Try to extract chart ID from result
-                        content = result.get("content", "")
+                        content = result.content or ""
                         if isinstance(content, str):
                             # Look for chart ID pattern
                             import re
