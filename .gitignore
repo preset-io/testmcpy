@@ -116,5 +116,5 @@ Thumbs.db
 # Project specific
 work/
 reports/*.json
-reports/*.yaml
+#reports/*.yaml
 !reports/.gitkeep

@@ -9,6 +9,7 @@ running evaluation suites, and generating reports.
 import asyncio
 import json
 import os
+import logging
 from pathlib import Path
 from typing import Optional, List
 from enum import Enum
@@ -22,6 +23,9 @@ from rich.syntax import Syntax
 from rich import print as rprint
 import yaml
 from dotenv import load_dotenv
+
+# Suppress MCP notification validation warnings
+logging.getLogger().setLevel(logging.ERROR)
 
 # Load environment variables from .env file
 load_dotenv(Path(__file__).parent / ".env")
@@ -204,6 +208,7 @@ def run(
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output report file"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Don't actually run tests"),
+    hide_tool_output: bool = typer.Option(False, "--hide-tool-output", help="Hide detailed tool call output in verbose mode"),
 ):
     """
     Run test cases against MCP service.
@@ -224,7 +229,8 @@ def run(
             model=model,
             provider=provider.value,
             mcp_url=mcp_url,
-            verbose=verbose
+            verbose=verbose,
+            hide_tool_output=hide_tool_output
         )
 
         # Load test cases
@@ -270,10 +276,17 @@ def run(
         table.add_column("Details")
 
         total_passed = 0
+        total_cost = 0.0
+        total_tokens = 0
         for result in results:
             status = "[green]PASS[/green]" if result.passed else "[red]FAIL[/red]"
             if result.passed:
                 total_passed += 1
+
+            # Aggregate cost and tokens from TestResult
+            total_cost += result.cost
+            if result.token_usage and 'total' in result.token_usage:
+                total_tokens += result.token_usage['total']
 
             table.add_row(
                 result.test_name,
@@ -285,8 +298,14 @@ def run(
 
         console.print(table)
 
-        # Summary
-        console.print(f"\n[bold]Summary:[/bold] {total_passed}/{len(results)} tests passed")
+        # Summary with cost and tokens
+        summary_parts = [f"{total_passed}/{len(results)} tests passed"]
+        if total_tokens > 0:
+            summary_parts.append(f"{total_tokens:,} tokens")
+        if total_cost > 0:
+            summary_parts.append(f"${total_cost:.4f}")
+
+        console.print(f"\n[bold]Summary:[/bold] {' | '.join(summary_parts)}")
 
         # Save report if requested
         if output:
