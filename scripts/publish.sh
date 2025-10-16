@@ -10,14 +10,6 @@ NC='\033[0m' # No Color
 echo -e "${YELLOW}📦 testmcpy Publishing Script${NC}"
 echo "================================"
 
-# Check if we're on main branch
-BRANCH=$(git rev-parse --abbrev-ref HEAD)
-if [ "$BRANCH" != "main" ]; then
-    echo -e "${RED}❌ Error: Must be on main branch to publish${NC}"
-    echo "Current branch: $BRANCH"
-    exit 1
-fi
-
 # Check for uncommitted changes
 if ! git diff-index --quiet HEAD --; then
     echo -e "${RED}❌ Error: You have uncommitted changes${NC}"
@@ -25,9 +17,13 @@ if ! git diff-index --quiet HEAD --; then
     exit 1
 fi
 
+# Show current branch
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+echo -e "\n${YELLOW}Current branch: ${BRANCH}${NC}"
+
 # Get current version from pyproject.toml
 VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
-echo -e "\n${YELLOW}Current version: ${VERSION}${NC}"
+echo -e "${YELLOW}Current version: ${VERSION}${NC}"
 
 # Confirm publication
 echo -e "\n${YELLOW}This will:${NC}"
@@ -113,7 +109,7 @@ git tag -a "v${VERSION}" -m "Release v${VERSION}"
 
 # Push everything
 echo -e "\n${GREEN}⬆️  Pushing to GitHub...${NC}"
-git push origin main
+git push origin ${BRANCH}
 git push origin "v${VERSION}"
 
 echo -e "\n${GREEN}✅ Publishing complete!${NC}"
