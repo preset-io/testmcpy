@@ -37,7 +37,7 @@ jobs:
     - name: Download from PyPI and calculate SHA256
       run: |
         VERSION=${GITHUB_REF#refs/tags/v}
-        wget "https://files.pythonhosted.org/packages/source/t/testmcpy/testmcpy-${VERSION}.tar.gz"
+        curl -sL -o "testmcpy-${VERSION}.tar.gz" "https://files.pythonhosted.org/packages/source/t/testmcpy/testmcpy-${VERSION}.tar.gz"
         SHA256=$(sha256sum "testmcpy-${VERSION}.tar.gz" | awk '{print $1}')
         echo "SHA256=${SHA256}" >> $GITHUB_ENV
         echo "VERSION=${VERSION}" >> $GITHUB_ENV

@@ -75,12 +75,12 @@ sleep 5
 echo -e "\n${GREEN}📥 Downloading from PyPI to calculate SHA256...${NC}"
 TEMP_DIR=$(mktemp -d)
 cd "$TEMP_DIR"
-wget -q "https://files.pythonhosted.org/packages/source/t/testmcpy/testmcpy-${VERSION}.tar.gz"
+curl -sL -o "testmcpy-${VERSION}.tar.gz" "https://files.pythonhosted.org/packages/source/t/testmcpy/testmcpy-${VERSION}.tar.gz"
 
-if [ ! -f "testmcpy-${VERSION}.tar.gz" ]; then
+if [ ! -f "testmcpy-${VERSION}.tar.gz" ] || [ ! -s "testmcpy-${VERSION}.tar.gz" ]; then
     echo -e "${YELLOW}⚠️  Could not download from PyPI yet. Try again in a few minutes.${NC}"
     echo "Manual steps:"
-    echo "1. wget https://files.pythonhosted.org/packages/source/t/testmcpy/testmcpy-${VERSION}.tar.gz"
+    echo "1. curl -sL -o testmcpy-${VERSION}.tar.gz https://files.pythonhosted.org/packages/source/t/testmcpy/testmcpy-${VERSION}.tar.gz"
     echo "2. shasum -a 256 testmcpy-${VERSION}.tar.gz"
     echo "3. Update Formula/testmcpy.rb with the SHA256"
     cd -
