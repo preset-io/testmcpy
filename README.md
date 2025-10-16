@@ -1,4 +1,4 @@
-# MCP Testing & Validation Framework
+# testmcpy - MCP Testing Framework
 
 A comprehensive testing framework for validating LLM tool calling capabilities with MCP (Model Context Protocol) services, specifically designed for testing Superset operations.
 
@@ -6,91 +6,49 @@ A comprehensive testing framework for validating LLM tool calling capabilities w
 
 ### Installation
 
+**From source (development):**
 ```bash
-pip install -r requirements.txt
+git clone https://github.com/preset-io/testmcpy.git
+cd testmcpy
+pip install -e .
 ```
 
-### Phase 0: Research & Validate Tool Calling
-
-Test if your LLM can successfully call tools:
-
+**From PyPI (once published):**
 ```bash
-# Test Ollama with llama3.1:8b
-python cli.py research --model llama3.1:8b --provider ollama
-
-# Test with Claude via Anthropic API (recommended for MCP)
-python cli.py research --model claude-sonnet-4.5-20250929 --provider anthropic
-
-# Or use Claude 3.5 Sonnet (stable, well-tested)
-python cli.py research --model claude-3-5-sonnet-20241022 --provider anthropic
-
-# Test with different models
-python cli.py research --model mistral-nemo:latest
-python cli.py research --model qwen2.5:7b
+pip install testmcpy
 ```
 
-### Run Tests
-
+**Via Homebrew (once published):**
 ```bash
-# Run a single test file
-python cli.py run tests/basic_test.yaml
-
-# Run all tests in a directory
-python cli.py run tests/
-
-# Run with specific model
-python cli.py run tests/ --model llama3.1:8b --provider ollama
-
-# Run with Claude (Anthropic API - recommended for MCP)
-python cli.py run tests/ --model claude-sonnet-4.5-20250929 --provider anthropic
-
-# Or use Claude 3.5 Sonnet
-python cli.py run tests/ --model claude-3-5-sonnet-20241022 --provider anthropic
-
-# Save results to a report
-python cli.py run tests/ --output reports/test_results.yaml
+brew tap preset-io/tap
+brew install testmcpy
 ```
+
+See [INSTALLATION.md](INSTALLATION.md) for detailed installation instructions and distribution options.
 
 ### List MCP Tools
 
 ```bash
 # List available tools from MCP service
-python cli.py tools --mcp-url http://localhost:5008/mcp
+testmcpy tools
+
+# List tools with detailed schemas
+testmcpy tools --detail
+
+# Filter tools by name
+testmcpy tools --filter chart
 
 # Output as JSON
-python cli.py tools --format json
+testmcpy tools --format json
+
+# Output as YAML
+testmcpy tools --format yaml
+
+# Use custom MCP server URL
+testmcpy tools --mcp-url http://localhost:5008/mcp
 ```
 
-### Compare Reports
-
-```bash
-# Compare results from different models
-python cli.py report reports/llama3.1_results.yaml reports/mistral_results.yaml
-```
-
-### Initialize a New Project
-
-```bash
-# Create project structure with example tests
-python cli.py init my_mcp_tests
-cd my_mcp_tests
-```
-
-### Interactive Chat
-
-```bash
-# Chat with Claude using MCP tools (use anthropic provider for HTTP MCP)
-python cli.py chat --provider anthropic --model claude-sonnet-4.5-20250929
-
-# Or use Claude 3.5 Sonnet
-python cli.py chat --provider anthropic --model claude-3-5-sonnet-20241022
-
-# Chat with Ollama
-python cli.py chat --provider ollama --model llama3.1:8b
-
-# Chat without MCP tools (standalone mode)
-python cli.py chat --provider claude-sdk --no-mcp
-```
+**Note**: Additional commands (research, run, chat, etc.) are currently being migrated to the new package structure and will be available in the next release.
 
 ## Framework Structure
 
