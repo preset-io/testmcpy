@@ -19,6 +19,9 @@ Test if your LLM can successfully call tools:
 python cli.py research --model llama3.1:8b --provider ollama
 
 # Test with Claude via Anthropic API (recommended for MCP)
+python cli.py research --model claude-sonnet-4.5-20250929 --provider anthropic
+
+# Or use Claude 3.5 Sonnet (stable, well-tested)
 python cli.py research --model claude-3-5-sonnet-20241022 --provider anthropic
 
 # Test with different models
@@ -39,6 +42,9 @@ python cli.py run tests/
 python cli.py run tests/ --model llama3.1:8b --provider ollama
 
 # Run with Claude (Anthropic API - recommended for MCP)
+python cli.py run tests/ --model claude-sonnet-4.5-20250929 --provider anthropic
+
+# Or use Claude 3.5 Sonnet
 python cli.py run tests/ --model claude-3-5-sonnet-20241022 --provider anthropic
 
 # Save results to a report
@@ -74,6 +80,9 @@ cd my_mcp_tests
 
 ```bash
 # Chat with Claude using MCP tools (use anthropic provider for HTTP MCP)
+python cli.py chat --provider anthropic --model claude-sonnet-4.5-20250929
+
+# Or use Claude 3.5 Sonnet
 python cli.py chat --provider anthropic --model claude-3-5-sonnet-20241022
 
 # Chat with Ollama
@@ -146,16 +155,21 @@ tests:
 ## Supported LLM Providers
 
 - **Claude Agent SDK** (`claude-sdk`) - Official Anthropic SDK ⚠️ **Limited MCP Support**
-  - claude-3-5-sonnet-20241022 (recommended)
+  - claude-sonnet-4.5-20250929 (newest, most capable)
+  - claude-sonnet-4-20250514
+  - claude-3-5-sonnet-20241022
   - claude-3-5-haiku-20241022
-  - All Claude 3.x models
+  - All Claude models
   - Requires: `ANTHROPIC_API_KEY` environment variable
   - Features: Native tool calling, streaming, hooks
   - **Note**: Designed for stdio-based MCP servers, **not HTTP-based services**
   - **For HTTP MCP (like Superset)**: Use `anthropic` provider instead
 
 - **Anthropic API** (`anthropic`) - Direct API integration ✅ **Recommended for HTTP MCP**
-  - claude-3-5-sonnet-20241022 (recommended)
+  - claude-sonnet-4.5-20250929 (newest, recommended)
+  - claude-sonnet-4-20250514
+  - claude-3-5-sonnet-20241022
+  - claude-3-5-haiku-20241022 (fast, cost-effective)
   - claude-3-opus-20240229
   - All Claude models via API
   - Requires: `ANTHROPIC_API_KEY` environment variable
@@ -190,8 +204,8 @@ export OPENAI_API_KEY="sk-..."
 export MCP_URL="http://localhost:5008/mcp/"
 
 # Default model and provider (optional)
-export DEFAULT_MODEL="claude-3-5-sonnet-20241022"
-export DEFAULT_PROVIDER="claude-sdk"
+export DEFAULT_MODEL="claude-sonnet-4.5-20250929"
+export DEFAULT_PROVIDER="anthropic"
 ```
 
 ### Configuration File
@@ -200,8 +214,8 @@ Create `mcp_test_config.yaml`:
 
 ```yaml
 mcp_url: "http://localhost:5008/mcp"
-default_model: "claude-3-5-sonnet-20241022"
-default_provider: "claude-sdk"
+default_model: "claude-sonnet-4.5-20250929"
+default_provider: "anthropic"
 evaluators:
   timeout: 30
   max_tokens: 2000
