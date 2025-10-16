@@ -192,25 +192,35 @@ class Config:
     def mcp_auth_token(self) -> Optional[str]:
         """
         Get MCP auth token with the following priority:
-        1. Static MCP_AUTH_TOKEN or SUPERSET_MCP_TOKEN
-        2. Dynamically generated JWT from MCP_AUTH_API_URL if configured
+        1. Dynamically generated JWT from MCP_AUTH_API_URL if configured
+        2. Static MCP_AUTH_TOKEN or SUPERSET_MCP_TOKEN
 
         For dynamic tokens, caches the JWT for 50 minutes to avoid excessive API calls.
         """
-        # Check for static token first
+        # Check if dynamic JWT credentials are configured
+        has_dynamic_config = all([
+            self.get("MCP_AUTH_API_URL"),
+            self.get("MCP_AUTH_API_TOKEN"),
+            self.get("MCP_AUTH_API_SECRET")
+        ])
+
+        # If dynamic JWT is configured, use it (with caching)
+        if has_dynamic_config:
+            # Check if we have a valid cached token
+            if self._cached_token and self._token_expiry:
+                if time.time() < self._token_expiry:
+                    return self._cached_token
+
+            # Try to fetch a new JWT token
+            jwt_token = self._fetch_jwt_token()
+            if jwt_token:
+                return jwt_token
+            # If fetch fails, fall through to static token
+
+        # Fall back to static token
         static_token = self.get("MCP_AUTH_TOKEN") or self.get("SUPERSET_MCP_TOKEN")
         if static_token:
             return static_token
-
-        # Check if we have a valid cached token
-        if self._cached_token and self._token_expiry:
-            if time.time() < self._token_expiry:
-                return self._cached_token
-
-        # Try to fetch a new JWT token
-        jwt_token = self._fetch_jwt_token()
-        if jwt_token:
-            return jwt_token
 
         return None
     
