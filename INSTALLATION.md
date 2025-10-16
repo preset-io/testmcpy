@@ -20,11 +20,11 @@ testmcpy --help
 pip install testmcpy
 ```
 
-## Install via Homebrew (Once Published)
+## Install via Homebrew (Once Published to PyPI)
 
 ```bash
-# Add Preset tap
-brew tap preset-io/tap
+# Tap this repository
+brew tap preset-io/testmcpy
 
 # Install testmcpy
 brew install testmcpy
@@ -32,6 +32,8 @@ brew install testmcpy
 # Verify installation
 testmcpy --help
 ```
+
+**Note**: Homebrew installation requires testmcpy to be published on PyPI first. The formula automatically fetches the package from PyPI.
 
 ## Usage Examples
 
@@ -78,41 +80,41 @@ MCP_AUTH_TOKEN=your-bearer-token-here
 
 ## Publishing to Homebrew
 
-To publish this formula to Homebrew:
+This repository includes a Homebrew formula in the `Formula/` directory, making it both the source repo and the Homebrew tap.
 
-1. Create a tag and release on GitHub:
+### Steps to enable Homebrew installation:
+
+1. **Publish to PyPI first** (required):
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+python -m build
+python -m twine upload dist/*
 ```
 
-2. Download the release tarball and calculate SHA256:
+2. **Update the formula with PyPI SHA256**:
 ```bash
-wget https://github.com/preset-io/testmcpy/archive/refs/tags/v0.1.0.tar.gz
-shasum -a 256 v0.1.0.tar.gz
+# Download from PyPI
+wget https://files.pythonhosted.org/packages/source/t/testmcpy/testmcpy-0.1.0.tar.gz
+
+# Calculate SHA256
+shasum -a 256 testmcpy-0.1.0.tar.gz
+
+# Update Formula/testmcpy.rb with the SHA256 hash
 ```
 
-3. Update `testmcpy.rb` with the correct SHA256
-
-4. Create a Homebrew tap repository (if not exists):
+3. **Commit and push the updated formula**:
 ```bash
-# Create preset-io/homebrew-tap repository on GitHub
-```
-
-5. Add the formula to your tap:
-```bash
-cp testmcpy.rb /path/to/homebrew-tap/Formula/
-cd /path/to/homebrew-tap
 git add Formula/testmcpy.rb
-git commit -m "Add testmcpy formula"
+git commit -m "Update Homebrew formula with PyPI SHA256"
 git push
 ```
 
-6. Users can now install with:
+4. **Users can now install with**:
 ```bash
-brew tap preset-io/tap
+brew tap preset-io/testmcpy
 brew install testmcpy
 ```
+
+The formula uses `virtualenv_install_with_resources` which automatically installs testmcpy and all dependencies from PyPI into a Homebrew-managed virtual environment.
 
 ## Publishing to PyPI
 

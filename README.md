@@ -18,9 +18,9 @@ pip install -e .
 pip install testmcpy
 ```
 
-**Via Homebrew (once published):**
+**Via Homebrew (once published to PyPI):**
 ```bash
-brew tap preset-io/tap
+brew tap preset-io/testmcpy
 brew install testmcpy
 ```
 
