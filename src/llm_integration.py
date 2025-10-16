@@ -590,12 +590,15 @@ class AnthropicProvider(LLMProvider):
         model: str,
         api_key: Optional[str] = None,
         base_url: str = "https://api.anthropic.com",
-        mcp_url: str = "http://localhost:5008/mcp"
+        mcp_url: Optional[str] = None
     ):
         self.model = model
         self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
         self.base_url = base_url
         self.client = httpx.AsyncClient(timeout=60.0)
+        # Use MCP_URL from environment if not provided
+        if mcp_url is None:
+            mcp_url = os.environ.get("MCP_URL", "http://localhost:5008/mcp")
         self.tool_discovery = ToolDiscoveryService(mcp_url)
 
     async def initialize(self):
@@ -801,10 +804,13 @@ class ClaudeSDKProvider(LLMProvider):
         self,
         model: str,
         api_key: Optional[str] = None,
-        mcp_url: str = "http://localhost:5008/mcp"
+        mcp_url: Optional[str] = None
     ):
         self.model = model
         self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+        # Use MCP_URL from environment if not provided
+        if mcp_url is None:
+            mcp_url = os.environ.get("MCP_URL", "http://localhost:5008/mcp")
         self.mcp_url = mcp_url
         self.tool_discovery = ToolDiscoveryService(mcp_url)
         self._sdk_tools: List[Any] = []
@@ -1005,10 +1011,13 @@ class ClaudeCodeProvider(LLMProvider):
         self,
         model: str,
         claude_cli_path: Optional[str] = None,
-        mcp_url: str = "http://localhost:5008/mcp"
+        mcp_url: Optional[str] = None
     ):
         self.model = model
         self.claude_cli_path = claude_cli_path or self._find_claude_cli()
+        # Use MCP_URL from environment if not provided
+        if mcp_url is None:
+            mcp_url = os.environ.get("MCP_URL", "http://localhost:5008/mcp")
         self.tool_discovery = ToolDiscoveryService(mcp_url)
 
     def _find_claude_cli(self) -> str:

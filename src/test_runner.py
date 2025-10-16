@@ -112,12 +112,16 @@ class TestRunner:
         self,
         model: str,
         provider: str = "ollama",
-        mcp_url: str = "http://localhost:5008/mcp/",
+        mcp_url: Optional[str] = None,
         verbose: bool = False,
         hide_tool_output: bool = False
     ):
         self.model = model
         self.provider = provider
+        # Use MCP_URL from environment if not provided
+        if mcp_url is None:
+            import os
+            mcp_url = os.environ.get("MCP_URL", "http://localhost:5008/mcp/")
         self.mcp_url = mcp_url
         self.verbose = verbose
         self.hide_tool_output = hide_tool_output
@@ -478,7 +482,11 @@ class TestRunner:
 class BatchTestRunner:
     """Run multiple test suites with different models."""
 
-    def __init__(self, mcp_url: str = "http://localhost:5008/mcp/"):
+    def __init__(self, mcp_url: Optional[str] = None):
+        # Use MCP_URL from environment if not provided
+        if mcp_url is None:
+            import os
+            mcp_url = os.environ.get("MCP_URL", "http://localhost:5008/mcp/")
         self.mcp_url = mcp_url
         self.results: Dict[str, List[TestResult]] = {}
 
