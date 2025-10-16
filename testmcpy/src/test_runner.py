@@ -10,9 +10,9 @@ import json
 import re
 from datetime import datetime, timedelta
 
-from src.mcp_client import MCPClient, MCPToolCall, MCPToolResult
-from src.llm_integration import LLMProvider, create_llm_provider
-from evals.base_evaluators import BaseEvaluator, EvalResult, create_evaluator
+from .mcp_client import MCPClient, MCPToolCall, MCPToolResult
+from .llm_integration import LLMProvider, create_llm_provider
+from ..evals.base_evaluators import BaseEvaluator, EvalResult, create_evaluator
 
 
 class RateLimitTracker:
