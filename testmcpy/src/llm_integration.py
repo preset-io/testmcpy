@@ -17,12 +17,19 @@ from urllib.parse import urlparse
 # Import MCP components (we'll handle the import error gracefully)
 try:
     from .mcp_client import MCPClient, MCPTool, MCPToolCall, MCPToolResult
+    from ..config import get_config
 except ImportError:
     # Fallback for when running as script
     import sys
     import os
     sys.path.append(os.path.dirname(os.path.abspath(__file__)))
     from mcp_client import MCPClient, MCPTool, MCPToolCall, MCPToolResult
+    # Config will fall back to environment variables
+    def get_config():
+        class FallbackConfig:
+            def get(self, key, default=None):
+                return os.getenv(key, default)
+        return FallbackConfig()
 
 
 @dataclass
@@ -271,10 +278,10 @@ class OpenAIProvider(LLMProvider):
     async def initialize(self):
         """Initialize OpenAI provider."""
         if not self.api_key and self.base_url == "https://api.openai.com/v1":
-            import os
-            self.api_key = os.environ.get("OPENAI_API_KEY", "")
+            config = get_config()
+            self.api_key = config.get("OPENAI_API_KEY", "")
             if not self.api_key:
-                raise ValueError("OpenAI API key not provided")
+                raise ValueError("OpenAI API key not provided. Set OPENAI_API_KEY in ~/.testmcpy or environment.")
 
     async def generate_with_tools(
         self,
@@ -593,18 +600,20 @@ class AnthropicProvider(LLMProvider):
         mcp_url: Optional[str] = None
     ):
         self.model = model
-        self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+        # Use config system for API key
+        config = get_config()
+        self.api_key = api_key or config.get("ANTHROPIC_API_KEY", "")
         self.base_url = base_url
         self.client = httpx.AsyncClient(timeout=60.0)
-        # Use MCP_URL from environment if not provided
+        # Use MCP_URL from config if not provided
         if mcp_url is None:
-            mcp_url = os.environ.get("MCP_URL", "http://localhost:5008/mcp")
+            mcp_url = config.mcp_url
         self.tool_discovery = ToolDiscoveryService(mcp_url)
 
     async def initialize(self):
         """Initialize Anthropic provider."""
         if not self.api_key:
-            raise ValueError("Anthropic API key not provided. Set ANTHROPIC_API_KEY environment variable.")
+            raise ValueError("Anthropic API key not provided. Set ANTHROPIC_API_KEY in ~/.testmcpy, .env, or environment.")
 
         # Try to pre-discover tools, but don't fail if MCP service is unavailable
         try:
@@ -807,10 +816,12 @@ class ClaudeSDKProvider(LLMProvider):
         mcp_url: Optional[str] = None
     ):
         self.model = model
-        self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
-        # Use MCP_URL from environment if not provided
+        # Use config system for API key
+        config = get_config()
+        self.api_key = api_key or config.get("ANTHROPIC_API_KEY", "")
+        # Use MCP_URL from config if not provided
         if mcp_url is None:
-            mcp_url = os.environ.get("MCP_URL", "http://localhost:5008/mcp")
+            mcp_url = config.mcp_url
         self.mcp_url = mcp_url
         self.tool_discovery = ToolDiscoveryService(mcp_url)
         self._sdk_tools: List[Any] = []
@@ -819,7 +830,7 @@ class ClaudeSDKProvider(LLMProvider):
     async def initialize(self):
         """Initialize Claude SDK provider."""
         if not self.api_key:
-            raise ValueError("Anthropic API key not provided. Set ANTHROPIC_API_KEY environment variable.")
+            raise ValueError("Anthropic API key not provided. Set ANTHROPIC_API_KEY in ~/.testmcpy, .env, or environment.")
 
         # IMPORTANT: Claude Agent SDK is designed for stdio-based MCP servers (command-line tools),
         # not HTTP-based MCP services. For HTTP MCP services, use the 'anthropic' provider instead.
@@ -1015,9 +1026,10 @@ class ClaudeCodeProvider(LLMProvider):
     ):
         self.model = model
         self.claude_cli_path = claude_cli_path or self._find_claude_cli()
-        # Use MCP_URL from environment if not provided
+        # Use MCP_URL from config if not provided
+        config = get_config()
         if mcp_url is None:
-            mcp_url = os.environ.get("MCP_URL", "http://localhost:5008/mcp")
+            mcp_url = config.mcp_url
         self.tool_discovery = ToolDiscoveryService(mcp_url)
 
     def _find_claude_cli(self) -> str:
