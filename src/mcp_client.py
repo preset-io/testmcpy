@@ -93,8 +93,9 @@ class MCPClient:
         self.auth = self._load_auth_token()
 
     def _load_auth_token(self) -> Optional[BearerAuth]:
-        """Load bearer token from SUPERSET_MCP_TOKEN environment variable."""
-        token = os.getenv("SUPERSET_MCP_TOKEN")
+        """Load bearer token from MCP_AUTH_TOKEN or SUPERSET_MCP_TOKEN environment variable."""
+        # Try MCP_AUTH_TOKEN first (generic), then SUPERSET_MCP_TOKEN (legacy)
+        token = os.getenv("MCP_AUTH_TOKEN") or os.getenv("SUPERSET_MCP_TOKEN")
         if token:
             return BearerAuth(token=token)
         return None
