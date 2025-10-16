@@ -24,10 +24,12 @@ from rich import print as rprint
 import yaml
 from dotenv import load_dotenv
 
+from testmcpy.config import get_config
+
 # Suppress MCP notification validation warnings
 logging.getLogger().setLevel(logging.ERROR)
 
-# Load environment variables from .env file
+# Load environment variables from .env file (for backward compatibility)
 load_dotenv(Path(__file__).parent.parent / ".env")
 
 app = typer.Typer(
@@ -38,10 +40,11 @@ app = typer.Typer(
 
 console = Console()
 
-# Config defaults from environment variables
-DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "llama3.1:8b")
-DEFAULT_PROVIDER = os.getenv("DEFAULT_PROVIDER", "ollama")
-DEFAULT_MCP_URL = os.getenv("MCP_URL", "http://localhost:5008/mcp/")
+# Get config instance
+config = get_config()
+DEFAULT_MODEL = config.default_model or "claude-3-5-haiku-20241022"
+DEFAULT_PROVIDER = config.default_provider or "anthropic"
+DEFAULT_MCP_URL = config.mcp_url
 
 
 class OutputFormat(str, Enum):
@@ -752,7 +755,7 @@ def init(
     console.print(f"[green]✓ Created example test file: {test_file}[/green]")
 
     # Create config file
-    config = {
+    project_config = {
         "mcp_url": DEFAULT_MCP_URL,
         "default_model": DEFAULT_MODEL,
         "default_provider": DEFAULT_PROVIDER,
@@ -764,7 +767,7 @@ def init(
     }
 
     config_file = path / "mcp_test_config.yaml"
-    config_file.write_text(yaml.dump(config, default_flow_style=False))
+    config_file.write_text(yaml.dump(project_config, default_flow_style=False))
     console.print(f"[green]✓ Created config file: {config_file}[/green]")
 
     console.print("\n[bold green]Project initialized successfully![/bold green]")
@@ -772,6 +775,82 @@ def init(
     console.print("1. Edit tests/example_tests.yaml to add your test cases")
     console.print("2. Run: testmcpy research  # To test your model")
     console.print("3. Run: testmcpy run tests/  # To run all tests")
+
+
+@app.command()
+def config_cmd(
+    show_all: bool = typer.Option(False, "--all", "-a", help="Show all config values including unset ones"),
+):
+    """
+    Display current testmcpy configuration.
+
+    Shows the configuration values and their sources (environment, config file, etc.).
+    """
+    console.print(Panel.fit(
+        "[bold cyan]testmcpy Configuration[/bold cyan]",
+        border_style="cyan"
+    ))
+
+    from testmcpy.config import get_config
+    cfg = get_config()
+
+    # Get all config values with sources
+    all_config = cfg.get_all_with_sources()
+
+    # Create table
+    table = Table(
+        show_header=True,
+        header_style="bold cyan",
+        border_style="blue",
+        title="[bold]Configuration Values[/bold]",
+        title_style="bold magenta"
+    )
+    table.add_column("Key", style="bold green", no_wrap=True)
+    table.add_column("Value", style="white")
+    table.add_column("Source", style="yellow")
+
+    # Sort keys for better display
+    sorted_keys = sorted(all_config.keys())
+
+    for key in sorted_keys:
+        value, source = all_config[key]
+
+        # Mask sensitive values
+        if "API_KEY" in key or "TOKEN" in key:
+            if value:
+                masked_value = f"{value[:8]}{'*' * (len(value) - 8)}" if len(value) > 8 else "***"
+            else:
+                masked_value = "[dim]not set[/dim]"
+        else:
+            masked_value = value or "[dim]not set[/dim]"
+
+        table.add_row(key, masked_value, source)
+
+    console.print(table)
+
+    # Show config file locations
+    console.print("\n[bold]Configuration Locations (priority order):[/bold]")
+    console.print("1. [cyan]Command-line options[/cyan] (highest priority)")
+    console.print(f"2. [cyan].env in current directory[/cyan] ({Path.cwd() / '.env'})")
+    console.print(f"3. [cyan]~/.testmcpy[/cyan] ({Path.home() / '.testmcpy'})")
+    console.print("4. [cyan]Environment variables[/cyan]")
+    console.print("5. [cyan]Built-in defaults[/cyan] (lowest priority)")
+
+    # Check which config files exist
+    console.print("\n[bold]Config Files:[/bold]")
+    cwd_env = Path.cwd() / ".env"
+    user_config = Path.home() / ".testmcpy"
+
+    if cwd_env.exists():
+        console.print(f"[green]✓[/green] {cwd_env} (exists)")
+    else:
+        console.print(f"[dim]✗ {cwd_env} (not found)[/dim]")
+
+    if user_config.exists():
+        console.print(f"[green]✓[/green] {user_config} (exists)")
+    else:
+        console.print(f"[dim]✗ {user_config} (not found)[/dim]")
+        console.print(f"\n[dim]Tip: Create {user_config} to set user defaults[/dim]")
 
 
 if __name__ == "__main__":

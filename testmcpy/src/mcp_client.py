@@ -16,6 +16,8 @@ from fastmcp import Client
 from mcp.types import Tool as MCPToolDef
 import httpx
 
+from testmcpy.config import get_config
+
 # Suppress MCP notification validation warnings
 logging.getLogger('root').setLevel(logging.ERROR)
 warnings.filterwarnings('ignore', message='Failed to validate notification')
@@ -84,18 +86,19 @@ class MCPClient:
     """Client for interacting with MCP services using FastMCP."""
 
     def __init__(self, base_url: Optional[str] = None):
-        # Use MCP_URL from environment if not provided
+        # Use MCP_URL from config if not provided
         if base_url is None:
-            base_url = os.environ.get("MCP_URL", "http://localhost:5008/mcp")
+            config = get_config()
+            base_url = config.mcp_url
         self.base_url = base_url
         self.client = None
         self._tools_cache: Optional[List[MCPTool]] = None
         self.auth = self._load_auth_token()
 
     def _load_auth_token(self) -> Optional[BearerAuth]:
-        """Load bearer token from MCP_AUTH_TOKEN or SUPERSET_MCP_TOKEN environment variable."""
-        # Try MCP_AUTH_TOKEN first (generic), then SUPERSET_MCP_TOKEN (legacy)
-        token = os.getenv("MCP_AUTH_TOKEN") or os.getenv("SUPERSET_MCP_TOKEN")
+        """Load bearer token from config."""
+        config = get_config()
+        token = config.mcp_auth_token
         if token:
             return BearerAuth(token=token)
         return None
