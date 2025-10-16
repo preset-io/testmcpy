@@ -778,6 +778,121 @@ def init(
 
 
 @app.command()
+def setup(
+    force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing ~/.testmcpy file"),
+):
+    """
+    Create ~/.testmcpy user configuration file with helpful comments.
+
+    This command creates a user config file with examples for all configuration
+    options including API keys, MCP settings, and LLM provider preferences.
+    """
+    from testmcpy.config import get_config
+
+    user_config_path = Path.home() / ".testmcpy"
+
+    console.print(Panel.fit(
+        "[bold cyan]testmcpy Setup - Create User Config[/bold cyan]",
+        border_style="cyan"
+    ))
+
+    # Check if file already exists
+    if user_config_path.exists() and not force:
+        console.print(f"[yellow]Config file already exists:[/yellow] {user_config_path}")
+        console.print("\n[dim]Use --force to overwrite[/dim]")
+
+        # Show current file
+        console.print(f"\n[bold]Current config preview:[/bold]")
+        with open(user_config_path) as f:
+            lines = f.readlines()[:10]
+            for line in lines:
+                console.print(f"  [dim]{line.rstrip()}[/dim]")
+            if len(lines) == 10:
+                console.print("  [dim]...[/dim]")
+        return
+
+    # Read the example file from the package
+    example_file = Path(__file__).parent.parent / ".testmcpy.example"
+
+    if not example_file.exists():
+        # Fallback: create inline
+        config_content = """# testmcpy User Configuration
+# Copy this file to ~/.testmcpy to set your user defaults
+#
+# Priority order:
+# 1. Command-line options (highest)
+# 2. .env in current directory
+# 3. ~/.testmcpy (this file)
+# 4. Environment variables
+# 5. Built-in defaults (lowest)
+
+# ============================================================================
+# MCP Service Configuration
+# ============================================================================
+MCP_URL=http://localhost:5008/mcp/
+
+# Option 1: Static Bearer Token
+# Provide a static authentication token for the MCP service
+# MCP_AUTH_TOKEN=your_token_here
+
+# Option 2: Dynamic JWT Token (for Preset/Superset)
+# Instead of a static token, you can configure testmcpy to dynamically
+# fetch a JWT token by calling an authentication API endpoint.
+# This is useful for services like Preset that require API credentials
+# to generate short-lived JWT tokens.
+#
+# Example for Preset API:
+# MCP_AUTH_API_URL=https://api.app.preset.io/v1/auth/
+# MCP_AUTH_API_TOKEN=your_preset_api_token
+# MCP_AUTH_API_SECRET=your_preset_api_secret
+#
+# When these are configured, testmcpy will:
+# 1. Make a POST request to MCP_AUTH_API_URL with name/secret
+# 2. Extract the JWT access_token from the response
+# 3. Cache the token for 50 minutes (JWT typically expires in 1 hour)
+# 4. Use this token as the MCP_AUTH_TOKEN
+#
+# Note: MCP_AUTH_TOKEN takes priority. If both are set, the static
+# token will be used and the API won't be called.
+
+# ============================================================================
+# Default LLM Settings
+# ============================================================================
+# Recommended: Anthropic (requires API key, best tool calling)
+DEFAULT_PROVIDER=anthropic
+DEFAULT_MODEL=claude-3-5-haiku-20241022
+
+# Alternative: Ollama (free, local, requires 'ollama serve' running)
+# DEFAULT_PROVIDER=ollama
+# DEFAULT_MODEL=llama3.1:8b
+
+# Alternative: OpenAI (requires API key)
+# DEFAULT_PROVIDER=openai
+# DEFAULT_MODEL=gpt-4-turbo
+
+# ============================================================================
+# API Keys (optional - can also use environment variables)
+# ============================================================================
+# These are "generic" keys that will fall back to environment if not set here
+# ANTHROPIC_API_KEY=sk-ant-...
+# OPENAI_API_KEY=sk-...
+# OLLAMA_BASE_URL=http://localhost:11434
+"""
+    else:
+        config_content = example_file.read_text()
+
+    # Write to user config
+    user_config_path.write_text(config_content)
+
+    console.print(f"[green]✓ Created user config file:[/green] {user_config_path}")
+    console.print("\n[bold]Next steps:[/bold]")
+    console.print(f"1. Edit {user_config_path}")
+    console.print("2. Add your API keys and MCP settings")
+    console.print("3. Run: testmcpy config-cmd  # to verify")
+    console.print("\n[dim]The file contains helpful comments for each configuration option[/dim]")
+
+
+@app.command()
 def config_cmd(
     show_all: bool = typer.Option(False, "--all", "-a", help="Show all config values including unset ones"),
 ):

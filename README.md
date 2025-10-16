@@ -29,6 +29,12 @@ See [INSTALLATION.md](INSTALLATION.md) for detailed installation instructions an
 ### Quick Usage
 
 ```bash
+# First-time setup: Create user config file
+testmcpy setup
+
+# View current configuration
+testmcpy config-cmd
+
 # List MCP tools
 testmcpy tools
 testmcpy tools --detail --filter chart
@@ -194,6 +200,16 @@ testmcpy uses a multi-layer configuration system with clear priority ordering:
 4. Environment variables
 5. Built-in defaults
 
+### First-Time Setup
+
+Create your user configuration file with helpful comments:
+
+```bash
+testmcpy setup
+```
+
+This creates `~/.testmcpy` with examples for all configuration options. Edit the file to add your API keys and preferences.
+
 ### View Current Configuration
 
 ```bash
@@ -206,7 +222,7 @@ This displays all configuration values with their sources and checks which confi
 
 #### User Config: `~/.testmcpy`
 
-Create `~/.testmcpy` to set your personal defaults:
+Create with `testmcpy setup`, or manually create `~/.testmcpy` to set your personal defaults:
 
 ```bash
 # MCP Service Configuration
