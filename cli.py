@@ -335,63 +335,167 @@ def run(
 def tools(
     mcp_url: str = typer.Option(DEFAULT_MCP_URL, "--mcp-url", help="MCP service URL"),
     format: OutputFormat = typer.Option(OutputFormat.table, "--format", "-f", help="Output format"),
+    detail: bool = typer.Option(False, "--detail", "-d", help="Show detailed parameter schemas"),
+    filter: Optional[str] = typer.Option(None, "--filter", help="Filter tools by name"),
 ):
     """
-    List available MCP tools.
+    List available MCP tools with beautiful formatting.
 
-    This command connects to the MCP service and lists all available tools.
+    This command connects to the MCP service and displays all available tools
+    with their descriptions and parameter schemas in a readable format.
     """
     async def list_tools():
         from src.mcp_client import MCPClient
+        from rich.tree import Tree
+        from rich.json import JSON
+        from rich.markdown import Markdown
 
-        console.print("[bold]Connecting to MCP service...[/bold]")
+        console.print(Panel.fit(
+            f"[bold cyan]MCP Tools Explorer[/bold cyan]\n"
+            f"Service: {mcp_url}",
+            border_style="cyan"
+        ))
 
         try:
-            async with MCPClient(mcp_url) as client:
-                tools = await client.list_tools()
+            with console.status("[bold green]Connecting to MCP service...[/bold green]"):
+                async with MCPClient(mcp_url) as client:
+                    all_tools = await client.list_tools()
 
-                if format == OutputFormat.table:
-                    table = Table(show_header=True, header_style="bold cyan")
-                    table.add_column("Name", style="dim")
-                    table.add_column("Description")
-                    table.add_column("Parameters")
+                    # Apply filter if provided
+                    if filter:
+                        tools = [t for t in all_tools if filter.lower() in t.name.lower()]
+                        if not tools:
+                            console.print(f"[yellow]No tools found matching '{filter}'[/yellow]")
+                            return
+                    else:
+                        tools = all_tools
 
-                    for tool in tools:
-                        params = json.dumps(tool.input_schema, indent=2) if tool.input_schema else "{}"
-                        table.add_row(
-                            tool.name,
-                            tool.description[:50] + "..." if len(tool.description) > 50 else tool.description,
-                            params[:100] + "..." if len(params) > 100 else params
-                        )
+                    if format == OutputFormat.table:
+                        if detail:
+                            # Detailed view with individual panels for each tool
+                            for i, tool in enumerate(tools, 1):
+                                # Create a panel for each tool
+                                tool_content = []
 
-                    console.print(table)
+                                # Description
+                                tool_content.append(f"[bold]Description:[/bold]")
+                                desc_lines = tool.description.split('\n')
+                                for line in desc_lines[:5]:  # First 5 lines
+                                    if line.strip():
+                                        tool_content.append(f"  {line.strip()}")
+                                if len(desc_lines) > 5:
+                                    tool_content.append(f"  [dim]... and {len(desc_lines) - 5} more lines[/dim]")
 
-                elif format == OutputFormat.json:
-                    output_data = [
-                        {
-                            "name": tool.name,
-                            "description": tool.description,
-                            "input_schema": tool.input_schema
-                        }
-                        for tool in tools
-                    ]
-                    console.print(Syntax(json.dumps(output_data, indent=2), "json"))
+                                tool_content.append("")
 
-                elif format == OutputFormat.yaml:
-                    output_data = [
-                        {
-                            "name": tool.name,
-                            "description": tool.description,
-                            "input_schema": tool.input_schema
-                        }
-                        for tool in tools
-                    ]
-                    console.print(Syntax(yaml.dump(output_data), "yaml"))
+                                # Parameters
+                                if tool.input_schema:
+                                    tool_content.append(f"[bold]Parameters:[/bold]")
+                                    props = tool.input_schema.get('properties', {})
+                                    required = tool.input_schema.get('required', [])
 
-                console.print(f"\n[green]Found {len(tools)} tools[/green]")
+                                    if props:
+                                        for param_name, param_info in props.items():
+                                            param_type = param_info.get('type', 'any')
+                                            param_desc = param_info.get('description', '')
+                                            is_required = '✓' if param_name in required else ' '
+
+                                            tool_content.append(f"  [{is_required}] [cyan]{param_name}[/cyan]: [yellow]{param_type}[/yellow]")
+                                            if param_desc:
+                                                # Wrap long descriptions
+                                                if len(param_desc) > 60:
+                                                    param_desc = param_desc[:60] + "..."
+                                                tool_content.append(f"      [dim]{param_desc}[/dim]")
+                                    else:
+                                        tool_content.append("  [dim]No parameters required[/dim]")
+                                else:
+                                    tool_content.append(f"[dim]No parameter schema[/dim]")
+
+                                panel = Panel(
+                                    "\n".join(tool_content),
+                                    title=f"[bold green]{i}. {tool.name}[/bold green]",
+                                    border_style="green",
+                                    expand=False
+                                )
+                                console.print(panel)
+                                console.print()  # Spacing between tools
+                        else:
+                            # Compact table view
+                            table = Table(
+                                show_header=True,
+                                header_style="bold cyan",
+                                border_style="blue",
+                                title=f"[bold]Available MCP Tools ({len(tools)})[/bold]",
+                                title_style="bold magenta"
+                            )
+                            table.add_column("#", style="dim", width=4)
+                            table.add_column("Tool Name", style="bold green", no_wrap=True)
+                            table.add_column("Description", style="white")
+                            table.add_column("Params", justify="center", style="cyan")
+
+                            for i, tool in enumerate(tools, 1):
+                                # Truncate description intelligently
+                                desc = tool.description
+                                if len(desc) > 80:
+                                    # Try to cut at sentence or word boundary
+                                    desc = desc[:80].rsplit('. ', 1)[0] + "..."
+
+                                # Count parameters
+                                param_count = len(tool.input_schema.get('properties', {})) if tool.input_schema else 0
+                                required_count = len(tool.input_schema.get('required', [])) if tool.input_schema else 0
+
+                                param_str = f"{param_count}"
+                                if required_count > 0:
+                                    param_str = f"{param_count} ({required_count} req)"
+
+                                table.add_row(
+                                    str(i),
+                                    tool.name,
+                                    desc,
+                                    param_str
+                                )
+
+                            console.print(table)
+
+                    elif format == OutputFormat.json:
+                        output_data = [
+                            {
+                                "name": tool.name,
+                                "description": tool.description,
+                                "input_schema": tool.input_schema
+                            }
+                            for tool in tools
+                        ]
+                        console.print(Syntax(json.dumps(output_data, indent=2), "json", theme="monokai"))
+
+                    elif format == OutputFormat.yaml:
+                        output_data = [
+                            {
+                                "name": tool.name,
+                                "description": tool.description,
+                                "input_schema": tool.input_schema
+                            }
+                            for tool in tools
+                        ]
+                        console.print(Syntax(yaml.dump(output_data), "yaml", theme="monokai"))
+
+                    # Summary
+                    summary_parts = []
+                    summary_parts.append(f"[green]{len(tools)} tool(s) displayed[/green]")
+                    if filter:
+                        summary_parts.append(f"[yellow]filtered from {len(all_tools)} total[/yellow]")
+
+                    console.print(f"\n[bold]Summary:[/bold] {' | '.join(summary_parts)}")
+
+                    if not detail and format == OutputFormat.table:
+                        console.print("[dim]Tip: Use --detail flag to see full parameter schemas[/dim]")
 
         except Exception as e:
-            console.print(f"[red]Error: {e}[/red]")
+            console.print(Panel(
+                f"[red]Error connecting to MCP service:[/red]\n{str(e)}",
+                title="[red]Error[/red]",
+                border_style="red"
+            ))
 
     asyncio.run(list_tools())
 
