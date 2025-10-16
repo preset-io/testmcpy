@@ -603,8 +603,15 @@ class AnthropicProvider(LLMProvider):
         if not self.api_key:
             raise ValueError("Anthropic API key not provided. Set ANTHROPIC_API_KEY environment variable.")
 
-        # Pre-discover tools
-        await self.tool_discovery.discover_tools()
+        # Try to pre-discover tools, but don't fail if MCP service is unavailable
+        try:
+            await self.tool_discovery.discover_tools()
+            print(f"✅ Successfully connected to MCP service at {self.tool_discovery.mcp_url}")
+        except Exception as e:
+            print(f"⚠️  Warning: Failed to initialize MCP tools: {e}")
+            print(f"   MCP URL: {self.tool_discovery.mcp_url}")
+            print(f"   The provider will work without MCP tools (direct API calls only)")
+            # Continue without tools - the provider can still work for non-tool interactions
 
     async def generate_with_tools(
         self,
@@ -1044,8 +1051,14 @@ class ClaudeCodeProvider(LLMProvider):
         except subprocess.TimeoutExpired:
             raise Exception("Claude CLI timeout during initialization")
 
-        # Pre-discover tools
-        await self.tool_discovery.discover_tools()
+        # Try to pre-discover tools, but don't fail if MCP service is unavailable
+        try:
+            await self.tool_discovery.discover_tools()
+            print(f"✅ Successfully connected to MCP service at {self.tool_discovery.mcp_url}")
+        except Exception as e:
+            print(f"⚠️  Warning: Failed to initialize MCP tools: {e}")
+            print(f"   MCP URL: {self.tool_discovery.mcp_url}")
+            print(f"   The provider will work without MCP tools (direct API calls only)")
 
     async def generate_with_tools(
         self,
