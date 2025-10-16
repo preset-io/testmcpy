@@ -787,6 +787,210 @@ class AnthropicProvider(LLMProvider):
         await self.client.aclose()
 
 
+class ClaudeSDKProvider(LLMProvider):
+    """Claude Agent SDK provider with MCP integration."""
+
+    def __init__(
+        self,
+        model: str,
+        api_key: Optional[str] = None,
+        mcp_url: str = "http://localhost:5008/mcp"
+    ):
+        self.model = model
+        self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+        self.mcp_url = mcp_url
+        self.tool_discovery = ToolDiscoveryService(mcp_url)
+        self._sdk_tools: List[Any] = []
+        self._mcp_server_config: Optional[Dict[str, Any]] = None
+
+    async def initialize(self):
+        """Initialize Claude SDK provider."""
+        if not self.api_key:
+            raise ValueError("Anthropic API key not provided. Set ANTHROPIC_API_KEY environment variable.")
+
+        # IMPORTANT: Claude Agent SDK is designed for stdio-based MCP servers (command-line tools),
+        # not HTTP-based MCP services. For HTTP MCP services, use the 'anthropic' provider instead.
+        #
+        # The SDK expects MCP servers to be defined as commands that spawn stdio processes.
+        # Our Superset MCP service is HTTP-based, which is incompatible.
+        #
+        # Recommendation: Use --provider anthropic instead of --provider claude-sdk
+        # for testing with HTTP MCP services.
+
+        print("[WARNING] Claude Agent SDK is designed for stdio-based MCP servers.")
+        print("[WARNING] Your Superset MCP service is HTTP-based.")
+        print("[WARNING] For HTTP MCP services, please use: --provider anthropic")
+        print("[WARNING] Continuing without MCP tools...")
+
+        self._mcp_server_config = None
+
+    def _create_sdk_tool(self, tool_schema: ToolSchema):
+        """Create an SDK tool wrapper for an MCP tool."""
+        from claude_agent_sdk import tool
+
+        # Create a closure that captures the tool schema
+        tool_name = tool_schema.name
+        tool_description = tool_schema.description
+        tool_params = tool_schema.parameters
+
+        # Convert parameters to SDK format (simplified schema)
+        # SDK expects {param_name: type} format, but we have JSON Schema
+        # We'll use the JSON Schema directly since SDK supports that too
+        input_schema = tool_params
+
+        # Create the async function that will execute the tool
+        async def tool_executor(args):
+            """Execute the tool via our MCP service."""
+            try:
+                tool_call = {
+                    "name": tool_name,
+                    "arguments": args,
+                    "id": f"tool_{tool_name}_{time.time()}"
+                }
+
+                result = await self.tool_discovery.execute_tool_call(tool_call)
+
+                if result.is_error:
+                    return {
+                        "content": [{
+                            "type": "text",
+                            "text": f"Error: {result.error_message}"
+                        }],
+                        "is_error": True
+                    }
+                else:
+                    # Format result content
+                    content = []
+                    if isinstance(result.content, str):
+                        content.append({"type": "text", "text": result.content})
+                    elif isinstance(result.content, list):
+                        content = result.content
+                    else:
+                        content.append({"type": "text", "text": str(result.content)})
+
+                    return {"content": content}
+
+            except Exception as e:
+                return {
+                    "content": [{
+                        "type": "text",
+                        "text": f"Tool execution error: {str(e)}"
+                    }],
+                    "is_error": True
+                }
+
+        # Apply the tool decorator
+        sdk_tool = tool(tool_name, tool_description, input_schema)(tool_executor)
+        return sdk_tool
+
+    async def generate_with_tools(
+        self,
+        prompt: str,
+        tools: List[Dict[str, Any]],
+        timeout: float = 30.0
+    ) -> LLMResult:
+        """Generate response using Claude Agent SDK."""
+        start_time = time.time()
+
+        try:
+            from claude_agent_sdk import query, ClaudeAgentOptions
+
+            # Create options for the SDK
+            options = ClaudeAgentOptions(
+                model=self.model,
+                permission_mode="bypassPermissions",  # Skip permission prompts for automation
+                mcp_servers={}
+            )
+
+            # Add our MCP server if we have config
+            if self._mcp_server_config:
+                options.mcp_servers["superset-mcp"] = self._mcp_server_config
+                print(f"[DEBUG] Added MCP server 'superset-mcp' with config: {self._mcp_server_config}")
+            else:
+                print("[DEBUG] Warning: No MCP server config available")
+
+            # CRITICAL: Validate NO MCP URLs in request
+            if not MCPURLFilter.validate_request_data({"prompt": prompt, "tools": tools}):
+                raise Exception("SECURITY VIOLATION: MCP URLs detected in request data")
+
+            # Execute query with timeout wrapper
+            response_text = ""
+            tool_calls = []
+            token_usage = None
+            cost = 0.0
+
+            print(f"[DEBUG] Starting SDK query with timeout={timeout}s")
+
+            # Wrap the query in a timeout
+            async def execute_query():
+                nonlocal response_text, token_usage, cost
+                message_count = 0
+                async for message in query(prompt=prompt, options=options):
+                    message_count += 1
+                    print(f"[DEBUG] Received message #{message_count}: {type(message).__name__}")
+
+                    # Extract text from AssistantMessage
+                    if hasattr(message, 'content'):
+                        for block in message.content:
+                            if hasattr(block, 'text'):
+                                response_text += block.text
+                                print(f"[DEBUG] Added text: {block.text[:50]}...")
+
+                    # Extract usage from ResultMessage
+                    if hasattr(message, 'usage'):
+                        usage = message.usage
+                        token_usage = {
+                            "prompt": usage.get("input_tokens", 0) +
+                                     usage.get("cache_read_input_tokens", 0) +
+                                     usage.get("cache_creation_input_tokens", 0),
+                            "completion": usage.get("output_tokens", 0),
+                            "total": (usage.get("input_tokens", 0) +
+                                     usage.get("cache_read_input_tokens", 0) +
+                                     usage.get("cache_creation_input_tokens", 0) +
+                                     usage.get("output_tokens", 0))
+                        }
+                        print(f"[DEBUG] Token usage: {token_usage}")
+
+                        # Get cost from SDK result
+                        if hasattr(message, 'total_cost_usd'):
+                            cost = message.total_cost_usd
+                            print(f"[DEBUG] Cost: ${cost}")
+
+                print(f"[DEBUG] Query completed, received {message_count} messages")
+
+            # Execute with timeout
+            try:
+                await asyncio.wait_for(execute_query(), timeout=timeout)
+            except asyncio.TimeoutError:
+                raise Exception(f"SDK query timed out after {timeout}s")
+
+            print(f"[DEBUG] Returning response with {len(response_text)} characters")
+
+            return LLMResult(
+                response=response_text,
+                tool_calls=tool_calls,
+                token_usage=token_usage,
+                cost=cost,
+                duration=time.time() - start_time,
+                raw_response=None
+            )
+
+        except Exception as e:
+            print(f"[DEBUG] Error in generate_with_tools: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            error_details = f"Error: {str(e)}"
+            return LLMResult(
+                response=error_details,
+                tool_calls=[],
+                duration=time.time() - start_time
+            )
+
+    async def close(self):
+        """Close connections."""
+        await self.tool_discovery.close()
+
+
 class ClaudeCodeProvider(LLMProvider):
     """Claude Code CLI provider via subprocess."""
 
@@ -985,6 +1189,7 @@ def create_llm_provider(
         "openai": OpenAIProvider,
         "local": LocalModelProvider,
         "anthropic": AnthropicProvider,
+        "claude-sdk": ClaudeSDKProvider,
         "claude-cli": ClaudeCodeProvider,
     }
 

@@ -18,6 +18,9 @@ Test if your LLM can successfully call tools:
 # Test Ollama with llama3.1:8b
 python cli.py research --model llama3.1:8b --provider ollama
 
+# Test with Claude via Anthropic API (recommended for MCP)
+python cli.py research --model claude-3-5-sonnet-20241022 --provider anthropic
+
 # Test with different models
 python cli.py research --model mistral-nemo:latest
 python cli.py research --model qwen2.5:7b
@@ -34,6 +37,9 @@ python cli.py run tests/
 
 # Run with specific model
 python cli.py run tests/ --model llama3.1:8b --provider ollama
+
+# Run with Claude (Anthropic API - recommended for MCP)
+python cli.py run tests/ --model claude-3-5-sonnet-20241022 --provider anthropic
 
 # Save results to a report
 python cli.py run tests/ --output reports/test_results.yaml
@@ -62,6 +68,19 @@ python cli.py report reports/llama3.1_results.yaml reports/mistral_results.yaml
 # Create project structure with example tests
 python cli.py init my_mcp_tests
 cd my_mcp_tests
+```
+
+### Interactive Chat
+
+```bash
+# Chat with Claude using MCP tools (use anthropic provider for HTTP MCP)
+python cli.py chat --provider anthropic --model claude-3-5-sonnet-20241022
+
+# Chat with Ollama
+python cli.py chat --provider ollama --model llama3.1:8b
+
+# Chat without MCP tools (standalone mode)
+python cli.py chat --provider claude-sdk --no-mcp
 ```
 
 ## Framework Structure
@@ -126,21 +145,63 @@ tests:
 
 ## Supported LLM Providers
 
-- **Ollama** - Local models with tool calling support
+- **Claude Agent SDK** (`claude-sdk`) - Official Anthropic SDK ⚠️ **Limited MCP Support**
+  - claude-3-5-sonnet-20241022 (recommended)
+  - claude-3-5-haiku-20241022
+  - All Claude 3.x models
+  - Requires: `ANTHROPIC_API_KEY` environment variable
+  - Features: Native tool calling, streaming, hooks
+  - **Note**: Designed for stdio-based MCP servers, **not HTTP-based services**
+  - **For HTTP MCP (like Superset)**: Use `anthropic` provider instead
+
+- **Anthropic API** (`anthropic`) - Direct API integration ✅ **Recommended for HTTP MCP**
+  - claude-3-5-sonnet-20241022 (recommended)
+  - claude-3-opus-20240229
+  - All Claude models via API
+  - Requires: `ANTHROPIC_API_KEY` environment variable
+  - **Full support for HTTP-based MCP services** (like Superset MCP)
+  - Best choice for production testing with MCP tools
+
+- **Ollama** (`ollama`) - Local models with tool calling support
   - llama3.1:8b (recommended)
   - mistral-nemo
   - qwen2.5:7b
-- **OpenAI** - GPT models via API
-- **Local** - Transformers-based local models
+
+- **OpenAI** (`openai`) - GPT models via API
+  - Requires: `OPENAI_API_KEY` environment variable
+
+- **Local** (`local`) - Transformers-based local models
+
+- **Claude CLI** (`claude-cli`) - Claude Code CLI interface
+  - Uses Claude Code binary
 
 ## Configuration
+
+### Environment Variables
+
+```bash
+# For Claude providers (claude-sdk, anthropic)
+export ANTHROPIC_API_KEY="sk-ant-..."
+
+# For OpenAI provider
+export OPENAI_API_KEY="sk-..."
+
+# MCP service URL (optional, defaults to http://localhost:5008/mcp/)
+export MCP_URL="http://localhost:5008/mcp/"
+
+# Default model and provider (optional)
+export DEFAULT_MODEL="claude-3-5-sonnet-20241022"
+export DEFAULT_PROVIDER="claude-sdk"
+```
+
+### Configuration File
 
 Create `mcp_test_config.yaml`:
 
 ```yaml
 mcp_url: "http://localhost:5008/mcp"
-default_model: "llama3.1:8b"
-default_provider: "ollama"
+default_model: "claude-3-5-sonnet-20241022"
+default_provider: "claude-sdk"
 evaluators:
   timeout: 30
   max_tokens: 2000
@@ -177,10 +238,14 @@ evaluators:
 
 ## Known Limitations
 
-- Claude Code currently has bugs with MCP tool calling, hence the need for local LLMs
-- Ollama models require specific formatting for reliable tool calling
-- CPU-only execution may be slow for larger models
-- Tool calling accuracy varies by model
+- **Claude SDK Provider**: Only supports stdio-based MCP servers (command-line tools)
+  - **Not compatible** with HTTP-based MCP services (like Superset MCP)
+  - Use `anthropic` provider for HTTP MCP services
+- **HTTP MCP Services**: Use `anthropic` provider (fully supported)
+- **Ollama models**: Require specific formatting for reliable tool calling
+- **CPU-only execution**: May be slow for larger local models
+- **Tool calling accuracy**: Varies by model (Claude models generally most reliable)
+- **Cost**: Claude API providers (`anthropic`) incur API costs; consider using Ollama for development
 
 ## Contributing
 

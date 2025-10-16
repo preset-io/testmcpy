@@ -57,6 +57,7 @@ class ModelProvider(str, Enum):
     openai = "openai"
     local = "local"
     anthropic = "anthropic"
+    claude_sdk = "claude-sdk"
     claude_cli = "claude-cli"
 
 
