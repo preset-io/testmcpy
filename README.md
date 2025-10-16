@@ -26,29 +26,28 @@ brew install testmcpy
 
 See [INSTALLATION.md](INSTALLATION.md) for detailed installation instructions and distribution options.
 
-### List MCP Tools
+### Quick Usage
 
 ```bash
-# List available tools from MCP service
+# List MCP tools
 testmcpy tools
+testmcpy tools --detail --filter chart
 
-# List tools with detailed schemas
-testmcpy tools --detail
+# Research LLM capabilities
+testmcpy research --model claude-sonnet-4.5-20250929 --provider anthropic
 
-# Filter tools by name
-testmcpy tools --filter chart
+# Run test suites
+testmcpy run tests/ --model claude-3-5-haiku-20241022 --provider anthropic
 
-# Output as JSON
-testmcpy tools --format json
+# Interactive chat
+testmcpy chat --provider anthropic --model claude-sonnet-4.5-20250929
 
-# Output as YAML
-testmcpy tools --format yaml
+# Compare test results
+testmcpy report reports/model1.yaml reports/model2.yaml
 
-# Use custom MCP server URL
-testmcpy tools --mcp-url http://localhost:5008/mcp
+# Initialize new project
+testmcpy init my_project
 ```
-
-**Note**: Additional commands (research, run, chat, etc.) are currently being migrated to the new package structure and will be available in the next release.
 
 ## Framework Structure
 
