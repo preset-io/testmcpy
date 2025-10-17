@@ -42,7 +42,7 @@ console = Console()
 
 # Get config instance
 config = get_config()
-DEFAULT_MODEL = config.default_model or "claude-3-5-haiku-20241022"
+DEFAULT_MODEL = config.default_model or "claude-haiku-4-5"
 DEFAULT_PROVIDER = config.default_provider or "anthropic"
 DEFAULT_MCP_URL = config.mcp_url
 
@@ -941,21 +941,24 @@ def setup(
         config_lines.append("DEFAULT_PROVIDER=anthropic")
 
         console.print("\n[bold]Available Anthropic Models:[/bold]")
-        console.print("1. [cyan]claude-3-5-sonnet-20241022[/cyan] - Most capable, best for complex tasks")
-        console.print("2. [cyan]claude-3-5-haiku-20241022[/cyan] - Fast and efficient (recommended)")
-        console.print("3. [cyan]claude-3-opus-20240229[/cyan] - Previous generation flagship")
-        console.print("4. [cyan]Custom model name[/cyan]")
+        console.print("1. [cyan]claude-sonnet-4-5[/cyan] - Latest Sonnet 4.5 (most capable)")
+        console.print("2. [cyan]claude-haiku-4-5[/cyan] - Latest Haiku 4.5 (fast & efficient, recommended)")
+        console.print("3. [cyan]claude-opus-4-1[/cyan] - Latest Opus 4.1 (most powerful)")
+        console.print("4. [cyan]claude-3-5-haiku-20241022[/cyan] - Legacy Haiku 3.5")
+        console.print("5. [cyan]Custom model name[/cyan]")
 
-        current_model = current_config.default_model or "claude-3-5-haiku-20241022"
+        current_model = current_config.default_model or "claude-haiku-4-5"
         model_choice = console.input(f"\nChoice (or press Enter for current: {current_model}): ").strip()
 
         if model_choice == "1":
-            model = "claude-3-5-sonnet-20241022"
+            model = "claude-sonnet-4-5"
         elif model_choice == "2":
-            model = "claude-3-5-haiku-20241022"
+            model = "claude-haiku-4-5"
         elif model_choice == "3":
-            model = "claude-3-opus-20240229"
+            model = "claude-opus-4-1"
         elif model_choice == "4":
+            model = "claude-3-5-haiku-20241022"
+        elif model_choice == "5":
             model = console.input("Custom model name: ").strip()
         elif model_choice == "":
             model = current_model
