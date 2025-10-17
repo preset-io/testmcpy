@@ -832,8 +832,9 @@ def setup(
     current_mcp_url = current_config.mcp_url
     if current_mcp_url and current_mcp_url != "http://localhost:5008/mcp/":
         source = current_config.get_source("MCP_URL")
-        console.print(f"[dim]Current: {current_mcp_url} (from {source})[/dim]")
-        mcp_url = console.input(f"MCP Service URL [{current_mcp_url}]: ").strip() or current_mcp_url
+        console.print(f"[green]✓ MCP Service URL already configured[/green] ({source})")
+        console.print(f"[dim]  Current: {current_mcp_url}[/dim]")
+        mcp_url = console.input(f"  New URL (or press Enter to keep current): ").strip() or current_mcp_url
     else:
         mcp_url = console.input("MCP Service URL [https://your-workspace.preset.io/mcp]: ").strip()
 
@@ -866,14 +867,17 @@ def setup(
         config_lines.append("# Dynamic JWT Authentication")
 
         # Show current values for dynamic JWT
-        current_api_url = current_config.get("MCP_AUTH_API_URL") or "https://api.app.preset.io/v1/auth/"
+        current_api_url = current_config.get("MCP_AUTH_API_URL")
         current_api_token = current_config.get("MCP_AUTH_API_TOKEN")
         current_api_secret = current_config.get("MCP_AUTH_API_SECRET")
 
-        if current_api_url != "https://api.app.preset.io/v1/auth/":
-            api_url = console.input(f"Auth API URL [{current_api_url}]: ").strip() or current_api_url
+        if current_api_url:
+            source = current_config.get_source("MCP_AUTH_API_URL")
+            console.print(f"[green]✓ Auth API URL already configured[/green] ({source})")
+            console.print(f"[dim]  Current: {current_api_url}[/dim]")
+            api_url = console.input(f"  New URL (or press Enter to keep current): ").strip() or current_api_url
         else:
-            api_url = console.input("Auth API URL [https://api.app.preset.io/v1/auth/]: ").strip()
+            api_url = console.input("Auth API URL [https://api.app.preset.io/v1/auth/]: ").strip() or "https://api.app.preset.io/v1/auth/"
 
         if current_api_token:
             masked = f"{current_api_token[:8]}...{current_api_token[-4:]}"
