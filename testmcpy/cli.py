@@ -1335,41 +1335,63 @@ def config_mcp(
 
     # Get auth token
     if not auth_token:
-        # First try static token
-        auth_token = cfg.get("MCP_AUTH_TOKEN") or cfg.get("SUPERSET_MCP_TOKEN")
+        # ALWAYS fetch fresh token from dynamic JWT if configured
+        if cfg.get("MCP_AUTH_API_URL") and cfg.get("MCP_AUTH_API_TOKEN") and cfg.get("MCP_AUTH_API_SECRET"):
+            console.print("[yellow]Fetching bearer token using dynamic JWT...[/yellow]")
+            try:
+                import requests
+                auth_url = cfg.get("MCP_AUTH_API_URL")
+                api_token = cfg.get("MCP_AUTH_API_TOKEN")
+                api_secret = cfg.get("MCP_AUTH_API_SECRET")
 
-        # If no static token, try to fetch using dynamic JWT
-        if not auth_token:
-            if cfg.get("MCP_AUTH_API_URL") and cfg.get("MCP_AUTH_API_TOKEN") and cfg.get("MCP_AUTH_API_SECRET"):
-                console.print("[yellow]Fetching bearer token using dynamic JWT...[/yellow]")
-                try:
-                    import requests
-                    auth_url = cfg.get("MCP_AUTH_API_URL")
-                    api_token = cfg.get("MCP_AUTH_API_TOKEN")
-                    api_secret = cfg.get("MCP_AUTH_API_SECRET")
+                console.print(f"[dim]Auth URL: {auth_url}[/dim]")
+                console.print(f"[dim]API Token: {api_token[:8]}...{api_token[-4:]}[/dim]")
 
-                    response = requests.post(
-                        auth_url,
-                        json={"token": api_token, "secret": api_secret},
-                        timeout=10
-                    )
-                    response.raise_for_status()
-                    auth_data = response.json()
-                    auth_token = auth_data.get("access_token")
+                response = requests.post(
+                    auth_url,
+                    headers={
+                        "Content-Type": "application/json",
+                        "Accept": "application/json"
+                    },
+                    json={"name": api_token, "secret": api_secret},
+                    timeout=10
+                )
 
-                    if auth_token:
-                        console.print("[green]✓ Successfully fetched bearer token[/green]")
-                    else:
-                        console.print("[red]Error: No access_token in response[/red]")
-                        return
-                except Exception as e:
-                    console.print(f"[red]Error fetching token: {e}[/red]")
+                console.print(f"[dim]Response status: {response.status_code}[/dim]")
+
+                if response.status_code != 200:
+                    console.print(f"[red]Error: API returned {response.status_code}[/red]")
+                    console.print(f"[red]Response: {response.text}[/red]")
                     console.print("[yellow]Please provide --token with a long-lived bearer token[/yellow]")
                     return
-            else:
-                console.print("[red]Error: No authentication token available[/red]")
-                console.print("Provide --token or configure MCP_AUTH_TOKEN or dynamic JWT (MCP_AUTH_API_*)")
+
+                auth_data = response.json()
+                # Try both 'access_token' and 'payload.access_token' keys
+                auth_token = auth_data.get("access_token")
+                if not auth_token and "payload" in auth_data:
+                    payload = auth_data["payload"]
+                    if isinstance(payload, dict):
+                        auth_token = payload.get("access_token")
+                    else:
+                        auth_token = payload
+
+                if auth_token:
+                    console.print(f"[green]✓ Successfully fetched bearer token (length: {len(auth_token)})[/green]")
+                else:
+                    console.print(f"[red]Error: No access_token or payload in response[/red]")
+                    console.print(f"[red]Response keys: {list(auth_data.keys())}[/red]")
+                    console.print(f"[red]Full response: {auth_data}[/red]")
+                    return
+            except Exception as e:
+                console.print(f"[red]Error fetching token: {e}[/red]")
+                import traceback
+                console.print(f"[red]{traceback.format_exc()}[/red]")
+                console.print("[yellow]Please provide --token with a long-lived bearer token[/yellow]")
                 return
+        else:
+            console.print("[red]Error: No authentication token available[/red]")
+            console.print("Provide --token or configure dynamic JWT (MCP_AUTH_API_*)")
+            return
 
     # Create MCP server configuration
     mcp_server_config = {
