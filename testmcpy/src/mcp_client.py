@@ -182,8 +182,17 @@ class MCPClient:
 
         try:
             resources_response = await self.client.list_resources()
-            return [{"name": r.name, "description": r.description, "uri": r.uri}
-                   for r in resources_response.resources]
+
+            # Handle different response formats
+            if hasattr(resources_response, 'resources'):
+                resource_list = resources_response.resources
+            elif isinstance(resources_response, list):
+                resource_list = resources_response
+            else:
+                resource_list = []
+
+            return [{"name": r.name, "description": getattr(r, 'description', ''), "uri": str(r.uri)}
+                   for r in resource_list]
         except Exception as e:
             raise MCPError(f"Failed to list resources: {e}")
 
@@ -205,8 +214,17 @@ class MCPClient:
 
         try:
             prompts_response = await self.client.list_prompts()
-            return [{"name": p.name, "description": p.description}
-                   for p in prompts_response.prompts]
+
+            # Handle different response formats
+            if hasattr(prompts_response, 'prompts'):
+                prompt_list = prompts_response.prompts
+            elif isinstance(prompts_response, list):
+                prompt_list = prompts_response
+            else:
+                prompt_list = []
+
+            return [{"name": p.name, "description": getattr(p, 'description', '')}
+                   for p in prompt_list]
         except Exception as e:
             raise MCPError(f"Failed to list prompts: {e}")
 
