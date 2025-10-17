@@ -944,7 +944,7 @@ def setup(
         console.print("1. [cyan]claude-sonnet-4-5[/cyan] - Latest Sonnet 4.5 (most capable)")
         console.print("2. [cyan]claude-haiku-4-5[/cyan] - Latest Haiku 4.5 (fast & efficient, recommended)")
         console.print("3. [cyan]claude-opus-4-1[/cyan] - Latest Opus 4.1 (most powerful)")
-        console.print("4. [cyan]claude-3-5-haiku-20241022[/cyan] - Legacy Haiku 3.5")
+        console.print("4. [cyan]claude-haiku-4-5[/cyan] - Legacy Haiku 3.5")
         console.print("5. [cyan]Custom model name[/cyan]")
 
         current_model = current_config.default_model or "claude-haiku-4-5"
@@ -957,7 +957,7 @@ def setup(
         elif model_choice == "3":
             model = "claude-opus-4-1"
         elif model_choice == "4":
-            model = "claude-3-5-haiku-20241022"
+            model = "claude-haiku-4-5"
         elif model_choice == "5":
             model = console.input("Custom model name: ").strip()
         elif model_choice == "":
@@ -1080,6 +1080,115 @@ def setup(
 
 
 @app.command()
+def serve(
+    port: int = typer.Option(8000, "--port", "-p", help="Port to run server on"),
+    host: str = typer.Option("127.0.0.1", "--host", help="Host to bind to"),
+    dev: bool = typer.Option(False, "--dev", help="Run in development mode (don't build frontend)"),
+    no_browser: bool = typer.Option(False, "--no-browser", help="Don't open browser automatically"),
+):
+    """
+    Start web server for testmcpy UI.
+
+    This command starts a FastAPI server that serves a beautiful React-based UI
+    for inspecting MCP tools, interactive chat, and test management.
+    """
+    console.print(Panel.fit(
+        "[bold cyan]testmcpy Web Server[/bold cyan]\n"
+        f"Starting server at http://{host}:{port}",
+        border_style="cyan"
+    ))
+
+    import subprocess
+    import sys
+    import time
+    from pathlib import Path
+
+    # Get paths
+    server_dir = Path(__file__).parent / "server"
+    ui_dir = Path(__file__).parent / "ui"
+    ui_dist = ui_dir / "dist"
+
+    # Check if FastAPI is installed
+    try:
+        import fastapi
+        import uvicorn
+    except ImportError:
+        console.print("[red]Error: FastAPI and uvicorn are required for the web server[/red]")
+        console.print("Install with: pip install 'testmcpy[server]'")
+        return
+
+    # Build frontend if not in dev mode and dist doesn't exist
+    if not dev and not ui_dist.exists():
+        console.print("\n[yellow]Frontend not built. Building now...[/yellow]")
+
+        # Check if npm is available
+        try:
+            subprocess.run(["npm", "--version"], check=True, capture_output=True)
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            console.print("[red]Error: npm is required to build the frontend[/red]")
+            console.print("Install Node.js from https://nodejs.org/")
+            return
+
+        # Install dependencies
+        console.print("Installing npm dependencies...")
+        result = subprocess.run(
+            ["npm", "install"],
+            cwd=ui_dir,
+            capture_output=True,
+            text=True
+        )
+        if result.returncode != 0:
+            console.print(f"[red]Failed to install dependencies:[/red]\n{result.stderr}")
+            return
+
+        # Build
+        console.print("Building frontend...")
+        result = subprocess.run(
+            ["npm", "run", "build"],
+            cwd=ui_dir,
+            capture_output=True,
+            text=True
+        )
+        if result.returncode != 0:
+            console.print(f"[red]Failed to build frontend:[/red]\n{result.stderr}")
+            return
+
+        console.print("[green]Frontend built successfully![/green]\n")
+
+    elif dev:
+        console.print("[yellow]Running in dev mode - make sure to start the frontend separately:[/yellow]")
+        console.print(f"  cd {ui_dir} && npm run dev\n")
+
+    # Open browser
+    if not no_browser:
+        import webbrowser
+        import threading
+        def open_browser():
+            time.sleep(1.5)  # Wait for server to start
+            webbrowser.open(f"http://{host}:{port}")
+        threading.Thread(target=open_browser, daemon=True).start()
+
+    # Start server
+    console.print("[green]Server starting...[/green]")
+    console.print(f"[dim]API docs available at http://{host}:{port}/docs[/dim]\n")
+
+    try:
+        import uvicorn
+        from testmcpy.server.api import app as fastapi_app
+
+        uvicorn.run(
+            fastapi_app,
+            host=host,
+            port=port,
+            log_level="info"
+        )
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Server stopped[/yellow]")
+    except Exception as e:
+        console.print(f"[red]Server error:[/red] {e}")
+
+
+@app.command()
 def config_cmd(
     show_all: bool = typer.Option(False, "--all", "-a", help="Show all config values including unset ones"),
 ):
@@ -1153,6 +1262,171 @@ def config_cmd(
     else:
         console.print(f"[dim]✗ {user_config} (not found)[/dim]")
         console.print(f"\n[dim]Tip: Create {user_config} to set user defaults[/dim]")
+
+
+@app.command()
+def config_mcp(
+    target: str = typer.Argument(..., help="Target application: claude-desktop, claude-code, or chatgpt-desktop"),
+    server_name: Optional[str] = typer.Option(None, "--name", "-n", help="Server name in config (default: preset-superset)"),
+    mcp_url: Optional[str] = typer.Option(None, "--mcp-url", help="MCP service URL (uses config default if not provided)"),
+    auth_token: Optional[str] = typer.Option(None, "--token", help="Bearer token (uses dynamic JWT if not provided)"),
+):
+    """
+    Configure MCP server for Claude Desktop, Claude Code, or ChatGPT Desktop.
+
+    This command automatically adds your MCP service configuration to the appropriate
+    application config file. It supports:
+
+    - claude-desktop: ~/Library/Application Support/Claude/claude_desktop_config.json
+    - claude-code: ~/.claude.json or .mcp.json
+    - chatgpt-desktop: Similar to claude-desktop format
+
+    The command will use your current testmcpy configuration (MCP URL and auth)
+    and format it appropriately for the target application.
+    """
+    import platform
+    from pathlib import Path
+
+    console.print(Panel.fit(
+        f"[bold cyan]Configure MCP for {target}[/bold cyan]",
+        border_style="cyan"
+    ))
+
+    # Determine target config file path
+    system = platform.system()
+    target = target.lower()
+
+    if target == "claude-desktop":
+        if system == "Darwin":  # macOS
+            config_path = Path.home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
+        elif system == "Windows":
+            config_path = Path(os.getenv("APPDATA")) / "Claude" / "claude_desktop_config.json"
+        else:  # Linux
+            config_path = Path.home() / ".config" / "Claude" / "claude_desktop_config.json"
+
+    elif target == "claude-code":
+        # Prefer ~/.claude.json for reliability
+        config_path = Path.home() / ".claude.json"
+        console.print("[dim]Note: Using ~/.claude.json (recommended). You can also use .mcp.json in project directory.[/dim]\n")
+
+    elif target == "chatgpt-desktop":
+        # ChatGPT Desktop uses similar format to Claude Desktop
+        if system == "Darwin":  # macOS
+            config_path = Path.home() / "Library" / "Application Support" / "ChatGPT" / "config.json"
+        else:
+            console.print("[yellow]ChatGPT Desktop config location not well-documented for this OS.[/yellow]")
+            console.print("[yellow]Please check ChatGPT Desktop documentation for config file location.[/yellow]")
+            return
+
+    else:
+        console.print(f"[red]Error: Unknown target '{target}'[/red]")
+        console.print("Supported targets: claude-desktop, claude-code, chatgpt-desktop")
+        return
+
+    # Get MCP configuration
+    cfg = get_config()
+    mcp_url = mcp_url or cfg.mcp_url
+    server_name = server_name or "preset-superset"
+
+    if not mcp_url:
+        console.print("[red]Error: MCP URL not configured[/red]")
+        console.print("Run: testmcpy setup")
+        return
+
+    # Get auth token
+    if not auth_token:
+        # Try to use dynamic JWT
+        if cfg.get("MCP_AUTH_API_URL") and cfg.get("MCP_AUTH_API_TOKEN") and cfg.get("MCP_AUTH_API_SECRET"):
+            console.print("[yellow]Dynamic JWT configured, but static token required for MCP clients[/yellow]")
+            console.print("[yellow]Please provide --token with a long-lived bearer token[/yellow]")
+            return
+        else:
+            auth_token = cfg.get("MCP_AUTH_TOKEN") or cfg.get("SUPERSET_MCP_TOKEN")
+
+    if not auth_token:
+        console.print("[red]Error: No authentication token available[/red]")
+        console.print("Provide --token or configure MCP_AUTH_TOKEN")
+        return
+
+    # Create MCP server configuration
+    mcp_server_config = {
+        "command": "npx",
+        "args": [
+            "-y",
+            "mcp-remote@latest",
+            mcp_url,
+            "--header",
+            f"Authorization: Bearer {auth_token}"
+        ],
+        "env": {
+            "NODE_OPTIONS": "--no-warnings"
+        }
+    }
+
+    # Read existing config if it exists
+    existing_config = {}
+    if config_path.exists():
+        try:
+            with open(config_path) as f:
+                existing_config = json.load(f)
+            console.print(f"[green]✓ Found existing config at {config_path}[/green]")
+        except Exception as e:
+            console.print(f"[yellow]Warning: Could not read existing config: {e}[/yellow]")
+
+    # Update config
+    if "mcpServers" not in existing_config:
+        existing_config["mcpServers"] = {}
+
+    existing_config["mcpServers"][server_name] = mcp_server_config
+
+    # Ensure parent directory exists
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Write config
+    try:
+        with open(config_path, 'w') as f:
+            json.dump(existing_config, f, indent=2)
+
+        console.print(f"\n[green]✓ MCP server configured successfully![/green]")
+        console.print(f"[green]✓ Config file: {config_path}[/green]")
+        console.print(f"[green]✓ Server name: {server_name}[/green]")
+        console.print(f"[green]✓ MCP URL: {mcp_url}[/green]")
+
+        # Show the config that was added
+        console.print("\n[bold]Added configuration:[/bold]")
+        config_display = {
+            server_name: {
+                "command": "npx",
+                "args": [
+                    "-y",
+                    "mcp-remote@latest",
+                    mcp_url,
+                    "--header",
+                    f"Authorization: Bearer {auth_token[:20]}...{auth_token[-8:]}"
+                ],
+                "env": {
+                    "NODE_OPTIONS": "--no-warnings"
+                }
+            }
+        }
+        console.print(Syntax(json.dumps(config_display, indent=2), "json", theme="monokai"))
+
+        # Next steps
+        console.print("\n[bold]Next steps:[/bold]")
+        if target == "claude-desktop":
+            console.print("1. Restart Claude Desktop")
+            console.print("2. The MCP server should appear in Claude's tool list")
+        elif target == "claude-code":
+            console.print("1. Restart Claude Code (or reload window)")
+            console.print("2. The MCP server should be available")
+            console.print("3. Use --mcp-debug flag if you encounter issues")
+        elif target == "chatgpt-desktop":
+            console.print("1. Restart ChatGPT Desktop")
+            console.print("2. The MCP server should be available")
+
+    except Exception as e:
+        console.print(f"[red]Error writing config file:[/red] {e}")
+        return
 
 
 if __name__ == "__main__":
