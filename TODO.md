@@ -1,2 +1,4 @@
 [] add evals to the interface of the chat so for each prompt i could maybe run some evals? woudl that also let me create a test case from each chat? 
 [] when start the cli can you show the steps you are taking to auth
+[] make tests not show for clientes
+[] can it look deep in the test folder for other test yaml files
