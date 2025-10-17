@@ -17,7 +17,7 @@ testmcpy = [
 
 [project]
 name = "testmcpy"
-version = "0.1.13"
+version = "0.1.14"
 description = "A comprehensive testing framework for validating LLM tool calling capabilities with MCP services"
 authors = [{name = "Preset", email = "amin@preset.io"}]
 license = {text = "Apache-2.0"}
@@ -42,7 +42,7 @@ dependencies = [
     "aiohttp>=3.8.0",
     "ollama>=0.1.0",
     "anthropic>=0.39.0",
-    "fastmcp>=0.2.0",
+    "fastmcp>=2.0.0,<3.0.0",
     "httpx>=0.27.0",
     "python-dotenv>=1.0.0",
     "click>=8.0.0",
