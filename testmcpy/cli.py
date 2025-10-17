@@ -788,11 +788,16 @@ def setup(
     Guides you through configuring MCP service, LLM provider, and API keys.
     Creates either ~/.testmcpy (user config) or .env (project config).
     """
+    from testmcpy.config import get_config
+
     console.print(Panel.fit(
         "[bold cyan]testmcpy Interactive Setup[/bold cyan]\n"
         "[dim]Configure MCP service and LLM provider settings[/dim]",
         border_style="cyan"
     ))
+
+    # Load current config to show existing values
+    current_config = get_config()
 
     # Ask for config location if not specified
     if not location:
@@ -822,22 +827,67 @@ def setup(
 
     # MCP Service Configuration
     console.print("[bold]MCP Service Configuration[/bold]")
-    mcp_url = console.input("MCP Service URL [https://your-workspace.preset.io/mcp]: ").strip()
+
+    # Show current MCP URL if set
+    current_mcp_url = current_config.mcp_url
+    if current_mcp_url and current_mcp_url != "http://localhost:5008/mcp/":
+        source = current_config.get_source("MCP_URL")
+        console.print(f"[dim]Current: {current_mcp_url} (from {source})[/dim]")
+        mcp_url = console.input(f"MCP Service URL [{current_mcp_url}]: ").strip() or current_mcp_url
+    else:
+        mcp_url = console.input("MCP Service URL [https://your-workspace.preset.io/mcp]: ").strip()
+
     if mcp_url:
         config_lines.append(f"MCP_URL={mcp_url}")
 
     # Ask for authentication method
     console.print("\n[bold]MCP Authentication Method[/bold]")
+
+    # Detect current auth method
+    has_dynamic_jwt = all([
+        current_config.get("MCP_AUTH_API_URL"),
+        current_config.get("MCP_AUTH_API_TOKEN"),
+        current_config.get("MCP_AUTH_API_SECRET")
+    ])
+    has_static_token = current_config.get("MCP_AUTH_TOKEN") or current_config.get("SUPERSET_MCP_TOKEN")
+
+    if has_dynamic_jwt:
+        console.print("[dim]Currently configured: Dynamic JWT[/dim]")
+    elif has_static_token:
+        console.print("[dim]Currently configured: Static Token[/dim]")
+
     console.print("1. [cyan]Dynamic JWT[/cyan] - Fetch token from Preset API (recommended)")
     console.print("2. [cyan]Static Token[/cyan] - Use a pre-generated bearer token")
-    auth_method = console.input("\nChoice [1]: ").strip() or "1"
+    default_auth = "1" if has_dynamic_jwt or not has_static_token else "2"
+    auth_method = console.input(f"\nChoice [{default_auth}]: ").strip() or default_auth
 
     config_lines.append("")
     if auth_method == "1":
         config_lines.append("# Dynamic JWT Authentication")
-        api_url = console.input("Auth API URL [https://api.app.preset.io/v1/auth/]: ").strip()
-        api_token = console.input("API Token: ").strip()
-        api_secret = console.input("API Secret: ").strip()
+
+        # Show current values for dynamic JWT
+        current_api_url = current_config.get("MCP_AUTH_API_URL") or "https://api.app.preset.io/v1/auth/"
+        current_api_token = current_config.get("MCP_AUTH_API_TOKEN")
+        current_api_secret = current_config.get("MCP_AUTH_API_SECRET")
+
+        if current_api_url != "https://api.app.preset.io/v1/auth/":
+            api_url = console.input(f"Auth API URL [{current_api_url}]: ").strip() or current_api_url
+        else:
+            api_url = console.input("Auth API URL [https://api.app.preset.io/v1/auth/]: ").strip()
+
+        if current_api_token:
+            masked = f"{current_api_token[:8]}...{current_api_token[-4:]}"
+            console.print(f"[dim]Current API Token: {masked}[/dim]")
+            api_token = console.input(f"API Token [press Enter to keep current]: ").strip() or current_api_token
+        else:
+            api_token = console.input("API Token: ").strip()
+
+        if current_api_secret:
+            masked = f"{current_api_secret[:8]}...{current_api_secret[-4:]}"
+            console.print(f"[dim]Current API Secret: {masked}[/dim]")
+            api_secret = console.input(f"API Secret [press Enter to keep current]: ").strip() or current_api_secret
+        else:
+            api_secret = console.input("API Secret: ").strip()
 
         if api_url:
             config_lines.append(f"MCP_AUTH_API_URL={api_url}")
@@ -847,28 +897,60 @@ def setup(
             config_lines.append(f"MCP_AUTH_API_SECRET={api_secret}")
     else:
         config_lines.append("# Static Bearer Token")
-        static_token = console.input("Bearer Token: ").strip()
+
+        current_token = current_config.get("MCP_AUTH_TOKEN") or current_config.get("SUPERSET_MCP_TOKEN")
+        if current_token:
+            masked = f"{current_token[:20]}...{current_token[-8:]}"
+            console.print(f"[dim]Current Token: {masked}[/dim]")
+            static_token = console.input(f"Bearer Token [press Enter to keep current]: ").strip() or current_token
+        else:
+            static_token = console.input("Bearer Token: ").strip()
+
         if static_token:
             config_lines.append(f"MCP_AUTH_TOKEN={static_token}")
 
     # LLM Provider Configuration
     console.print("\n[bold]LLM Provider Configuration[/bold]")
+
+    # Detect current provider
+    current_provider = current_config.default_provider
+    if current_provider:
+        console.print(f"[dim]Currently configured: {current_provider}[/dim]")
+
     console.print("1. [cyan]Anthropic[/cyan] - Claude models (requires API key, best tool calling)")
     console.print("2. [cyan]Ollama[/cyan] - Local models (free, requires ollama serve)")
     console.print("3. [cyan]OpenAI[/cyan] - GPT models (requires API key)")
-    provider_choice = console.input("\nChoice [1]: ").strip() or "1"
+
+    # Set default based on current provider
+    default_provider = "1"
+    if current_provider == "ollama":
+        default_provider = "2"
+    elif current_provider == "openai":
+        default_provider = "3"
+
+    provider_choice = console.input(f"\nChoice [{default_provider}]: ").strip() or default_provider
 
     config_lines.append("")
     config_lines.append("# LLM Provider Settings")
 
     if provider_choice == "1":
         config_lines.append("DEFAULT_PROVIDER=anthropic")
-        model = console.input("Model [claude-3-5-haiku-20241022]: ").strip() or "claude-3-5-haiku-20241022"
+
+        current_model = current_config.default_model or "claude-3-5-haiku-20241022"
+        model = console.input(f"Model [{current_model}]: ").strip() or current_model
         config_lines.append(f"DEFAULT_MODEL={model}")
         config_lines.append(f"ANTHROPIC_MODEL={model}")
 
         config_lines.append("")
-        api_key = console.input("Anthropic API Key: ").strip()
+
+        current_api_key = current_config.get("ANTHROPIC_API_KEY")
+        if current_api_key:
+            masked = f"{current_api_key[:8]}...{current_api_key[-4:]}"
+            console.print(f"[dim]Current API Key: {masked}[/dim]")
+            api_key = console.input(f"Anthropic API Key [press Enter to keep current]: ").strip() or current_api_key
+        else:
+            api_key = console.input("Anthropic API Key: ").strip()
+
         if api_key:
             config_lines.append(f"ANTHROPIC_API_KEY={api_key}")
         else:
@@ -876,20 +958,34 @@ def setup(
 
     elif provider_choice == "2":
         config_lines.append("DEFAULT_PROVIDER=ollama")
-        model = console.input("Model [llama3.1:8b]: ").strip() or "llama3.1:8b"
+
+        current_model = current_config.default_model or "llama3.1:8b"
+        model = console.input(f"Model [{current_model}]: ").strip() or current_model
         config_lines.append(f"DEFAULT_MODEL={model}")
 
         config_lines.append("")
-        base_url = console.input("Ollama Base URL [http://localhost:11434]: ").strip() or "http://localhost:11434"
+
+        current_base_url = current_config.get("OLLAMA_BASE_URL") or "http://localhost:11434"
+        base_url = console.input(f"Ollama Base URL [{current_base_url}]: ").strip() or current_base_url
         config_lines.append(f"OLLAMA_BASE_URL={base_url}")
 
     elif provider_choice == "3":
         config_lines.append("DEFAULT_PROVIDER=openai")
-        model = console.input("Model [gpt-4-turbo]: ").strip() or "gpt-4-turbo"
+
+        current_model = current_config.default_model or "gpt-4-turbo"
+        model = console.input(f"Model [{current_model}]: ").strip() or current_model
         config_lines.append(f"DEFAULT_MODEL={model}")
 
         config_lines.append("")
-        api_key = console.input("OpenAI API Key: ").strip()
+
+        current_api_key = current_config.get("OPENAI_API_KEY")
+        if current_api_key:
+            masked = f"{current_api_key[:8]}...{current_api_key[-4:]}"
+            console.print(f"[dim]Current API Key: {masked}[/dim]")
+            api_key = console.input(f"OpenAI API Key [press Enter to keep current]: ").strip() or current_api_key
+        else:
+            api_key = console.input("OpenAI API Key: ").strip()
+
         if api_key:
             config_lines.append(f"OPENAI_API_KEY={api_key}")
         else:
