@@ -1,4 +1,4 @@
-model: claude-3-5-haiku-20241022
+model: claude-haiku-4-5
 provider: anthropic
 results:
 - cost: 0.0019019999999999998
