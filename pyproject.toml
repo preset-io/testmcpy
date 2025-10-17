@@ -11,7 +11,7 @@ include = ["testmcpy*"]
 
 [project]
 name = "testmcpy"
-version = "0.1.10"
+version = "0.1.11"
 description = "A comprehensive testing framework for validating LLM tool calling capabilities with MCP services"
 authors = [{name = "Preset", email = "amin@preset.io"}]
 license = {text = "Apache-2.0"}
@@ -49,6 +49,11 @@ dev = [
     "flake8>=6.0.0",
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
+]
+server = [
+    "fastapi>=0.104.0",
+    "uvicorn>=0.24.0",
+    "websockets>=12.0",
 ]
 
 [project.scripts]

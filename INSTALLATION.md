@@ -63,7 +63,7 @@ Create a `.env` file in your project directory:
 
 ```bash
 # Default model to use for testing
-DEFAULT_MODEL=claude-sonnet-4.5-20250929
+DEFAULT_MODEL=claude-sonnet-4-5
 
 # Default provider (anthropic, ollama, openai, local, claude-sdk)
 DEFAULT_PROVIDER=anthropic

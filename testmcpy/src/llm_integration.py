@@ -832,21 +832,34 @@ class ClaudeSDKProvider(LLMProvider):
         if not self.api_key:
             raise ValueError("Anthropic API key not provided. Set ANTHROPIC_API_KEY in ~/.testmcpy, .env, or environment.")
 
-        # IMPORTANT: Claude Agent SDK is designed for stdio-based MCP servers (command-line tools),
-        # not HTTP-based MCP services. For HTTP MCP services, use the 'anthropic' provider instead.
-        #
-        # The SDK expects MCP servers to be defined as commands that spawn stdio processes.
-        # Our Superset MCP service is HTTP-based, which is incompatible.
-        #
-        # Recommendation: Use --provider anthropic instead of --provider claude-sdk
-        # for testing with HTTP MCP services.
+        # Configure HTTP MCP server
+        try:
+            from claude_agent_sdk.types import McpHttpServerConfig
 
-        print("[WARNING] Claude Agent SDK is designed for stdio-based MCP servers.")
-        print("[WARNING] Your Superset MCP service is HTTP-based.")
-        print("[WARNING] For HTTP MCP services, please use: --provider anthropic")
-        print("[WARNING] Continuing without MCP tools...")
+            config = get_config()
 
-        self._mcp_server_config = None
+            # Build HTTP server config
+            server_config: McpHttpServerConfig = {
+                "type": "http",
+                "url": self.mcp_url
+            }
+
+            # Add bearer token if configured
+            token = config.mcp_auth_token
+            if token:
+                server_config["headers"] = {
+                    "Authorization": f"Bearer {token}"
+                }
+                print(f"[SDK] Configured MCP HTTP server with auth token")
+            else:
+                print(f"[SDK] Configured MCP HTTP server without auth")
+
+            self._mcp_server_config = server_config
+            print(f"[SDK] ✓ MCP Server configured: {self.mcp_url}")
+
+        except Exception as e:
+            print(f"[SDK] ❌ Failed to configure MCP server: {e}")
+            self._mcp_server_config = None
 
     def _create_sdk_tool(self, tool_schema: ToolSchema):
         """Create an SDK tool wrapper for an MCP tool."""
@@ -928,14 +941,19 @@ class ClaudeSDKProvider(LLMProvider):
 
             # Add our MCP server if we have config
             if self._mcp_server_config:
-                options.mcp_servers["superset-mcp"] = self._mcp_server_config
-                print(f"[DEBUG] Added MCP server 'superset-mcp' with config: {self._mcp_server_config}")
+                options.mcp_servers["preset-superset"] = self._mcp_server_config
+                # Mask token for logging
+                masked_config = dict(self._mcp_server_config)
+                if "headers" in masked_config and "Authorization" in masked_config["headers"]:
+                    token = masked_config["headers"]["Authorization"].replace("Bearer ", "")
+                    if len(token) > 30:
+                        masked_token = f"{token[:20]}...{token[-8:]}"
+                        masked_config["headers"]["Authorization"] = f"Bearer {masked_token}"
+                print(f"[SDK] Added MCP server 'preset-superset' to SDK options")
+                print(f"[SDK] URL: {masked_config.get('url')}")
+                print(f"[SDK] Auth: {'Yes (token masked)' if 'headers' in masked_config else 'No'}")
             else:
-                print("[DEBUG] Warning: No MCP server config available")
-
-            # CRITICAL: Validate NO MCP URLs in request
-            if not MCPURLFilter.validate_request_data({"prompt": prompt, "tools": tools}):
-                raise Exception("SECURITY VIOLATION: MCP URLs detected in request data")
+                print("[SDK] Warning: No MCP server config available - SDK will not have MCP tools")
 
             # Execute query with timeout wrapper
             response_text = ""
@@ -943,7 +961,7 @@ class ClaudeSDKProvider(LLMProvider):
             token_usage = None
             cost = 0.0
 
-            print(f"[DEBUG] Starting SDK query with timeout={timeout}s")
+            print(f"[SDK] Starting query (timeout={timeout}s)...")
 
             # Wrap the query in a timeout
             async def execute_query():
@@ -951,14 +969,36 @@ class ClaudeSDKProvider(LLMProvider):
                 message_count = 0
                 async for message in query(prompt=prompt, options=options):
                     message_count += 1
-                    print(f"[DEBUG] Received message #{message_count}: {type(message).__name__}")
+                    msg_type = type(message).__name__
+                    print(f"[SDK] Message #{message_count}: {msg_type}")
 
                     # Extract text from AssistantMessage
                     if hasattr(message, 'content'):
                         for block in message.content:
                             if hasattr(block, 'text'):
                                 response_text += block.text
-                                print(f"[DEBUG] Added text: {block.text[:50]}...")
+                                preview = block.text[:80].replace('\n', ' ')
+                                print(f"[SDK]   └─ Text: {preview}...")
+                            elif hasattr(block, 'type') and block.type == 'tool_use':
+                                # Log tool calls
+                                tool_name = getattr(block, 'name', 'unknown')
+                                tool_input = getattr(block, 'input', {})
+                                print(f"[SDK]   └─ 🔧 Tool Call: {tool_name}")
+                                # Show abbreviated input
+                                if tool_input:
+                                    import json
+                                    input_str = json.dumps(tool_input, indent=2)
+                                    if len(input_str) > 200:
+                                        input_str = input_str[:200] + "..."
+                                    print(f"[SDK]      Input: {input_str}")
+
+                    # Log tool results from UserMessage (SDK sends tool results as user messages)
+                    if msg_type == "UserMessage" and hasattr(message, 'content'):
+                        for block in message.content:
+                            if hasattr(block, 'type') and block.type == 'tool_result':
+                                tool_id = getattr(block, 'tool_use_id', 'unknown')
+                                is_error = getattr(block, 'is_error', False)
+                                print(f"[SDK]   └─ ✅ Tool Result (id={tool_id}, error={is_error})")
 
                     # Extract usage from ResultMessage
                     if hasattr(message, 'usage'):
@@ -973,22 +1013,20 @@ class ClaudeSDKProvider(LLMProvider):
                                      usage.get("cache_creation_input_tokens", 0) +
                                      usage.get("output_tokens", 0))
                         }
-                        print(f"[DEBUG] Token usage: {token_usage}")
+                        print(f"[SDK] Token usage: {token_usage['total']:,} tokens (prompt: {token_usage['prompt']:,}, completion: {token_usage['completion']:,})")
 
                         # Get cost from SDK result
                         if hasattr(message, 'total_cost_usd'):
                             cost = message.total_cost_usd
-                            print(f"[DEBUG] Cost: ${cost}")
+                            print(f"[SDK] Cost: ${cost:.4f}")
 
-                print(f"[DEBUG] Query completed, received {message_count} messages")
+                print(f"[SDK] Query completed: {message_count} messages, {len(response_text)} chars")
 
             # Execute with timeout
             try:
                 await asyncio.wait_for(execute_query(), timeout=timeout)
             except asyncio.TimeoutError:
                 raise Exception(f"SDK query timed out after {timeout}s")
-
-            print(f"[DEBUG] Returning response with {len(response_text)} characters")
 
             return LLMResult(
                 response=response_text,
@@ -1000,12 +1038,9 @@ class ClaudeSDKProvider(LLMProvider):
             )
 
         except Exception as e:
-            print(f"[DEBUG] Error in generate_with_tools: {type(e).__name__}: {e}")
-            import traceback
-            traceback.print_exc()
-            error_details = f"Error: {str(e)}"
+            print(f"[SDK] ❌ Error: {type(e).__name__}: {str(e)}")
             return LLMResult(
-                response=error_details,
+                response=f"Error: {str(e)}",
                 tool_calls=[],
                 duration=time.time() - start_time
             )
