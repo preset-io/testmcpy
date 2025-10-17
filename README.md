@@ -40,13 +40,13 @@ testmcpy tools
 testmcpy tools --detail --filter chart
 
 # Research LLM capabilities
-testmcpy research --model claude-sonnet-4.5-20250929 --provider anthropic
+testmcpy research --model claude-sonnet-4-5 --provider anthropic
 
 # Run test suites
-testmcpy run tests/ --model claude-3-5-haiku-20241022 --provider anthropic
+testmcpy run tests/ --model claude-haiku-4-5 --provider anthropic
 
 # Interactive chat
-testmcpy chat --provider anthropic --model claude-sonnet-4.5-20250929
+testmcpy chat --provider anthropic --model claude-sonnet-4-5
 
 # Compare test results
 testmcpy report reports/model1.yaml reports/model2.yaml
@@ -125,12 +125,12 @@ The **Anthropic API** (`anthropic`) provider is recommended for most users:
 # Add to ~/.testmcpy
 ANTHROPIC_API_KEY=sk-ant-your-key-here
 DEFAULT_PROVIDER=anthropic
-DEFAULT_MODEL=claude-3-5-haiku-20241022
+DEFAULT_MODEL=claude-haiku-4-5
 ```
 
 **Available Models:**
-- `claude-sonnet-4.5-20250929` - Newest, most capable
-- `claude-3-5-haiku-20241022` - Fast, cost-effective (recommended)
+- `claude-sonnet-4-5` - Newest, most capable
+- `claude-haiku-4-5` - Fast, cost-effective (recommended)
 - `claude-3-5-sonnet-20241022` - Balanced performance
 - All Claude models via API
 
@@ -237,7 +237,7 @@ MCP_AUTH_TOKEN=your_token_here
 # MCP_AUTH_API_SECRET=your_preset_api_secret
 
 # Default LLM Settings
-DEFAULT_MODEL=claude-3-5-haiku-20241022
+DEFAULT_MODEL=claude-haiku-4-5
 DEFAULT_PROVIDER=anthropic
 
 # API Keys
@@ -255,7 +255,7 @@ Create `.env` in your project directory to override user defaults:
 # Project-specific settings
 MCP_URL=https://my-project.mcp.example.com/mcp/
 MCP_AUTH_TOKEN=project_specific_token
-DEFAULT_MODEL=claude-sonnet-4.5-20250929
+DEFAULT_MODEL=claude-sonnet-4-5
 ```
 
 ### Authentication Options
@@ -306,7 +306,7 @@ export MCP_AUTH_API_TOKEN="your_api_token"
 export MCP_AUTH_API_SECRET="your_api_secret"
 
 # Default LLM settings
-export DEFAULT_MODEL="claude-sonnet-4.5-20250929"
+export DEFAULT_MODEL="claude-sonnet-4-5"
 export DEFAULT_PROVIDER="anthropic"
 ```
 

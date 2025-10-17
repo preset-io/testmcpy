@@ -1092,6 +1092,70 @@ def serve(
     This command starts a FastAPI server that serves a beautiful React-based UI
     for inspecting MCP tools, interactive chat, and test management.
     """
+    # Show authentication steps
+    console.print("\n[bold cyan]Authentication Setup[/bold cyan]")
+    console.print("[dim]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/dim]")
+
+    # Load config
+    console.print("  [1/4] Loading configuration...")
+    from testmcpy.config import get_config
+    cfg = get_config()
+    console.print("  [green]✓[/green] Configuration loaded")
+
+    # Check MCP URL
+    console.print(f"\n  [2/4] Checking MCP service URL...")
+    console.print(f"  [dim]    MCP URL: {cfg.mcp_url}[/dim]")
+    console.print(f"  [dim]    Source: {cfg.get_source('MCP_URL')}[/dim]")
+    console.print("  [green]✓[/green] MCP URL configured")
+
+    # Check authentication method
+    console.print(f"\n  [3/4] Checking authentication method...")
+    has_dynamic_jwt = all([
+        cfg.get("MCP_AUTH_API_URL"),
+        cfg.get("MCP_AUTH_API_TOKEN"),
+        cfg.get("MCP_AUTH_API_SECRET")
+    ])
+    has_static_token = cfg.get("MCP_AUTH_TOKEN") or cfg.get("SUPERSET_MCP_TOKEN")
+
+    if has_dynamic_jwt:
+        console.print("  [cyan]→[/cyan] Using dynamic JWT authentication")
+        console.print(f"  [dim]    Auth API URL: {cfg.get('MCP_AUTH_API_URL')}[/dim]")
+        console.print(f"  [dim]    API Token: {cfg.get('MCP_AUTH_API_TOKEN')[:8]}...{cfg.get('MCP_AUTH_API_TOKEN')[-4:]}[/dim]")
+        console.print("  [green]✓[/green] Dynamic JWT configured")
+
+        # Try to fetch token
+        console.print(f"\n  [4/4] Fetching JWT token from API...")
+        try:
+            import requests
+            response = requests.post(
+                cfg.get("MCP_AUTH_API_URL"),
+                headers={"Content-Type": "application/json", "Accept": "application/json"},
+                json={"name": cfg.get("MCP_AUTH_API_TOKEN"), "secret": cfg.get("MCP_AUTH_API_SECRET")},
+                timeout=10
+            )
+            if response.status_code == 200:
+                console.print("  [green]✓[/green] JWT token fetched successfully")
+            else:
+                console.print(f"  [yellow]⚠[/yellow] Failed to fetch JWT token (status: {response.status_code})")
+                console.print("  [yellow]  Server will attempt to fetch token when needed[/yellow]")
+        except Exception as e:
+            console.print(f"  [yellow]⚠[/yellow] Failed to fetch JWT token: {str(e)}")
+            console.print("  [yellow]  Server will attempt to fetch token when needed[/yellow]")
+    elif has_static_token:
+        static_token = cfg.get("MCP_AUTH_TOKEN") or cfg.get("SUPERSET_MCP_TOKEN")
+        console.print("  [cyan]→[/cyan] Using static bearer token")
+        console.print(f"  [dim]    Token: {static_token[:20]}...{static_token[-8:]}[/dim]")
+        source = cfg.get_source("MCP_AUTH_TOKEN") or cfg.get_source("SUPERSET_MCP_TOKEN")
+        console.print(f"  [dim]    Source: {source}[/dim]")
+        console.print("  [green]✓[/green] Static token configured")
+        console.print(f"\n  [4/4] Token validation skipped (static token)")
+    else:
+        console.print("  [yellow]⚠[/yellow] No authentication configured")
+        console.print("  [yellow]  MCP service may require authentication[/yellow]")
+        console.print(f"\n  [4/4] Authentication setup incomplete")
+
+    console.print("[dim]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/dim]\n")
+
     console.print(Panel.fit(
         "[bold cyan]testmcpy Web Server[/bold cyan]\n"
         f"Starting server at http://{host}:{port}",

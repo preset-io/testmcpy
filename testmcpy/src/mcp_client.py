@@ -97,21 +97,52 @@ class MCPClient:
 
     def _load_auth_token(self) -> Optional[BearerAuth]:
         """Load bearer token from config."""
+        import sys
         config = get_config()
+
+        # Check for dynamic JWT configuration
+        has_dynamic_jwt = all([
+            config.get("MCP_AUTH_API_URL"),
+            config.get("MCP_AUTH_API_TOKEN"),
+            config.get("MCP_AUTH_API_SECRET")
+        ])
+
+        # Check for static token
+        has_static_token = config.get("MCP_AUTH_TOKEN") or config.get("SUPERSET_MCP_TOKEN")
+
+        # Log auth method being used
+        if has_dynamic_jwt:
+            print("  [Auth] Using dynamic JWT authentication", file=sys.stderr)
+            print(f"  [Auth] Fetching token from: {config.get('MCP_AUTH_API_URL')}", file=sys.stderr)
+        elif has_static_token:
+            print("  [Auth] Using static bearer token", file=sys.stderr)
+            token_preview = has_static_token[:20] + "..." + has_static_token[-8:]
+            print(f"  [Auth] Token: {token_preview}", file=sys.stderr)
+        else:
+            print("  [Auth] No authentication configured", file=sys.stderr)
+
         token = config.mcp_auth_token
         if token:
+            if has_dynamic_jwt:
+                print(f"  [Auth] JWT token fetched successfully (length: {len(token)})", file=sys.stderr)
             return BearerAuth(token=token)
         return None
 
     async def initialize(self) -> Dict[str, Any]:
         """Initialize the MCP session using FastMCP client."""
+        import sys
         try:
+            print(f"  [MCP] Connecting to MCP service at {self.base_url}", file=sys.stderr)
             self.client = Client(self.base_url, auth=self.auth)
             await self.client.__aenter__()
+
+            print(f"  [MCP] Testing connection...", file=sys.stderr)
             # Test connection
             await self.client.ping()
+            print(f"  [MCP] Connection successful", file=sys.stderr)
             return {"status": "connected"}
         except Exception as e:
+            print(f"  [MCP] Connection failed: {e}", file=sys.stderr)
             raise MCPError(f"Failed to initialize MCP client: {e}")
 
     async def list_tools(self, force_refresh: bool = False) -> List[MCPTool]:

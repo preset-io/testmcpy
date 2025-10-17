@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Send, Loader, Wrench, DollarSign, ChevronDown, ChevronRight } from 'lucide-react'
+import { Send, Loader, Wrench, DollarSign, ChevronDown, ChevronRight, CheckCircle, FileText, Plus } from 'lucide-react'
 import ReactJson from '@microlink/react-json-view'
 
 // JSON viewer component with IDE-like collapsible tree
@@ -81,6 +81,10 @@ function ChatInterface() {
   const [selectedProvider, setSelectedProvider] = useState('anthropic')
   const [selectedModel, setSelectedModel] = useState('claude-haiku-4-5')
   const messagesEndRef = useRef(null)
+  const [showEvalDialog, setShowEvalDialog] = useState(false)
+  const [selectedMessageIndex, setSelectedMessageIndex] = useState(null)
+  const [evalResults, setEvalResults] = useState({})
+  const [runningEval, setRunningEval] = useState(null)
 
   useEffect(() => {
     loadModels()
@@ -154,6 +158,109 @@ function ChatInterface() {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       sendMessage()
+    }
+  }
+
+  const runEval = async (messageIndex) => {
+    const userMessage = messages[messageIndex - 1]
+    const assistantMessage = messages[messageIndex]
+
+    if (!userMessage || !assistantMessage || userMessage.role !== 'user' || assistantMessage.role !== 'assistant') {
+      console.error('Invalid message pair for eval')
+      return
+    }
+
+    setRunningEval(messageIndex)
+
+    try {
+      const res = await fetch('/api/eval/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: userMessage.content,
+          response: assistantMessage.content,
+          tool_calls: assistantMessage.tool_calls || [],
+          model: selectedModel,
+          provider: selectedProvider,
+        }),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        console.error('Eval API error:', data)
+        setEvalResults((prev) => ({
+          ...prev,
+          [messageIndex]: {
+            passed: false,
+            score: null,
+            reason: `API Error: ${data.detail || 'Unknown error'}`,
+            evaluations: []
+          }
+        }))
+      } else {
+        console.log('Eval results:', data)
+        setEvalResults((prev) => ({ ...prev, [messageIndex]: data }))
+      }
+    } catch (error) {
+      console.error('Failed to run eval:', error)
+      setEvalResults((prev) => ({
+        ...prev,
+        [messageIndex]: {
+          passed: false,
+          score: null,
+          reason: `Error: ${error.message}`,
+          evaluations: []
+        }
+      }))
+    } finally {
+      setRunningEval(null)
+    }
+  }
+
+  const createTestCase = async (messageIndex) => {
+    const userMessage = messages[messageIndex - 1]
+    const assistantMessage = messages[messageIndex]
+
+    if (!userMessage || !assistantMessage) {
+      console.error('Invalid message pair for test case')
+      return
+    }
+
+    const testName = `test_${Date.now()}`
+    const testContent = `version: "1.0"
+tests:
+  - name: ${testName}
+    prompt: "${userMessage.content.replace(/"/g, '\\"')}"
+    evaluators:
+      - name: execution_successful
+      - name: was_mcp_tool_called
+        args:
+          tool_name: "${assistantMessage.tool_calls?.[0]?.name || 'any'}"
+      - name: final_answer_contains
+        args:
+          expected_content: "${assistantMessage.content.substring(0, 50).replace(/"/g, '\\"')}"
+`
+
+    try {
+      const res = await fetch('/api/tests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename: `${testName}.yaml`,
+          content: testContent,
+        }),
+      })
+
+      if (res.ok) {
+        alert('Test case created successfully!')
+      } else {
+        const error = await res.json()
+        alert(`Failed to create test case: ${error.detail}`)
+      }
+    } catch (error) {
+      console.error('Failed to create test case:', error)
+      alert('Failed to create test case')
     }
   }
 
@@ -235,6 +342,74 @@ function ChatInterface() {
                   }`}
                 >
                   <div className="whitespace-pre-wrap leading-relaxed">{message.content}</div>
+
+                  {/* Eval and Test Actions for Assistant Messages */}
+                  {message.role === 'assistant' && !message.error && (
+                    <div className="mt-4 pt-4 border-t border-white/10 flex gap-2">
+                      <button
+                        onClick={() => runEval(idx)}
+                        disabled={runningEval === idx}
+                        className="btn btn-secondary text-xs flex items-center gap-1.5 py-1.5 px-3"
+                        title="Run evaluators on this response"
+                      >
+                        <CheckCircle size={14} />
+                        <span>{runningEval === idx ? 'Running...' : 'Run Eval'}</span>
+                      </button>
+                      <button
+                        onClick={() => createTestCase(idx)}
+                        className="btn btn-secondary text-xs flex items-center gap-1.5 py-1.5 px-3"
+                        title="Create test case from this interaction"
+                      >
+                        <FileText size={14} />
+                        <span>Create Test</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Display Eval Results */}
+                  {evalResults[idx] && (
+                    <div className="mt-4 pt-4 border-t border-white/10">
+                      <div className="flex items-center gap-2 mb-3">
+                        <CheckCircle size={16} className={evalResults[idx].passed ? 'text-success' : 'text-error'} />
+                        <span className="font-semibold text-sm">
+                          Eval: {evalResults[idx].passed ? 'PASSED' : 'FAILED'}
+                        </span>
+                        <span className="text-xs text-white/60">
+                          Score: {evalResults[idx].score?.toFixed(2) || 'N/A'}
+                        </span>
+                      </div>
+                      {evalResults[idx].reason && (
+                        <p className="text-xs text-white/70 leading-relaxed mb-3">
+                          {evalResults[idx].reason}
+                        </p>
+                      )}
+                      {/* Individual evaluator results */}
+                      {evalResults[idx].evaluations && evalResults[idx].evaluations.length > 0 && (
+                        <div className="space-y-2 mt-3">
+                          {evalResults[idx].evaluations.map((evalItem, evalIdx) => (
+                            <div key={evalIdx} className="bg-black/20 rounded-lg p-2.5 border border-white/10">
+                              <div className="flex items-start gap-2">
+                                <CheckCircle size={14} className={evalItem.passed ? 'text-success mt-0.5' : 'text-error mt-0.5'} />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-xs font-medium text-white/90">{evalItem.evaluator}</span>
+                                    <span className="text-[10px] text-white/50">
+                                      {evalItem.passed ? '✓' : '✗'} Score: {evalItem.score?.toFixed(2)}
+                                    </span>
+                                  </div>
+                                  {evalItem.reason && (
+                                    <p className="text-[11px] text-white/70 leading-relaxed">
+                                      {evalItem.reason}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Tool calls */}
                   {message.tool_calls && message.tool_calls.length > 0 && (
