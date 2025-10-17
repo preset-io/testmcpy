@@ -2,14 +2,52 @@
 
 A comprehensive testing framework for validating LLM tool calling capabilities with MCP (Model Context Protocol) services, specifically designed for testing Superset operations.
 
+## Requirements
+
+- **Python**: 3.9 or higher (3.9, 3.10, 3.11, or 3.12)
+  - Python 3.9+ required for modern asyncio features and type hints
+  - Python 3.13+ not yet supported
+- **Virtual Environment**: Recommended to avoid dependency conflicts
+- **Operating Systems**: macOS, Linux, Windows (via WSL recommended)
+
+### Optional Features
+
+The base installation includes CLI and testing features. Additional features require optional dependencies:
+
+```bash
+# Web UI (interactive testing interface)
+pip install testmcpy[server]
+
+# Claude Agent SDK integration
+pip install testmcpy[sdk]
+
+# All optional features
+pip install testmcpy[all]
+
+# Development tools (linting, testing)
+pip install testmcpy[dev]
+```
+
 ## Quick Start
 
 ### Installation
+
+**Recommended: Virtual Environment**
+```bash
+# Create and activate virtual environment
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install testmcpy
+pip install testmcpy
+```
 
 **From source (development):**
 ```bash
 git clone https://github.com/preset-io/testmcpy.git
 cd testmcpy
+python3 -m venv venv
+source venv/bin/activate
 pip install -e .
 ```
 
