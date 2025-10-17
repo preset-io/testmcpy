@@ -11,7 +11,7 @@ include = ["testmcpy*"]
 
 [project]
 name = "testmcpy"
-version = "0.1.3"
+version = "0.1.4"
 description = "A comprehensive testing framework for validating LLM tool calling capabilities with MCP services"
 authors = [{name = "Preset", email = "amin@preset.io"}]
 license = {text = "Apache-2.0"}
