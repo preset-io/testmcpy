@@ -16,6 +16,8 @@ from fastmcp import Client
 from mcp.types import Tool as MCPToolDef
 import httpx
 
+from testmcpy.config import get_config
+
 # Suppress MCP notification validation warnings
 logging.getLogger('root').setLevel(logging.ERROR)
 warnings.filterwarnings('ignore', message='Failed to validate notification')
@@ -84,31 +86,63 @@ class MCPClient:
     """Client for interacting with MCP services using FastMCP."""
 
     def __init__(self, base_url: Optional[str] = None):
-        # Use MCP_URL from environment if not provided
+        # Use MCP_URL from config if not provided
         if base_url is None:
-            base_url = os.environ.get("MCP_URL", "http://localhost:5008/mcp")
+            config = get_config()
+            base_url = config.mcp_url
         self.base_url = base_url
         self.client = None
         self._tools_cache: Optional[List[MCPTool]] = None
         self.auth = self._load_auth_token()
 
     def _load_auth_token(self) -> Optional[BearerAuth]:
-        """Load bearer token from MCP_AUTH_TOKEN or SUPERSET_MCP_TOKEN environment variable."""
-        # Try MCP_AUTH_TOKEN first (generic), then SUPERSET_MCP_TOKEN (legacy)
-        token = os.getenv("MCP_AUTH_TOKEN") or os.getenv("SUPERSET_MCP_TOKEN")
+        """Load bearer token from config."""
+        import sys
+        config = get_config()
+
+        # Check for dynamic JWT configuration
+        has_dynamic_jwt = all([
+            config.get("MCP_AUTH_API_URL"),
+            config.get("MCP_AUTH_API_TOKEN"),
+            config.get("MCP_AUTH_API_SECRET")
+        ])
+
+        # Check for static token
+        has_static_token = config.get("MCP_AUTH_TOKEN") or config.get("SUPERSET_MCP_TOKEN")
+
+        # Log auth method being used
+        if has_dynamic_jwt:
+            print("  [Auth] Using dynamic JWT authentication", file=sys.stderr)
+            print(f"  [Auth] Fetching token from: {config.get('MCP_AUTH_API_URL')}", file=sys.stderr)
+        elif has_static_token:
+            print("  [Auth] Using static bearer token", file=sys.stderr)
+            token_preview = has_static_token[:20] + "..." + has_static_token[-8:]
+            print(f"  [Auth] Token: {token_preview}", file=sys.stderr)
+        else:
+            print("  [Auth] No authentication configured", file=sys.stderr)
+
+        token = config.mcp_auth_token
         if token:
+            if has_dynamic_jwt:
+                print(f"  [Auth] JWT token fetched successfully (length: {len(token)})", file=sys.stderr)
             return BearerAuth(token=token)
         return None
 
     async def initialize(self) -> Dict[str, Any]:
         """Initialize the MCP session using FastMCP client."""
+        import sys
         try:
+            print(f"  [MCP] Connecting to MCP service at {self.base_url}", file=sys.stderr)
             self.client = Client(self.base_url, auth=self.auth)
             await self.client.__aenter__()
+
+            print(f"  [MCP] Testing connection...", file=sys.stderr)
             # Test connection
             await self.client.ping()
+            print(f"  [MCP] Connection successful", file=sys.stderr)
             return {"status": "connected"}
         except Exception as e:
+            print(f"  [MCP] Connection failed: {e}", file=sys.stderr)
             raise MCPError(f"Failed to initialize MCP client: {e}")
 
     async def list_tools(self, force_refresh: bool = False) -> List[MCPTool]:
@@ -179,8 +213,17 @@ class MCPClient:
 
         try:
             resources_response = await self.client.list_resources()
-            return [{"name": r.name, "description": r.description, "uri": r.uri}
-                   for r in resources_response.resources]
+
+            # Handle different response formats
+            if hasattr(resources_response, 'resources'):
+                resource_list = resources_response.resources
+            elif isinstance(resources_response, list):
+                resource_list = resources_response
+            else:
+                resource_list = []
+
+            return [{"name": r.name, "description": getattr(r, 'description', ''), "uri": str(r.uri)}
+                   for r in resource_list]
         except Exception as e:
             raise MCPError(f"Failed to list resources: {e}")
 
@@ -202,8 +245,17 @@ class MCPClient:
 
         try:
             prompts_response = await self.client.list_prompts()
-            return [{"name": p.name, "description": p.description}
-                   for p in prompts_response.prompts]
+
+            # Handle different response formats
+            if hasattr(prompts_response, 'prompts'):
+                prompt_list = prompts_response.prompts
+            elif isinstance(prompts_response, list):
+                prompt_list = prompts_response
+            else:
+                prompt_list = []
+
+            return [{"name": p.name, "description": getattr(p, 'description', '')}
+                   for p in prompt_list]
         except Exception as e:
             raise MCPError(f"Failed to list prompts: {e}")
 

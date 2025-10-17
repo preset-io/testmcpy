@@ -1,4 +1,4 @@
-# MCP Testing & Validation Framework
+# testmcpy - MCP Testing Framework
 
 A comprehensive testing framework for validating LLM tool calling capabilities with MCP (Model Context Protocol) services, specifically designed for testing Superset operations.
 
@@ -6,62 +6,53 @@ A comprehensive testing framework for validating LLM tool calling capabilities w
 
 ### Installation
 
+**From source (development):**
 ```bash
-pip install -r requirements.txt
+git clone https://github.com/preset-io/testmcpy.git
+cd testmcpy
+pip install -e .
 ```
 
-### Phase 0: Research & Validate Tool Calling
-
-Test if your LLM can successfully call tools:
-
+**From PyPI (once published):**
 ```bash
-# Test Ollama with llama3.1:8b
-python cli.py research --model llama3.1:8b --provider ollama
-
-# Test with different models
-python cli.py research --model mistral-nemo:latest
-python cli.py research --model qwen2.5:7b
+pip install testmcpy
 ```
 
-### Run Tests
-
+**Via Homebrew (once published to PyPI):**
 ```bash
-# Run a single test file
-python cli.py run tests/basic_test.yaml
-
-# Run all tests in a directory
-python cli.py run tests/
-
-# Run with specific model
-python cli.py run tests/ --model llama3.1:8b --provider ollama
-
-# Save results to a report
-python cli.py run tests/ --output reports/test_results.yaml
+brew tap preset-io/testmcpy
+brew install testmcpy
 ```
 
-### List MCP Tools
+See [INSTALLATION.md](INSTALLATION.md) for detailed installation instructions and distribution options.
+
+### Quick Usage
 
 ```bash
-# List available tools from MCP service
-python cli.py tools --mcp-url http://localhost:5008/mcp
+# First-time setup: Create user config file
+testmcpy setup
 
-# Output as JSON
-python cli.py tools --format json
-```
+# View current configuration
+testmcpy config-cmd
 
-### Compare Reports
+# List MCP tools
+testmcpy tools
+testmcpy tools --detail --filter chart
 
-```bash
-# Compare results from different models
-python cli.py report reports/llama3.1_results.yaml reports/mistral_results.yaml
-```
+# Research LLM capabilities
+testmcpy research --model claude-sonnet-4-5 --provider anthropic
 
-### Initialize a New Project
+# Run test suites
+testmcpy run tests/ --model claude-haiku-4-5 --provider anthropic
 
-```bash
-# Create project structure with example tests
-python cli.py init my_mcp_tests
-cd my_mcp_tests
+# Interactive chat
+testmcpy chat --provider anthropic --model claude-sonnet-4-5
+
+# Compare test results
+testmcpy report reports/model1.yaml reports/model2.yaml
+
+# Initialize new project
+testmcpy init my_project
 ```
 
 ## Framework Structure
@@ -126,25 +117,197 @@ tests:
 
 ## Supported LLM Providers
 
-- **Ollama** - Local models with tool calling support
-  - llama3.1:8b (recommended)
-  - mistral-nemo
-  - qwen2.5:7b
-- **OpenAI** - GPT models via API
-- **Local** - Transformers-based local models
+### Anthropic (Recommended) ✅
+
+The **Anthropic API** (`anthropic`) provider is recommended for most users:
+
+```bash
+# Add to ~/.testmcpy
+ANTHROPIC_API_KEY=sk-ant-your-key-here
+DEFAULT_PROVIDER=anthropic
+DEFAULT_MODEL=claude-haiku-4-5
+```
+
+**Available Models:**
+- `claude-sonnet-4-5` - Newest, most capable
+- `claude-haiku-4-5` - Fast, cost-effective (recommended)
+- `claude-3-5-sonnet-20241022` - Balanced performance
+- All Claude models via API
+
+**Features:**
+- ✅ Full support for HTTP-based MCP services (like Superset MCP)
+- ✅ Best tool calling accuracy
+- ✅ Production-ready
+- ✅ Simple API key setup
+
+**Get an API key:** https://console.anthropic.com/
+
+### Ollama (Local, Free)
+
+For **local development** without API costs:
+
+```bash
+# 1. Install Ollama
+# macOS
+brew install ollama
+
+# Linux
+curl -fsSL https://ollama.com/install.sh | sh
+
+# 2. Start Ollama service
+ollama serve
+
+# 3. Pull a model with tool calling support
+ollama pull llama3.1:8b
+
+# 4. Configure testmcpy
+# Add to ~/.testmcpy:
+OLLAMA_BASE_URL=http://localhost:11434
+DEFAULT_PROVIDER=ollama
+DEFAULT_MODEL=llama3.1:8b
+```
+
+**Recommended Models:**
+- `llama3.1:8b` - Best tool calling support
+- `mistral-nemo` - Good alternative
+- `qwen2.5:7b` - Fast, smaller model
+
+**Note:** Requires Ollama running locally. Not recommended for production testing (less reliable tool calling than Claude).
+
+### OpenAI
+
+```bash
+# Add to ~/.testmcpy
+OPENAI_API_KEY=sk-your-key-here
+DEFAULT_PROVIDER=openai
+DEFAULT_MODEL=gpt-4-turbo
+```
+
+### Other Providers
+
+- **Claude Agent SDK** (`claude-sdk`) - ⚠️ Only for stdio-based MCP servers (not HTTP)
+- **Local** (`local`) - Transformers-based local models
+- **Claude CLI** (`claude-cli`) - Uses Claude Code binary
 
 ## Configuration
 
-Create `mcp_test_config.yaml`:
+testmcpy uses a multi-layer configuration system with clear priority ordering:
 
-```yaml
-mcp_url: "http://localhost:5008/mcp"
-default_model: "llama3.1:8b"
-default_provider: "ollama"
-evaluators:
-  timeout: 30
-  max_tokens: 2000
-  max_cost: 0.10
+**Priority Order (highest to lowest):**
+1. Command-line options
+2. `.env` file in current directory
+3. `~/.testmcpy` user configuration file
+4. Environment variables
+5. Built-in defaults
+
+### First-Time Setup
+
+Create your user configuration file with helpful comments:
+
+```bash
+testmcpy setup
+```
+
+This creates `~/.testmcpy` with examples for all configuration options. Edit the file to add your API keys and preferences.
+
+### View Current Configuration
+
+```bash
+testmcpy config-cmd
+```
+
+This displays all configuration values with their sources and checks which config files exist.
+
+### Configuration Files
+
+#### User Config: `~/.testmcpy`
+
+Create with `testmcpy setup`, or manually create `~/.testmcpy` to set your personal defaults:
+
+```bash
+# MCP Service Configuration
+MCP_URL=http://localhost:5008/mcp/
+
+# Option 1: Static Bearer Token
+MCP_AUTH_TOKEN=your_token_here
+
+# Option 2: Dynamic JWT Token (for Preset/Superset)
+# MCP_AUTH_API_URL=https://api.app.preset.io/v1/auth/
+# MCP_AUTH_API_TOKEN=your_preset_api_token
+# MCP_AUTH_API_SECRET=your_preset_api_secret
+
+# Default LLM Settings
+DEFAULT_MODEL=claude-haiku-4-5
+DEFAULT_PROVIDER=anthropic
+
+# API Keys
+ANTHROPIC_API_KEY=sk-ant-...
+# OPENAI_API_KEY=sk-...
+```
+
+See [`.testmcpy.example`](.testmcpy.example) for a complete example with detailed comments.
+
+#### Project Config: `.env`
+
+Create `.env` in your project directory to override user defaults:
+
+```bash
+# Project-specific settings
+MCP_URL=https://my-project.mcp.example.com/mcp/
+MCP_AUTH_TOKEN=project_specific_token
+DEFAULT_MODEL=claude-sonnet-4-5
+```
+
+### Authentication Options
+
+testmcpy supports two methods for MCP authentication:
+
+**1. Static Bearer Token** (simplest):
+```bash
+MCP_AUTH_TOKEN=your_bearer_token
+```
+
+**2. Dynamic JWT Generation** (for Preset/Superset):
+
+Instead of manually managing JWT tokens, configure API credentials and testmcpy will automatically fetch and cache JWT tokens:
+
+```bash
+MCP_AUTH_API_URL=https://api.app.preset.io/v1/auth/
+MCP_AUTH_API_TOKEN=your_api_token
+MCP_AUTH_API_SECRET=your_api_secret
+```
+
+When configured, testmcpy will:
+- Call the auth API with your credentials
+- Extract the JWT access token from the response
+- Cache the token for 50 minutes (tokens typically expire in 1 hour)
+- Automatically refresh when needed
+
+**Note:** Static `MCP_AUTH_TOKEN` takes priority. If both are configured, the static token is used.
+
+### Environment Variables
+
+All configuration keys can also be set via environment variables:
+
+```bash
+# For Claude providers
+export ANTHROPIC_API_KEY="sk-ant-..."
+
+# For OpenAI provider
+export OPENAI_API_KEY="sk-..."
+
+# MCP service
+export MCP_URL="http://localhost:5008/mcp/"
+export MCP_AUTH_TOKEN="your_token"
+
+# Or use dynamic token generation
+export MCP_AUTH_API_URL="https://api.app.preset.io/v1/auth/"
+export MCP_AUTH_API_TOKEN="your_api_token"
+export MCP_AUTH_API_SECRET="your_api_secret"
+
+# Default LLM settings
+export DEFAULT_MODEL="claude-sonnet-4-5"
+export DEFAULT_PROVIDER="anthropic"
 ```
 
 ## Development Status
@@ -177,10 +340,14 @@ evaluators:
 
 ## Known Limitations
 
-- Claude Code currently has bugs with MCP tool calling, hence the need for local LLMs
-- Ollama models require specific formatting for reliable tool calling
-- CPU-only execution may be slow for larger models
-- Tool calling accuracy varies by model
+- **Claude SDK Provider**: Only supports stdio-based MCP servers (command-line tools)
+  - **Not compatible** with HTTP-based MCP services (like Superset MCP)
+  - Use `anthropic` provider for HTTP MCP services
+- **HTTP MCP Services**: Use `anthropic` provider (fully supported)
+- **Ollama models**: Require specific formatting for reliable tool calling
+- **CPU-only execution**: May be slow for larger local models
+- **Tool calling accuracy**: Varies by model (Claude models generally most reliable)
+- **Cost**: Claude API providers (`anthropic`) incur API costs; consider using Ollama for development
 
 ## Contributing
 

@@ -1,0 +1,61 @@
+# testmcpy User Configuration
+# Copy this file to ~/.testmcpy to set your user defaults
+#
+# Priority order:
+# 1. Command-line options (highest)
+# 2. .env in current directory
+# 3. ~/.testmcpy (this file)
+# 4. Environment variables
+# 5. Built-in defaults (lowest)
+
+# ============================================================================
+# MCP Service Configuration
+# ============================================================================
+MCP_URL=http://localhost:5008/mcp/
+
+# Option 1: Static Bearer Token
+# Provide a static authentication token for the MCP service
+MCP_AUTH_TOKEN=your_token_here
+
+# Option 2: Dynamic JWT Token (Preset/Superset)
+# Instead of a static token, you can configure testmcpy to dynamically
+# fetch a JWT token by calling an authentication API endpoint.
+# This is useful for services like Preset that require API credentials
+# to generate short-lived JWT tokens.
+#
+# Example for Preset API:
+# MCP_AUTH_API_URL=https://api.app.preset.io/v1/auth/
+# MCP_AUTH_API_TOKEN=your_preset_api_token
+# MCP_AUTH_API_SECRET=your_preset_api_secret
+#
+# When these are configured, testmcpy will:
+# 1. Make a POST request to MCP_AUTH_API_URL with name/secret
+# 2. Extract the JWT access_token from the response
+# 3. Cache the token for 50 minutes (JWT typically expires in 1 hour)
+# 4. Use this token as the MCP_AUTH_TOKEN
+#
+# Note: MCP_AUTH_TOKEN takes priority. If both are set, the static
+# token will be used and the API won't be called.
+
+# ============================================================================
+# Default LLM Settings
+# ============================================================================
+# Recommended: Anthropic (requires API key, best tool calling)
+DEFAULT_PROVIDER=anthropic
+DEFAULT_MODEL=claude-haiku-4-5
+
+# Alternative: Ollama (free, local, requires 'ollama serve' running)
+# DEFAULT_PROVIDER=ollama
+# DEFAULT_MODEL=llama3.1:8b
+
+# Alternative: OpenAI (requires API key)
+# DEFAULT_PROVIDER=openai
+# DEFAULT_MODEL=gpt-4-turbo
+
+# ============================================================================
+# API Keys (optional - can also use environment variables)
+# ============================================================================
+# These are "generic" keys that will fall back to environment if not set here
+# ANTHROPIC_API_KEY=sk-ant-...
+# OPENAI_API_KEY=sk-...
+# OLLAMA_BASE_URL=http://localhost:11434
