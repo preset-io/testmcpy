@@ -965,9 +965,11 @@ def setup(
 
         current_api_key = current_config.get("ANTHROPIC_API_KEY")
         if current_api_key:
+            source = current_config.get_source("ANTHROPIC_API_KEY")
             masked = f"{current_api_key[:8]}...{current_api_key[-4:]}"
-            console.print(f"[dim]Current API Key: {masked}[/dim]")
-            api_key = console.input(f"Anthropic API Key [press Enter to keep current]: ").strip() or current_api_key
+            console.print(f"[green]✓ Anthropic API Key already configured[/green] ({source})")
+            console.print(f"[dim]  Current: {masked}[/dim]")
+            api_key = console.input(f"  New key (or press Enter to skip): ").strip() or current_api_key
         else:
             api_key = console.input("Anthropic API Key: ").strip()
 
@@ -1046,9 +1048,11 @@ def setup(
 
         current_api_key = current_config.get("OPENAI_API_KEY")
         if current_api_key:
+            source = current_config.get_source("OPENAI_API_KEY")
             masked = f"{current_api_key[:8]}...{current_api_key[-4:]}"
-            console.print(f"[dim]Current API Key: {masked}[/dim]")
-            api_key = console.input(f"OpenAI API Key [press Enter to keep current]: ").strip() or current_api_key
+            console.print(f"[green]✓ OpenAI API Key already configured[/green] ({source})")
+            console.print(f"[dim]  Current: {masked}[/dim]")
+            api_key = console.input(f"  New key (or press Enter to skip): ").strip() or current_api_key
         else:
             api_key = console.input("OpenAI API Key: ").strip()
 
