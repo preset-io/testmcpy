@@ -936,8 +936,28 @@ def setup(
     if provider_choice == "1":
         config_lines.append("DEFAULT_PROVIDER=anthropic")
 
+        console.print("\n[bold]Available Anthropic Models:[/bold]")
+        console.print("1. [cyan]claude-3-5-sonnet-20241022[/cyan] - Most capable, best for complex tasks")
+        console.print("2. [cyan]claude-3-5-haiku-20241022[/cyan] - Fast and efficient (recommended)")
+        console.print("3. [cyan]claude-3-opus-20240229[/cyan] - Previous generation flagship")
+        console.print("4. [cyan]Custom model name[/cyan]")
+
         current_model = current_config.default_model or "claude-3-5-haiku-20241022"
-        model = console.input(f"Model [{current_model}]: ").strip() or current_model
+        model_choice = console.input(f"\nChoice (or press Enter for current: {current_model}): ").strip()
+
+        if model_choice == "1":
+            model = "claude-3-5-sonnet-20241022"
+        elif model_choice == "2":
+            model = "claude-3-5-haiku-20241022"
+        elif model_choice == "3":
+            model = "claude-3-opus-20240229"
+        elif model_choice == "4":
+            model = console.input("Custom model name: ").strip()
+        elif model_choice == "":
+            model = current_model
+        else:
+            model = model_choice
+
         config_lines.append(f"DEFAULT_MODEL={model}")
         config_lines.append(f"ANTHROPIC_MODEL={model}")
 
@@ -959,8 +979,31 @@ def setup(
     elif provider_choice == "2":
         config_lines.append("DEFAULT_PROVIDER=ollama")
 
+        console.print("\n[bold]Popular Ollama Models:[/bold]")
+        console.print("1. [cyan]llama3.1:8b[/cyan] - Meta's Llama 3.1 8B (good balance)")
+        console.print("2. [cyan]llama3.1:70b[/cyan] - Meta's Llama 3.1 70B (more capable, slower)")
+        console.print("3. [cyan]qwen2.5:14b[/cyan] - Alibaba's Qwen 2.5 14B (strong coding)")
+        console.print("4. [cyan]mistral:7b[/cyan] - Mistral 7B (efficient)")
+        console.print("5. [cyan]Custom model name[/cyan]")
+
         current_model = current_config.default_model or "llama3.1:8b"
-        model = console.input(f"Model [{current_model}]: ").strip() or current_model
+        model_choice = console.input(f"\nChoice (or press Enter for current: {current_model}): ").strip()
+
+        if model_choice == "1":
+            model = "llama3.1:8b"
+        elif model_choice == "2":
+            model = "llama3.1:70b"
+        elif model_choice == "3":
+            model = "qwen2.5:14b"
+        elif model_choice == "4":
+            model = "mistral:7b"
+        elif model_choice == "5":
+            model = console.input("Custom model name: ").strip()
+        elif model_choice == "":
+            model = current_model
+        else:
+            model = model_choice
+
         config_lines.append(f"DEFAULT_MODEL={model}")
 
         config_lines.append("")
@@ -972,8 +1015,31 @@ def setup(
     elif provider_choice == "3":
         config_lines.append("DEFAULT_PROVIDER=openai")
 
-        current_model = current_config.default_model or "gpt-4-turbo"
-        model = console.input(f"Model [{current_model}]: ").strip() or current_model
+        console.print("\n[bold]Available OpenAI Models:[/bold]")
+        console.print("1. [cyan]gpt-4o[/cyan] - GPT-4 Optimized (recommended)")
+        console.print("2. [cyan]gpt-4-turbo[/cyan] - GPT-4 Turbo")
+        console.print("3. [cyan]gpt-4[/cyan] - GPT-4 (original)")
+        console.print("4. [cyan]gpt-3.5-turbo[/cyan] - GPT-3.5 Turbo (faster, cheaper)")
+        console.print("5. [cyan]Custom model name[/cyan]")
+
+        current_model = current_config.default_model or "gpt-4o"
+        model_choice = console.input(f"\nChoice (or press Enter for current: {current_model}): ").strip()
+
+        if model_choice == "1":
+            model = "gpt-4o"
+        elif model_choice == "2":
+            model = "gpt-4-turbo"
+        elif model_choice == "3":
+            model = "gpt-4"
+        elif model_choice == "4":
+            model = "gpt-3.5-turbo"
+        elif model_choice == "5":
+            model = console.input("Custom model name: ").strip()
+        elif model_choice == "":
+            model = current_model
+        else:
+            model = model_choice
+
         config_lines.append(f"DEFAULT_MODEL={model}")
 
         config_lines.append("")
