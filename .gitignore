@@ -83,6 +83,8 @@ celerybeat-schedule
 
 # Environments
 .env
+.env.local
+.env.*.local
 .venv
 env/
 venv/
@@ -116,5 +118,28 @@ Thumbs.db
 # Project specific
 work/
 reports/*.json
-#reports/*.yaml
+reports/*.yaml
 !reports/.gitkeep
+
+# Sensitive files
+*.key
+*.pem
+*.p12
+*.pfx
+credentials.json
+secrets.json
+*secret*
+*credential*
+.testmcpy
+!.testmcpy.example
+
+# Large test output files
+test_output.txt
+*.log
+
+# Node modules (for web UI)
+node_modules/
+
+# Build artifacts
+dist/
+build/

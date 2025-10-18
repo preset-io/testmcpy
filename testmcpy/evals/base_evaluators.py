@@ -1,5 +1,5 @@
 """
-Base evaluation functions for MCP Testing Framework.
+Base evaluation functions for testmcpy.
 
 These evaluators can be used to validate LLM responses and tool calling behavior.
 """

@@ -1,13 +1,20 @@
-# Contributing to MCP Testing Framework
+# Contributing to testmcpy
 
-Thank you for your interest in contributing to the MCP Testing Framework! This document provides guidelines and information for contributors.
+Thank you for your interest in contributing to testmcpy! This document provides guidelines and information for contributors.
+
+We welcome contributions of all kinds: bug reports, feature requests, documentation improvements, and code contributions.
+
+## Code of Conduct
+
+Be respectful, inclusive, and collaborative. We're all here to build better tools for the community.
 
 ## Development Setup
 
 ### Prerequisites
-- Python 3.8 or higher
-- [Ollama](https://ollama.ai/) installed for local LLM testing
+- Python 3.9 or higher (3.9, 3.10, 3.11, or 3.12)
 - Git
+- (Optional) [Ollama](https://ollama.ai/) for testing local LLM providers
+- (Optional) API keys for Anthropic or OpenAI if testing those providers
 
 ### Installation
 1. Clone the repository:
@@ -22,17 +29,24 @@ Thank you for your interest in contributing to the MCP Testing Framework! This d
    source venv/bin/activate  # On Windows: venv\Scripts\activate
    ```
 
-3. Install dependencies:
+3. Install the package in editable mode with development dependencies:
    ```bash
-   pip install -r requirements.txt
+   pip install -e ".[dev]"
    ```
 
-4. Install development dependencies:
+4. (Optional) Install optional features:
    ```bash
-   pip install -r requirements-dev.txt
+   # For web UI development
+   pip install -e ".[server]"
+
+   # For Claude SDK integration
+   pip install -e ".[sdk]"
+
+   # For all features
+   pip install -e ".[all]"
    ```
 
-5. Install pre-commit hooks:
+5. Install pre-commit hooks (recommended):
    ```bash
    pre-commit install
    ```
@@ -63,13 +77,16 @@ We encourage the use of type hints throughout the codebase. Consider using [mypy
 ### Running Tests
 ```bash
 # Run all tests
-python cli.py run tests/
+testmcpy run tests/
 
 # Run specific test file
-python cli.py run tests/basic_test.yaml
+testmcpy run tests/basic_test.yaml
 
 # Run with specific model
-python cli.py run tests/ --model llama3.1:8b --provider ollama
+testmcpy run tests/ --model llama3.1:8b --provider ollama
+
+# Run with Claude
+testmcpy run tests/ --model claude-haiku-4-5 --provider anthropic
 ```
 
 ### Writing Tests
@@ -136,11 +153,12 @@ Fixes #123
 
 ## Important Principles
 
-### No Paid API Dependencies
-This framework is designed to work entirely with free/local resources:
-- **NEVER** introduce dependencies on Claude API, OpenAI API, or other paid services
-- Always test with local Ollama models first
-- Maintain the cost-free nature of the framework
+### Multi-Provider Support
+This framework supports both free/local and paid API providers:
+- **Always maintain support for free/local options** (Ollama, local models)
+- Test changes with multiple providers when possible (Anthropic, OpenAI, Ollama)
+- Document provider-specific requirements clearly
+- Ensure core functionality works without paid APIs
 
 ### Design Philosophy
 - **Modularity**: Keep components loosely coupled and highly cohesive
@@ -153,27 +171,45 @@ This framework is designed to work entirely with free/local resources:
 
 ### High Priority
 - Additional evaluators for common testing scenarios
-- Support for more LLM providers (local/free only)
+- Support for more LLM providers (prioritize open-source/local options)
 - Performance optimizations
 - Documentation improvements
+- Example integrations with different MCP services
 
 ### Medium Priority
 - Enhanced reporting capabilities
 - Parallel test execution
 - CLI usability improvements
-- Example test cases for different domains
+- Test case templates for different domains
+- Better error messages and debugging tools
 
 ### Lower Priority
 - Advanced configuration options
-- Integration with CI/CD systems
-- Web-based result visualization
+- Integration with CI/CD systems (GitHub Actions, etc.)
+- Cost tracking and optimization features
 
 ## Getting Help
 
-- Check existing [issues](https://github.com/preset-io/testmcpy/issues)
-- Create a new issue for bugs or feature requests
-- Join discussions in existing issues
-- Read the documentation in the README
+- **Documentation**: Start with [README.md](README.md)
+- **Issues**: Check existing [issues](https://github.com/preset-io/testmcpy/issues)
+- **Discussions**: Ask questions in [GitHub Discussions](https://github.com/preset-io/testmcpy/discussions)
+- **Bug Reports**: Create a new issue with reproduction steps
+- **Feature Requests**: Open an issue to discuss before implementing
+
+## Testing Your Changes
+
+Before submitting a pull request:
+
+1. **Run existing tests**: `testmcpy run tests/`
+2. **Test with multiple providers** (if applicable): Ollama, Anthropic, OpenAI
+3. **Run code formatting**: `black .`
+4. **Run linting**: `flake8 .`
+5. **Test the CLI** with various commands
+6. **Check for sensitive data**: Ensure no API keys or credentials are committed
+
+## Reporting Security Issues
+
+If you discover a security vulnerability, please report it via [GitHub Security Advisories](https://github.com/preset-io/testmcpy/security/advisories/new) instead of opening a public issue.
 
 ## License
 
@@ -181,6 +217,10 @@ By contributing, you agree that your contributions will be licensed under the Ap
 
 ## Recognition
 
-All contributors will be recognized in the project's documentation and release notes.
+All contributors are recognized in our release notes. Significant contributions may be highlighted in the README.
 
-Thank you for contributing to the MCP Testing Framework!
+## Questions?
+
+Don't hesitate to ask! Open a discussion or comment on an existing issue. We're here to help.
+
+Thank you for contributing to testmcpy!

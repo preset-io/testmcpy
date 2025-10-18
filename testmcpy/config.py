@@ -20,7 +20,7 @@ import httpx
 
 class Config:
     """Manages testmcpy configuration from multiple sources."""
-    
+
     # Default values
     # Note: We don't set DEFAULT_MODEL or DEFAULT_PROVIDER by default
     # to avoid assuming any particular setup. Users should configure
@@ -28,14 +28,14 @@ class Config:
     DEFAULTS = {
         "MCP_URL": "http://localhost:5008/mcp/",
     }
-    
+
     # Generic keys that should fall back to environment variables
     GENERIC_KEYS = {
         "ANTHROPIC_API_KEY",
         "OPENAI_API_KEY",
         "OLLAMA_BASE_URL",
     }
-    
+
     # testmcpy-specific keys
     TESTMCPY_KEYS = {
         "MCP_URL",
@@ -58,14 +58,14 @@ class Config:
     
     def _load_config(self):
         """Load configuration from all sources in priority order."""
-        
+
         # 1. Load from environment variables first (lowest priority for testmcpy keys)
         for key in self.GENERIC_KEYS | self.TESTMCPY_KEYS:
             value = os.getenv(key)
             if value:
                 self._config[key] = value
                 self._sources[key] = "Environment"
-        
+
         # 2. Load from ~/.testmcpy (user config)
         user_config_file = Path.home() / ".testmcpy"
         if user_config_file.exists():

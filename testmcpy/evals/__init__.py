@@ -1,1 +1,1 @@
-"""MCP Testing Framework evaluation functions."""
+"""testmcpy evaluation functions."""

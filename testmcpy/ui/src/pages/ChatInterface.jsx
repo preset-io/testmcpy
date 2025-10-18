@@ -402,6 +402,17 @@ tests:
                                       {evalItem.reason}
                                     </p>
                                   )}
+                                  {/* Show error details if present */}
+                                  {evalItem.details && evalItem.details.errors && (
+                                    <div className="mt-2 bg-error/10 border border-error/30 rounded p-2">
+                                      <div className="text-[10px] font-semibold text-error-light mb-1">Error Details:</div>
+                                      {evalItem.details.errors.map((err, errIdx) => (
+                                        <div key={errIdx} className="text-[10px] text-white/80 mb-1">
+                                          <span className="font-medium">Tool {err.tool}:</span> {err.error}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             </div>
