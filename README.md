@@ -204,18 +204,26 @@ DEFAULT_MODEL=gpt-4-turbo
 
 ## Built-in Evaluators
 
-### Generic Evaluators
+### Basic Evaluators
 - `was_mcp_tool_called` - Verify specific MCP tool was invoked
 - `execution_successful` - Check for errors or failures
 - `final_answer_contains` - Validate response content
 - `within_time_limit` - Performance testing
 - `token_usage_reasonable` - Cost efficiency validation
 
+### Parameter Validation Evaluators (New!)
+- `tool_called_with_parameter` - Check if specific parameter was passed
+- `tool_called_with_parameters` - Validate multiple parameters together
+- `parameter_value_in_range` - Ensure numeric parameters are in range
+- `tool_call_count` - Verify how many times tools were called
+
 ### Superset/Preset Evaluators
 - `was_superset_chart_created` - Verify chart creation
 - `sql_query_valid` - Validate SQL syntax
 
 **Extensible**: Add custom evaluators for your MCP service.
+
+📚 **[Complete Evaluator Reference](docs/EVALUATOR_REFERENCE.md)**
 
 ## Commands
 
@@ -253,10 +261,41 @@ Access at `http://localhost:8000`
 ## Use Cases
 
 - **LLM Benchmarking**: Compare Claude, GPT-4, Llama tool-calling accuracy
-- **MCP Service Testing**: Validate your MCP integrations
+- **MCP Service Testing**: Validate your MCP integrations work correctly
+- **Parameter Validation**: Ensure LLMs pass correct parameters to your tools
 - **Cost Optimization**: Find the best price/performance balance
-- **Regression Testing**: Ensure MCP tools work across updates
+- **Regression Testing**: Catch regressions in your MCP service with CI/CD
 - **Model Selection**: Make data-driven decisions about which LLM to use
+
+## For MCP Service Developers
+
+Testing your MCP service with testmcpy:
+
+```bash
+# Install testmcpy in your project
+pip install testmcpy[all]
+
+# Create tests for your MCP tools
+cat > tests/my_service_tests.yaml <<EOF
+version: "1.0"
+name: "My MCP Service Tests"
+tests:
+  - name: "test_tool_selection"
+    prompt: "List all items"
+    evaluators:
+      - name: "was_mcp_tool_called"
+        args:
+          tool_name: "list_items"
+      - name: "execution_successful"
+EOF
+
+# Run tests
+testmcpy run tests/
+```
+
+**📖 [Complete Client Usage Guide](docs/CLIENT_USAGE_GUIDE.md)** - Learn how to integrate testmcpy into your MCP service repository
+
+**🔧 [CI/CD Integration Examples](examples/ci-cd/)** - GitHub Actions and GitLab CI configurations
 
 ## Requirements
 
@@ -336,11 +375,16 @@ When contributing:
 
 Apache License 2.0 - See [LICENSE](LICENSE) for details.
 
+## Documentation
+
+- **[Client Usage Guide](docs/CLIENT_USAGE_GUIDE.md)** - Complete guide for testing your MCP service
+- **[Evaluator Reference](docs/EVALUATOR_REFERENCE.md)** - All available evaluators and examples
+- **[CI/CD Integration](examples/ci-cd/)** - GitHub Actions and GitLab CI examples
+
 ## Support
 
 - **Issues**: [GitHub Issues](https://github.com/preset-io/testmcpy/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/preset-io/testmcpy/discussions)
-- **Documentation**: [docs/](docs/)
 
 ## Acknowledgments
 

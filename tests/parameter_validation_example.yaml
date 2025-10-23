@@ -1,0 +1,109 @@
+version: "1.0"
+name: "Parameter Validation Examples"
+description: "Demonstrates advanced parameter validation evaluators for deep tool call inspection"
+
+tests:
+  # Example 1: Check if a specific parameter was passed
+  - name: "test_parameter_exists"
+    prompt: "List the first 10 datasets"
+    timeout: 15
+    evaluators:
+      - name: "was_mcp_tool_called"
+        args:
+          tool_name: "list_datasets"
+      - name: "tool_called_with_parameter"
+        args:
+          tool_name: "list_datasets"
+          parameter_name: "page_size"
+      - name: "execution_successful"
+
+  # Example 2: Check if parameter has specific value
+  - name: "test_parameter_value"
+    prompt: "List datasets with force_refresh enabled"
+    timeout: 15
+    evaluators:
+      - name: "was_mcp_tool_called"
+        args:
+          tool_name: "list_datasets"
+      - name: "tool_called_with_parameter"
+        args:
+          tool_name: "list_datasets"
+          parameter_name: "force_refresh"
+          parameter_value: true
+      - name: "execution_successful"
+
+  # Example 3: Check multiple parameters together
+  - name: "test_multiple_parameters"
+    prompt: "Show me 5 datasets ordered by name in descending order"
+    timeout: 15
+    evaluators:
+      - name: "was_mcp_tool_called"
+        args:
+          tool_name: "list_datasets"
+      - name: "tool_called_with_parameters"
+        args:
+          tool_name: "list_datasets"
+          parameters:
+            page_size: 5
+            order_column: "name"
+            order_direction: "desc"
+          partial_match: true  # Allow other parameters too
+      - name: "execution_successful"
+
+  # Example 4: Check parameter value is in range
+  - name: "test_parameter_range"
+    prompt: "List up to 25 datasets"
+    timeout: 15
+    evaluators:
+      - name: "was_mcp_tool_called"
+        args:
+          tool_name: "list_datasets"
+      - name: "parameter_value_in_range"
+        args:
+          tool_name: "list_datasets"
+          parameter_name: "page_size"
+          min_value: 1
+          max_value: 100
+      - name: "execution_successful"
+
+  # Example 5: Check exact tool call count
+  - name: "test_tool_call_count_exact"
+    prompt: "Get info about dataset 1"
+    timeout: 15
+    evaluators:
+      - name: "tool_call_count"
+        args:
+          tool_name: "get_dataset_info"
+          expected_count: 1
+      - name: "execution_successful"
+
+  # Example 6: Check tool call count range
+  - name: "test_multi_step_workflow"
+    prompt: "First list datasets, then get detailed info about dataset 1"
+    timeout: 20
+    evaluators:
+      - name: "tool_call_count"
+        args:
+          min_count: 2
+          max_count: 3  # Allow 2-3 tool calls
+      - name: "execution_successful"
+
+  # Example 7: Complex validation - multiple parameter checks
+  - name: "test_pagination_parameters"
+    prompt: "Show me page 2 of datasets with 20 items per page"
+    timeout: 15
+    evaluators:
+      - name: "was_mcp_tool_called"
+        args:
+          tool_name: "list_datasets"
+      - name: "tool_called_with_parameter"
+        args:
+          tool_name: "list_datasets"
+          parameter_name: "page_size"
+          parameter_value: 20
+      - name: "tool_called_with_parameter"
+        args:
+          tool_name: "list_datasets"
+          parameter_name: "page"
+          parameter_value: 2
+      - name: "execution_successful"
