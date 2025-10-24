@@ -254,11 +254,20 @@ function ChatInterface() {
         const params = Object.entries(firstTool.arguments)
           .slice(0, 3) // Limit to first 3 params to keep test manageable
           .map(([key, value]) => {
-            const yamlValue = typeof value === 'string' ? `"${value}"` :
-                             typeof value === 'boolean' ? value :
-                             typeof value === 'number' ? value :
-                             `"${JSON.stringify(value)}"`
-            return `          ${key}: ${yamlValue}`
+            // Properly escape and format values for YAML
+            let yamlValue
+            if (typeof value === 'string') {
+              // Escape quotes and wrap in quotes
+              yamlValue = `"${value.replace(/"/g, '\\"')}"`
+            } else if (typeof value === 'boolean' || typeof value === 'number') {
+              yamlValue = value
+            } else if (value === null) {
+              yamlValue = 'null'
+            } else {
+              // For objects/arrays, stringify and escape
+              yamlValue = `"${JSON.stringify(value).replace(/"/g, '\\"')}"`
+            }
+            return `            ${key}: ${yamlValue}`
           })
           .join('\n')
 
@@ -289,6 +298,8 @@ tests:
 ${evaluators}
 `
 
+    console.log('Generated test content:', testContent)
+
     try {
       const res = await fetch('/api/tests', {
         method: 'POST',
@@ -300,14 +311,17 @@ ${evaluators}
       })
 
       if (res.ok) {
-        alert('Test case created successfully!')
+        const result = await res.json()
+        console.log('Test created:', result)
+        alert(`Test case created successfully: ${testName}.yaml`)
       } else {
-        const error = await res.json()
+        const error = await res.json().catch(() => ({ detail: 'Unknown error' }))
+        console.error('Failed to create test:', error)
         alert(`Failed to create test case: ${error.detail}`)
       }
     } catch (error) {
       console.error('Failed to create test case:', error)
-      alert('Failed to create test case')
+      alert(`Failed to create test case: ${error.message}`)
     }
   }
 
