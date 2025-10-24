@@ -228,18 +228,65 @@ function ChatInterface() {
     }
 
     const testName = `test_${Date.now()}`
+
+    // Build evaluators based on actual tool calls
+    let evaluators = `      - name: execution_successful`
+
+    if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+      const firstTool = assistantMessage.tool_calls[0]
+
+      // Check specific tool was called
+      evaluators += `
+      - name: was_mcp_tool_called
+        args:
+          tool_name: "${firstTool.name}"`
+
+      // Check tool call count if multiple tools
+      if (assistantMessage.tool_calls.length > 1) {
+        evaluators += `
+      - name: tool_call_count
+        args:
+          expected_count: ${assistantMessage.tool_calls.length}`
+      }
+
+      // Add parameter validation for important parameters
+      if (firstTool.arguments && Object.keys(firstTool.arguments).length > 0) {
+        const params = Object.entries(firstTool.arguments)
+          .slice(0, 3) // Limit to first 3 params to keep test manageable
+          .map(([key, value]) => {
+            const yamlValue = typeof value === 'string' ? `"${value}"` :
+                             typeof value === 'boolean' ? value :
+                             typeof value === 'number' ? value :
+                             `"${JSON.stringify(value)}"`
+            return `          ${key}: ${yamlValue}`
+          })
+          .join('\n')
+
+        evaluators += `
+      - name: tool_called_with_parameters
+        args:
+          tool_name: "${firstTool.name}"
+          parameters:
+${params}
+          partial_match: true`
+      }
+    }
+
+    // Add content check if response has meaningful content
+    if (assistantMessage.content && assistantMessage.content.length > 10) {
+      const snippet = assistantMessage.content.substring(0, 50).replace(/"/g, '\\"').replace(/\n/g, ' ')
+      evaluators += `
+      - name: final_answer_contains
+        args:
+          expected_content: "${snippet}"`
+    }
+
     const testContent = `version: "1.0"
 tests:
   - name: ${testName}
     prompt: "${userMessage.content.replace(/"/g, '\\"')}"
     evaluators:
-      - name: execution_successful
-      - name: was_mcp_tool_called
-        args:
-          tool_name: "${assistantMessage.tool_calls?.[0]?.name || 'any'}"
-      - name: final_answer_contains
-        args:
-          expected_content: "${assistantMessage.content.substring(0, 50).replace(/"/g, '\\"')}"
+${evaluators}
 `
 
     try {
@@ -383,6 +430,46 @@ tests:
                           {evalResults[idx].reason}
                         </p>
                       )}
+
+                      {/* Tool Calls Summary */}
+                      {message.tool_calls && message.tool_calls.length > 0 && (
+                        <div className="mb-3 bg-black/30 rounded-lg p-3 border border-white/10">
+                          <div className="text-xs text-white/60 mb-2 flex items-center gap-2">
+                            <Wrench size={12} />
+                            <span className="font-medium">Tool Calls ({message.tool_calls.length})</span>
+                          </div>
+                          <div className="space-y-2">
+                            {message.tool_calls.map((call, callIdx) => (
+                              <div key={callIdx} className="bg-black/20 rounded p-2">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="font-mono text-[11px] text-primary-light font-semibold">
+                                    {call.name}
+                                  </span>
+                                  {call.is_error && (
+                                    <span className="text-[10px] text-error">✗ Error</span>
+                                  )}
+                                </div>
+                                {call.arguments && Object.keys(call.arguments).length > 0 && (
+                                  <div className="mt-1">
+                                    <div className="text-[10px] text-white/50 mb-1">Parameters:</div>
+                                    <div className="space-y-1">
+                                      {Object.entries(call.arguments).map(([key, value]) => (
+                                        <div key={key} className="flex items-start gap-2 text-[11px]">
+                                          <span className="text-white/60 font-medium min-w-[80px]">{key}:</span>
+                                          <span className="text-white/80 font-mono flex-1 break-all">
+                                            {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Individual evaluator results */}
                       {evalResults[idx].evaluations && evalResults[idx].evaluations.length > 0 && (
                         <div className="space-y-2 mt-3">
