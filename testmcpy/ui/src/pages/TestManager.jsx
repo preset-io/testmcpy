@@ -147,11 +147,28 @@ tests:
           provider: selectedProvider,
         }),
       })
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ detail: 'Unknown error' }))
+        throw new Error(errorData.detail || `HTTP ${res.status}`)
+      }
+
       const data = await res.json()
+      console.log('Test results received:', data)
       setTestResults(data)
     } catch (error) {
       console.error('Failed to run tests:', error)
-      alert('Failed to run tests')
+      setTestResults({
+        summary: {
+          total: 0,
+          passed: 0,
+          failed: 0,
+          total_cost: 0
+        },
+        results: [],
+        error: error.message
+      })
+      alert(`Failed to run tests: ${error.message}`)
     } finally {
       setRunning(false)
     }
@@ -354,9 +371,30 @@ tests:
               />
             </div>
 
+            {/* Running Indicator */}
+            {running && (
+              <div className="border-t border-border p-6 bg-surface-elevated">
+                <div className="flex items-center justify-center gap-3">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary"></div>
+                  <span className="text-text-secondary">Running tests with {selectedProvider}:{selectedModel}...</span>
+                </div>
+                <p className="text-sm text-text-tertiary text-center mt-2">
+                  Check the console for detailed progress
+                </p>
+              </div>
+            )}
+
             {/* Results */}
-            {testResults && (
+            {testResults && !running && (
               <div className="border-t border-border p-6 max-h-96 overflow-auto bg-surface-elevated">
+                {testResults.error && (
+                  <div className="mb-4 p-4 bg-error/10 border border-error/30 rounded-lg">
+                    <p className="text-sm text-error font-medium">
+                      Error: {testResults.error}
+                    </p>
+                  </div>
+                )}
+
                 <div className="mb-6">
                   <h3 className="font-semibold text-xl mb-4 text-text-primary">Test Results</h3>
                   <div className="flex gap-6 text-sm">
@@ -383,37 +421,43 @@ tests:
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  {testResults.results.map((result, idx) => (
-                    <div key={idx} className="card">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          {result.passed ? (
-                            <CheckCircle size={20} className="text-success flex-shrink-0" />
-                          ) : (
-                            <XCircle size={20} className="text-error flex-shrink-0" />
-                          )}
-                          <span className="font-medium text-text-primary">{result.test_name}</span>
+                {testResults.results && testResults.results.length > 0 ? (
+                  <div className="space-y-3">
+                    {testResults.results.map((result, idx) => (
+                      <div key={idx} className="card">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            {result.passed ? (
+                              <CheckCircle size={20} className="text-success flex-shrink-0" />
+                            ) : (
+                              <XCircle size={20} className="text-error flex-shrink-0" />
+                            )}
+                            <span className="font-medium text-text-primary">{result.test_name}</span>
+                          </div>
+                          <div className="text-sm text-text-tertiary">
+                            {result.duration ? result.duration.toFixed(2) : '0.00'}s
+                          </div>
                         </div>
-                        <div className="text-sm text-text-tertiary">
-                          {result.duration.toFixed(2)}s
-                        </div>
-                      </div>
-                      {result.reason && (
-                        <p className="text-sm text-text-secondary mt-3 ml-8 leading-relaxed">
-                          {result.reason}
-                        </p>
-                      )}
-                      {result.error && (
-                        <div className="mt-3 ml-8 p-3 bg-error/10 border border-error/30 rounded-lg">
-                          <p className="text-sm text-error font-medium">
-                            Error: {result.error}
+                        {result.reason && (
+                          <p className="text-sm text-text-secondary mt-3 ml-8 leading-relaxed">
+                            {result.reason}
                           </p>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                        )}
+                        {result.error && (
+                          <div className="mt-3 ml-8 p-3 bg-error/10 border border-error/30 rounded-lg">
+                            <p className="text-sm text-error font-medium">
+                              Error: {result.error}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <p className="text-text-tertiary">No test results available</p>
+                  </div>
+                )}
               </div>
             )}
           </>
