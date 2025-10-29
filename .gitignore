@@ -133,6 +133,10 @@ secrets.json
 .testmcpy
 !.testmcpy.example
 
+# MCP service profiles (may contain sensitive data)
+.mcp_services.yaml
+!.mcp_services.yaml.example
+
 # Large test output files
 test_output.txt
 *.log

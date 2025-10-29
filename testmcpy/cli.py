@@ -95,7 +95,8 @@ class ModelProvider(str, Enum):
 def research(
     model: str = typer.Option(DEFAULT_MODEL, "--model", "-m", help="Model to test"),
     provider: ModelProvider = typer.Option(DEFAULT_PROVIDER, "--provider", "-p", help="Model provider"),
-    mcp_url: str = typer.Option(DEFAULT_MCP_URL, "--mcp-url", help="MCP service URL"),
+    mcp_url: Optional[str] = typer.Option(None, "--mcp-url", help="MCP service URL (overrides profile)"),
+    profile: Optional[str] = typer.Option(None, "--profile", help="MCP service profile from .mcp_services.yaml"),
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output file for results"),
     format: OutputFormat = typer.Option(OutputFormat.table, "--format", "-f", help="Output format"),
 ):
@@ -104,6 +105,14 @@ def research(
 
     This command tests whether a given LLM model can successfully call MCP tools.
     """
+    # Load config with profile if specified
+    if profile:
+        from testmcpy.config import Config
+        cfg = Config(profile=profile)
+        effective_mcp_url = mcp_url or cfg.mcp_url
+    else:
+        effective_mcp_url = mcp_url or DEFAULT_MCP_URL
+
     console.print(Panel.fit(
         "[bold cyan]MCP Testing Framework - Research Mode[/bold cyan]\n"
         f"Testing {model} via {provider.value}",
@@ -116,7 +125,7 @@ def research(
 
         # Test MCP connection
         console.print("\n[bold]Testing MCP Service[/bold]")
-        mcp_tester = MCPServiceTester(mcp_url)
+        mcp_tester = MCPServiceTester(effective_mcp_url)
 
         with Progress(
             SpinnerColumn(),
@@ -235,7 +244,8 @@ def run(
     test_path: Path = typer.Argument(..., help="Path to test file or directory"),
     model: str = typer.Option(DEFAULT_MODEL, "--model", "-m", help="Model to use"),
     provider: ModelProvider = typer.Option(DEFAULT_PROVIDER, "--provider", "-p", help="Model provider"),
-    mcp_url: str = typer.Option(DEFAULT_MCP_URL, "--mcp-url", help="MCP service URL"),
+    mcp_url: Optional[str] = typer.Option(None, "--mcp-url", help="MCP service URL (overrides profile)"),
+    profile: Optional[str] = typer.Option(None, "--profile", help="MCP service profile from .mcp_services.yaml"),
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output report file"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Don't actually run tests"),
@@ -246,6 +256,14 @@ def run(
 
     This command executes test cases defined in YAML/JSON files.
     """
+    # Load config with profile if specified
+    if profile:
+        from testmcpy.config import Config
+        cfg = Config(profile=profile)
+        effective_mcp_url = mcp_url or cfg.mcp_url
+    else:
+        effective_mcp_url = mcp_url or DEFAULT_MCP_URL
+
     console.print(Panel.fit(
         "[bold cyan]MCP Testing Framework - Run Tests[/bold cyan]\n"
         f"Model: {model} | Provider: {provider.value}",
@@ -259,7 +277,7 @@ def run(
         runner = TestRunner(
             model=model,
             provider=provider.value,
-            mcp_url=mcp_url,
+            mcp_url=effective_mcp_url,
             verbose=verbose,
             hide_tool_output=hide_tool_output
         )
@@ -363,7 +381,8 @@ def run(
 
 @app.command()
 def tools(
-    mcp_url: str = typer.Option(DEFAULT_MCP_URL, "--mcp-url", help="MCP service URL"),
+    mcp_url: Optional[str] = typer.Option(None, "--mcp-url", help="MCP service URL (overrides profile)"),
+    profile: Optional[str] = typer.Option(None, "--profile", help="MCP service profile from .mcp_services.yaml"),
     format: OutputFormat = typer.Option(OutputFormat.table, "--format", "-f", help="Output format"),
     detail: bool = typer.Option(False, "--detail", "-d", help="Show detailed parameter schemas"),
     filter: Optional[str] = typer.Option(None, "--filter", help="Filter tools by name"),
@@ -374,6 +393,14 @@ def tools(
     This command connects to the MCP service and displays all available tools
     with their descriptions and parameter schemas in a readable format.
     """
+    # Load config with profile if specified
+    if profile:
+        from testmcpy.config import Config
+        cfg = Config(profile=profile)
+        effective_mcp_url = mcp_url or cfg.mcp_url
+    else:
+        effective_mcp_url = mcp_url or DEFAULT_MCP_URL
+
     async def list_tools():
         from testmcpy.src.mcp_client import MCPClient
         from rich.tree import Tree
@@ -382,13 +409,13 @@ def tools(
 
         console.print(Panel.fit(
             f"[bold cyan]MCP Tools Explorer[/bold cyan]\n"
-            f"Service: {mcp_url}",
+            f"Service: {effective_mcp_url}",
             border_style="cyan"
         ))
 
         try:
             with console.status("[bold green]Connecting to MCP service...[/bold green]"):
-                async with MCPClient(mcp_url) as client:
+                async with MCPClient(effective_mcp_url) as client:
                     all_tools = await client.list_tools()
 
                     # Apply filter if provided
@@ -622,7 +649,8 @@ def report(
 def chat(
     model: str = typer.Option(DEFAULT_MODEL, "--model", "-m", help="Model to use"),
     provider: ModelProvider = typer.Option(DEFAULT_PROVIDER, "--provider", "-p", help="Model provider"),
-    mcp_url: str = typer.Option(DEFAULT_MCP_URL, "--mcp-url", help="MCP service URL"),
+    mcp_url: Optional[str] = typer.Option(None, "--mcp-url", help="MCP service URL (overrides profile)"),
+    profile: Optional[str] = typer.Option(None, "--profile", help="MCP service profile from .mcp_services.yaml"),
     no_mcp: bool = typer.Option(False, "--no-mcp", help="Chat without MCP tools"),
 ):
     """
@@ -633,6 +661,14 @@ def chat(
 
     Use --no-mcp flag to chat without MCP tools.
     """
+    # Load config with profile if specified
+    if profile:
+        from testmcpy.config import Config
+        cfg = Config(profile=profile)
+        effective_mcp_url = mcp_url or cfg.mcp_url
+    else:
+        effective_mcp_url = mcp_url or DEFAULT_MCP_URL
+
     if no_mcp:
         console.print(Panel.fit(
             f"[bold cyan]Interactive Chat with {model}[/bold cyan]\n"
@@ -643,7 +679,7 @@ def chat(
     else:
         console.print(Panel.fit(
             f"[bold cyan]Interactive Chat with {model}[/bold cyan]\n"
-            f"Provider: {provider.value}\nMCP Service: {mcp_url}\n\n"
+            f"Provider: {provider.value}\nMCP Service: {effective_mcp_url}\n\n"
             "[dim]Type your message and press Enter. Type 'exit' or 'quit' to end session.[/dim]",
             border_style="cyan"
         ))
@@ -666,7 +702,7 @@ def chat(
         if not no_mcp:
             try:
                 # Initialize MCP client
-                mcp_client = MCPClient(mcp_url)
+                mcp_client = MCPClient(effective_mcp_url)
                 await mcp_client.initialize()
 
                 # Get available tools
