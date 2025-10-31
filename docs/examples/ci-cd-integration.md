@@ -1,7 +1,5 @@
 # Client Usage Guide: Testing Your MCP Service with testmcpy
 
-> **Note**: This documentation has moved to [examples/ci-cd-integration.md](examples/ci-cd-integration.md). This file is kept for backward compatibility but may be removed in a future version. Please update your bookmarks.
-
 This guide shows how to use `testmcpy` to test your MCP service from a separate test repository or within your MCP service repo.
 
 ## Table of Contents

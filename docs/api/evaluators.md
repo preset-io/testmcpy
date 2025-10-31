@@ -1,7 +1,5 @@
 # Evaluator Reference
 
-> **Note**: This documentation has moved to [api/evaluators.md](api/evaluators.md). This file is kept for backward compatibility but may be removed in a future version. Please update your bookmarks.
-
 Complete reference for all available evaluators in testmcpy.
 
 ## Table of Contents

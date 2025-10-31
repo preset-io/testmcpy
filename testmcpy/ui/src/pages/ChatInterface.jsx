@@ -85,6 +85,8 @@ function ChatInterface() {
   const [selectedMessageIndex, setSelectedMessageIndex] = useState(null)
   const [evalResults, setEvalResults] = useState({})
   const [runningEval, setRunningEval] = useState(null)
+  const [collapsedToolCalls, setCollapsedToolCalls] = useState({})
+  const textareaRef = useRef(null)
 
   useEffect(() => {
     loadModels()
@@ -93,6 +95,13 @@ function ChatInterface() {
   useEffect(() => {
     scrollToBottom()
   }, [messages])
+
+  // Reset textarea height when input is cleared
+  useEffect(() => {
+    if (input === '' && textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+    }
+  }, [input])
 
   const loadModels = async () => {
     try {
@@ -158,6 +167,24 @@ function ChatInterface() {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       sendMessage()
+    }
+  }
+
+  // Auto-expand textarea as user types (max 6 rows)
+  const handleTextareaChange = (e) => {
+    setInput(e.target.value)
+
+    // Reset height to auto to get the correct scrollHeight
+    const textarea = textareaRef.current
+    if (textarea) {
+      textarea.style.height = 'auto'
+
+      // Calculate number of rows based on content
+      const lineHeight = 24 // approximate line height in pixels
+      const maxHeight = lineHeight * 6 // max 6 rows
+      const newHeight = Math.min(textarea.scrollHeight, maxHeight)
+
+      textarea.style.height = `${newHeight}px`
     }
   }
 
@@ -328,11 +355,11 @@ ${evaluators}
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="p-8 border-b border-border bg-surface-elevated">
+      <div className="p-4 border-b border-border bg-surface-elevated">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold">Chat Interface</h1>
-            <p className="text-text-secondary mt-2 text-base">
+            <h1 className="text-2xl font-bold">Chat Interface</h1>
+            <p className="text-text-secondary mt-1 text-base">
               Interactive chat with LLM using MCP tools
             </p>
           </div>
@@ -371,7 +398,7 @@ ${evaluators}
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-auto p-8 bg-background-subtle">
+      <div className="flex-1 overflow-auto p-4 bg-background-subtle">
         {messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
@@ -385,7 +412,7 @@ ${evaluators}
             </div>
           </div>
         ) : (
-          <div className="space-y-6 max-w-4xl mx-auto pb-4">
+          <div className="space-y-4 max-w-3xl mx-auto pb-4">
             {messages.map((message, idx) => (
               <div
                 key={idx}
@@ -394,7 +421,7 @@ ${evaluators}
                 } animate-fade-in`}
               >
                 <div
-                  className={`max-w-[85%] rounded-xl p-5 shadow-soft ${
+                  className={`w-full max-w-2xl rounded-lg p-3 shadow-soft break-words ${
                     message.role === 'user'
                       ? 'bg-primary text-white'
                       : message.error
@@ -523,15 +550,20 @@ ${evaluators}
                     </div>
                   )}
 
-                  {/* Tool calls */}
+                  {/* Tool calls - collapsed by default */}
                   {message.tool_calls && message.tool_calls.length > 0 && (
-                    <div className="mt-4 pt-4 border-t border-white/10 space-y-3">
-                      <div className="flex items-center gap-2 text-sm opacity-80">
-                        <Wrench size={16} />
-                        <span className="font-medium">Used {message.tool_calls.length} tool(s)</span>
-                      </div>
-                      <div className="space-y-3">
-                        {message.tool_calls.map((call, callIdx) => (
+                    <div className="mt-3 pt-3 border-t border-white/10">
+                      <button
+                        onClick={() => setCollapsedToolCalls(prev => ({ ...prev, [idx]: !prev[idx] }))}
+                        className="flex items-center gap-2 text-xs font-medium text-text-secondary hover:text-text-primary transition-colors"
+                      >
+                        {collapsedToolCalls[idx] ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                        <Wrench size={14} />
+                        <span>Used {message.tool_calls.length} tool(s)</span>
+                      </button>
+                      {!collapsedToolCalls[idx] && (
+                        <div className="mt-3 space-y-3">
+                          {message.tool_calls.map((call, callIdx) => (
                           <div
                             key={callIdx}
                             className="bg-black/20 rounded-lg p-3 border border-white/10"
@@ -574,21 +606,22 @@ ${evaluators}
                             {call.result && (
                               <JSONViewer data={call.result} />
                             )}
-                          </div>
-                        ))}
-                      </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
 
-                  {/* Metadata */}
+                  {/* Metadata - inline */}
                   {message.token_usage && (
-                    <div className="mt-4 pt-4 border-t border-white/10 flex items-center gap-5 text-xs opacity-70">
-                      <span className="flex items-center gap-1.5">
+                    <div className="mt-3 pt-3 border-t border-white/10 flex items-center gap-4 text-[10px] opacity-70">
+                      <span className="flex items-center gap-1">
                         <span className="font-medium">{message.token_usage.total?.toLocaleString()}</span> tokens
                       </span>
                       {message.cost > 0 && (
                         <span className="flex items-center gap-1">
-                          <DollarSign size={14} />
+                          <DollarSign size={12} />
                           <span className="font-medium">{message.cost.toFixed(4)}</span>
                         </span>
                       )}
@@ -614,15 +647,16 @@ ${evaluators}
       </div>
 
       {/* Input */}
-      <div className="p-6 border-t border-border bg-surface-elevated shadow-strong">
+      <div className="p-3 border-t border-border bg-surface-elevated shadow-strong">
         <div className="max-w-4xl mx-auto flex gap-4">
           <textarea
+            ref={textareaRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={handleTextareaChange}
             onKeyPress={handleKeyPress}
             placeholder="Type your message... (Shift+Enter for new line)"
-            className="input flex-1 resize-none text-base"
-            rows={3}
+            className="input flex-1 resize-none text-base overflow-y-auto"
+            rows={1}
             disabled={loading}
           />
           <button

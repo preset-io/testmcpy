@@ -11,6 +11,8 @@ import {
   XCircle,
 } from 'lucide-react'
 import Editor from '@monaco-editor/react'
+import TestStatusIndicator from '../components/TestStatusIndicator'
+import TestResultPanel from '../components/TestResultPanel'
 
 function TestManager() {
   const [testFiles, setTestFiles] = useState([])
@@ -24,6 +26,12 @@ function TestManager() {
   const [models, setModels] = useState({})
   const [selectedProvider, setSelectedProvider] = useState('anthropic')
   const [selectedModel, setSelectedModel] = useState('claude-haiku-4-5')
+  const [runningTests, setRunningTests] = useState({
+    current: null,
+    total: 0,
+    completed: 0,
+    status: 'idle'
+  })
 
   useEffect(() => {
     loadTestFiles()
@@ -137,6 +145,15 @@ tests:
     setRunning(true)
     setTestResults(null)
 
+    // Initialize running tests state
+    const totalTests = selectedFile.test_count || 1
+    setRunningTests({
+      current: 'Initializing...',
+      total: totalTests,
+      completed: 0,
+      status: 'running'
+    })
+
     try {
       const res = await fetch('/api/tests/run', {
         method: 'POST',
@@ -171,6 +188,12 @@ tests:
       alert(`Failed to run tests: ${error.message}`)
     } finally {
       setRunning(false)
+      setRunningTests({
+        current: null,
+        total: 0,
+        completed: 0,
+        status: 'idle'
+      })
     }
   }
 
@@ -178,8 +201,8 @@ tests:
     <div className="h-full flex">
       {/* File List */}
       <div className="w-80 border-r border-border flex flex-col bg-surface-elevated">
-        <div className="p-5 border-b border-border">
-          <div className="flex items-center justify-between mb-5">
+        <div className="p-4 border-b border-border">
+          <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-text-primary">Test Files</h2>
             <button
               onClick={() => setShowNewFileDialog(true)}
@@ -279,7 +302,7 @@ tests:
         {selectedFile ? (
           <>
             {/* Editor Header */}
-            <div className="p-5 border-b border-border flex items-center justify-between bg-surface-elevated">
+            <div className="p-4 border-b border-border flex items-center justify-between bg-surface-elevated">
               <div className="flex items-center gap-4">
                 <h2 className="font-semibold text-lg text-text-primary">{selectedFile.filename}</h2>
                 {editMode ? (
@@ -352,114 +375,96 @@ tests:
               </div>
             </div>
 
-            {/* Editor */}
-            <div className="flex-1 overflow-hidden">
-              <Editor
-                height="100%"
-                defaultLanguage="yaml"
-                theme="vs-dark"
-                value={fileContent}
-                onChange={(value) => setFileContent(value || '')}
-                options={{
-                  readOnly: !editMode,
-                  minimap: { enabled: false },
-                  fontSize: 14,
-                  lineNumbers: 'on',
-                  scrollBeyondLastLine: false,
-                  automaticLayout: true,
-                }}
-              />
-            </div>
-
-            {/* Running Indicator */}
-            {running && (
-              <div className="border-t border-border p-6 bg-surface-elevated">
-                <div className="flex items-center justify-center gap-3">
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary"></div>
-                  <span className="text-text-secondary">Running tests with {selectedProvider}:{selectedModel}...</span>
-                </div>
-                <p className="text-sm text-text-tertiary text-center mt-2">
-                  Check the console for detailed progress
-                </p>
+            {/* Split view: Editor + Results */}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {/* Editor area */}
+              <div className={`${testResults && !running ? 'h-1/2' : 'flex-1'} transition-all duration-300 overflow-hidden`}>
+                <Editor
+                  height="100%"
+                  defaultLanguage="yaml"
+                  theme="vs-dark"
+                  value={fileContent}
+                  onChange={(value) => setFileContent(value || '')}
+                  options={{
+                    readOnly: !editMode,
+                    minimap: { enabled: false },
+                    fontSize: 14,
+                    lineNumbers: 'on',
+                    scrollBeyondLastLine: false,
+                    automaticLayout: true,
+                  }}
+                />
               </div>
-            )}
 
-            {/* Results */}
-            {testResults && !running && (
-              <div className="border-t border-border p-6 max-h-96 overflow-auto bg-surface-elevated">
-                {testResults.error && (
-                  <div className="mb-4 p-4 bg-error/10 border border-error/30 rounded-lg">
-                    <p className="text-sm text-error font-medium">
-                      Error: {testResults.error}
-                    </p>
+              {/* Visual Test Execution Status (section 4.1) */}
+              <TestStatusIndicator
+                current={runningTests.current}
+                completed={runningTests.completed}
+                total={runningTests.total}
+                status={runningTests.status}
+              />
+
+              {/* Results panel (slides up from bottom) - section 4.4 */}
+              {testResults && !running && (
+                <div className="h-1/2 border-t border-border overflow-hidden flex flex-col animate-slide-up">
+                  {/* Results Header */}
+                  <div className="p-4 border-b border-border bg-surface-elevated">
+                    {testResults.error && (
+                      <div className="mb-4 p-3 bg-error/10 border border-error/30 rounded-lg">
+                        <p className="text-sm text-error font-medium">
+                          Error: {testResults.error}
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-semibold text-lg text-text-primary">Test Results</h3>
+                      <div className="flex gap-6 text-sm">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full bg-success"></div>
+                          <span className="text-text-secondary">Passed:</span>
+                          <span className="font-semibold text-success">{testResults.summary.passed}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full bg-error"></div>
+                          <span className="text-text-secondary">Failed:</span>
+                          <span className="font-semibold text-error">{testResults.summary.failed}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-text-secondary">Total:</span>
+                          <span className="font-semibold text-text-primary">{testResults.summary.total}</span>
+                        </div>
+                        {testResults.summary.total_cost > 0 && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-text-secondary">Cost:</span>
+                            <span className="font-semibold text-text-primary">${testResults.summary.total_cost.toFixed(4)}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                )}
 
-                <div className="mb-6">
-                  <h3 className="font-semibold text-xl mb-4 text-text-primary">Test Results</h3>
-                  <div className="flex gap-6 text-sm">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-success"></div>
-                      <span className="text-text-secondary">Passed:</span>
-                      <span className="font-semibold text-success">{testResults.summary.passed}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-error"></div>
-                      <span className="text-text-secondary">Failed:</span>
-                      <span className="font-semibold text-error">{testResults.summary.failed}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-text-secondary">Total:</span>
-                      <span className="font-semibold text-text-primary">{testResults.summary.total}</span>
-                    </div>
-                    {testResults.summary.total_cost > 0 && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-text-secondary">Cost:</span>
-                        <span className="font-semibold text-text-primary">${testResults.summary.total_cost.toFixed(4)}</span>
+                  {/* Results List (section 4.5 - using TestResultPanel) */}
+                  <div className="flex-1 overflow-auto p-4 bg-surface">
+                    {testResults.results && testResults.results.length > 0 ? (
+                      <div className="space-y-2">
+                        {testResults.results.map((result, idx) => (
+                          <TestResultPanel
+                            key={idx}
+                            result={result}
+                            initialExpanded={!result.passed}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8">
+                        <p className="text-text-tertiary">No test results available</p>
                       </div>
                     )}
                   </div>
                 </div>
-
-                {testResults.results && testResults.results.length > 0 ? (
-                  <div className="space-y-3">
-                    {testResults.results.map((result, idx) => (
-                      <div key={idx} className="card">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            {result.passed ? (
-                              <CheckCircle size={20} className="text-success flex-shrink-0" />
-                            ) : (
-                              <XCircle size={20} className="text-error flex-shrink-0" />
-                            )}
-                            <span className="font-medium text-text-primary">{result.test_name}</span>
-                          </div>
-                          <div className="text-sm text-text-tertiary">
-                            {result.duration ? result.duration.toFixed(2) : '0.00'}s
-                          </div>
-                        </div>
-                        {result.reason && (
-                          <p className="text-sm text-text-secondary mt-3 ml-8 leading-relaxed">
-                            {result.reason}
-                          </p>
-                        )}
-                        {result.error && (
-                          <div className="mt-3 ml-8 p-3 bg-error/10 border border-error/30 rounded-lg">
-                            <p className="text-sm text-error font-medium">
-                              Error: {result.error}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <p className="text-text-tertiary">No test results available</p>
-                  </div>
-                )}
-              </div>
-            )}
+              )}
+            </div>
           </>
         ) : (
           <div className="flex items-center justify-center h-full bg-background-subtle">

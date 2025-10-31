@@ -1,0 +1,143 @@
+# Example GitLab CI/CD configuration for testing MCP services with testmcpy
+# Copy this to .gitlab-ci.yml in your repository
+
+variables:
+  # Python version
+  PYTHON_VERSION: "3.11"
+
+  # MCP service configuration
+  MCP_URL: "http://mcp-service:5008/mcp/"
+
+  # LLM provider configuration
+  DEFAULT_PROVIDER: "anthropic"
+  DEFAULT_MODEL: "claude-haiku-4-5"
+
+stages:
+  - test
+  - report
+
+# Test with Claude Haiku (fast, cost-effective)
+test-mcp-haiku:
+  stage: test
+  image: python:${PYTHON_VERSION}
+
+  services:
+    # Option 1: Use Docker service
+    - name: your-org/mcp-service:${CI_COMMIT_REF_SLUG}
+      alias: mcp-service
+
+  variables:
+    DEFAULT_MODEL: "claude-haiku-4-5"
+
+  before_script:
+    - pip install testmcpy[all]
+
+    # Wait for MCP service to be ready
+    - |
+      echo "Waiting for MCP service..."
+      for i in {1..30}; do
+        if curl -f http://mcp-service:5008/health 2>/dev/null; then
+          echo "MCP service is ready!"
+          break
+        fi
+        echo "Waiting... ($i/30)"
+        sleep 2
+      done
+
+    # Verify tools are available
+    - testmcpy tools
+
+  script:
+    - echo "Testing with ${DEFAULT_PROVIDER}:${DEFAULT_MODEL}"
+    - testmcpy run tests/ --verbose --model ${DEFAULT_MODEL} --provider ${DEFAULT_PROVIDER}
+
+  artifacts:
+    when: always
+    paths:
+      - reports/
+    reports:
+      junit: reports/junit.xml
+    expire_in: 30 days
+
+  only:
+    - main
+    - merge_requests
+    - tags
+
+# Test with Claude Sonnet (more capable)
+test-mcp-sonnet:
+  extends: test-mcp-haiku
+  variables:
+    DEFAULT_MODEL: "claude-sonnet-4-5"
+
+  # Only run on main branch and tags (to save costs)
+  only:
+    - main
+    - tags
+
+# Optional: Test with GPT-4
+test-mcp-gpt4:
+  extends: test-mcp-haiku
+  variables:
+    DEFAULT_PROVIDER: "openai"
+    DEFAULT_MODEL: "gpt-4-turbo"
+
+  only:
+    - main
+    - tags
+
+# Generate comparison report
+compare-models:
+  stage: report
+  image: python:${PYTHON_VERSION}
+
+  dependencies:
+    - test-mcp-haiku
+    - test-mcp-sonnet
+
+  before_script:
+    - pip install testmcpy[all]
+
+  script:
+    - testmcpy report reports/ > model-comparison.md
+    - cat model-comparison.md
+
+  artifacts:
+    paths:
+      - model-comparison.md
+    expire_in: 90 days
+
+  only:
+    - main
+    - tags
+
+# Scheduled daily tests
+daily-regression-tests:
+  extends: test-mcp-haiku
+
+  only:
+    - schedules
+
+  script:
+    - echo "Running daily regression tests"
+    - testmcpy run tests/ --verbose
+
+# Manual trigger for full test suite
+manual-full-test-suite:
+  extends: test-mcp-haiku
+
+  when: manual
+
+  script:
+    - echo "Running full test suite across all models"
+    - testmcpy run tests/ --verbose --model claude-haiku-4-5
+    - testmcpy run tests/ --verbose --model claude-sonnet-4-5
+    - testmcpy run tests/ --verbose --model gpt-4-turbo --provider openai
+
+# Required GitLab CI/CD Variables:
+# Add these in Settings > CI/CD > Variables:
+#
+# - ANTHROPIC_API_KEY: Your Anthropic API key (protected, masked)
+# - OPENAI_API_KEY: Your OpenAI API key (protected, masked)
+# - MCP_AUTH_TOKEN: Bearer token for your MCP service (protected, masked)
+# - TEST_DATABASE_URL: Database connection for tests (protected, if needed)

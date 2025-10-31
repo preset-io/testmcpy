@@ -1,5 +1,7 @@
 # MCP Service Profiles
 
+> **Note**: This documentation has been integrated into [guide/configuration.md](guide/configuration.md). This file is kept for backward compatibility but may be removed in a future version. Please update your bookmarks.
+
 Manage multiple MCP service configurations (dev, staging, prod, etc.) using profile-based YAML configuration.
 
 ## Overview
