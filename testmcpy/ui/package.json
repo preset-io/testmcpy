@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "echo \"No tests specified\" && exit 0"
   },
   "dependencies": {
     "@microlink/react-json-view": "^1.27.0",
