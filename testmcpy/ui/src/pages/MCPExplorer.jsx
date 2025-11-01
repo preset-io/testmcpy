@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { ChevronDown, ChevronRight, Copy, Check } from 'lucide-react'
+import { ChevronDown, ChevronRight, Copy, Check, Eye, EyeOff } from 'lucide-react'
+import ParameterCard from '../components/ParameterCard'
 
 function MCPExplorer() {
   const [tools, setTools] = useState([])
@@ -9,6 +10,7 @@ function MCPExplorer() {
   const [expandedTools, setExpandedTools] = useState(new Set())
   const [copiedId, setCopiedId] = useState(null)
   const [activeTab, setActiveTab] = useState('tools')
+  const [showRawJson, setShowRawJson] = useState(new Set())
 
   useEffect(() => {
     loadData()
@@ -49,6 +51,16 @@ function MCPExplorer() {
     setTimeout(() => setCopiedId(null), 2000)
   }
 
+  const toggleRawJson = (toolName) => {
+    const newShowRaw = new Set(showRawJson)
+    if (newShowRaw.has(toolName)) {
+      newShowRaw.delete(toolName)
+    } else {
+      newShowRaw.add(toolName)
+    }
+    setShowRawJson(newShowRaw)
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -62,15 +74,15 @@ function MCPExplorer() {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="p-8 border-b border-border bg-surface-elevated">
-        <h1 className="text-3xl font-bold">MCP Explorer</h1>
-        <p className="text-text-secondary mt-2 text-base">
+      <div className="p-4 border-b border-border bg-surface-elevated">
+        <h1 className="text-2xl font-bold">MCP Explorer</h1>
+        <p className="text-text-secondary mt-1 text-base">
           Browse tools, resources, and prompts from your MCP service
         </p>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 px-8 pt-6 border-b border-border bg-surface-elevated/50">
+      <div className="flex gap-1 px-4 pt-4 border-b border-border bg-surface-elevated/50">
         <button
           onClick={() => setActiveTab('tools')}
           className={`tab ${
@@ -98,7 +110,7 @@ function MCPExplorer() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto p-8 bg-background-subtle">
+      <div className="flex-1 overflow-auto p-4 bg-background-subtle">
         {activeTab === 'tools' && (
           <div className="max-w-5xl mx-auto space-y-4">
             {tools.map((tool, idx) => (
@@ -151,54 +163,69 @@ function MCPExplorer() {
                       </div>
                     )}
 
-                    {/* Parameters */}
+                    {/* Parameters - Smart Display with ParameterCard */}
                     <div>
-                      <h4 className="text-sm font-semibold text-text-secondary mb-3">
-                        Parameters
-                      </h4>
-                      {tool.input_schema?.properties ? (
-                        <div className="space-y-3">
-                          {Object.entries(tool.input_schema.properties).map(
-                            ([param, info]) => (
-                              <div
-                                key={param}
-                                className="bg-surface-elevated border border-border rounded-lg p-4 hover:border-border-subtle transition-colors"
-                              >
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="font-mono text-sm font-medium text-primary-light">
-                                    {param}
-                                  </span>
-                                  <span className="badge badge-warning">
-                                    {info.type}
-                                  </span>
-                                  {tool.input_schema.required?.includes(param) && (
-                                    <span className="badge badge-error">
-                                      required
-                                    </span>
-                                  )}
-                                </div>
-                                {info.description && (
-                                  <p className="text-sm text-text-secondary mt-2 leading-relaxed">
-                                    {info.description}
-                                  </p>
-                                )}
-                              </div>
-                            )
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-sm font-semibold text-text-secondary">
+                          Parameters
+                        </h4>
+                        <button
+                          onClick={() => toggleRawJson(tool.name)}
+                          className="flex items-center gap-1.5 text-xs text-text-tertiary hover:text-text-primary transition-colors px-2 py-1 rounded hover:bg-surface-hover"
+                        >
+                          {showRawJson.has(tool.name) ? (
+                            <>
+                              <EyeOff size={14} />
+                              <span>Hide Raw JSON</span>
+                            </>
+                          ) : (
+                            <>
+                              <Eye size={14} />
+                              <span>Show Raw JSON</span>
+                            </>
                           )}
-                        </div>
-                      ) : (
-                        <p className="text-sm text-text-tertiary italic">No parameters</p>
-                      )}
-                    </div>
+                        </button>
+                      </div>
 
-                    {/* Full Schema */}
-                    <div>
-                      <h4 className="text-sm font-semibold text-text-secondary mb-3">
-                        Input Schema (JSON)
-                      </h4>
-                      <pre className="code-block text-text-primary">
-                        {JSON.stringify(tool.input_schema, null, 2)}
-                      </pre>
+                      {!showRawJson.has(tool.name) ? (
+                        // Structured parameter display
+                        tool.input_schema?.properties ? (
+                          <div className="space-y-2">
+                            {Object.entries(tool.input_schema.properties).map(
+                              ([param, info]) => (
+                                <ParameterCard
+                                  key={param}
+                                  name={param}
+                                  type={info.type}
+                                  required={tool.input_schema.required?.includes(param)}
+                                  description={info.description}
+                                  default={info.default}
+                                  enum={info.enum}
+                                  items={info.items}
+                                  properties={info.properties}
+                                  minimum={info.minimum}
+                                  maximum={info.maximum}
+                                  pattern={info.pattern}
+                                  format={info.format}
+                                  minLength={info.minLength}
+                                  maxLength={info.maxLength}
+                                  minItems={info.minItems}
+                                  maxItems={info.maxItems}
+                                />
+                              )
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-text-tertiary italic bg-surface-elevated border border-border rounded-lg p-4">
+                            No parameters
+                          </p>
+                        )
+                      ) : (
+                        // Raw JSON view
+                        <pre className="code-block text-text-primary">
+                          {JSON.stringify(tool.input_schema, null, 2)}
+                        </pre>
+                      )}
                     </div>
                   </div>
                 )}

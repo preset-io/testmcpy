@@ -1,363 +1,419 @@
-# testmcpy - MCP Testing Framework
+# testmcpy
 
-A comprehensive testing framework for validating LLM tool calling capabilities with MCP (Model Context Protocol) services, specifically designed for testing Superset operations.
+**Test and benchmark LLMs with MCP tools in minutes.**
+
+A testing framework for validating how LLMs call tools via Model Context Protocol (MCP) - compare Claude, GPT-4, Llama, and other models' accuracy, cost, and performance.
+
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![PyPI](https://img.shields.io/badge/pypi-testmcpy-blue)](https://pypi.org/project/testmcpy/)
+
+[Screenshot: CLI test runner with colorful progress bars and results]
+
+[Screenshot: Web UI showing tool explorer and interactive chat]
+
+[GIF: Running a test suite from command line with real-time progress]
+
+---
+
+**[Documentation](docs/)** • **[Examples](examples/)** • **[Contributing](CONTRIBUTING.md)** • **[Discussions](https://github.com/preset-io/testmcpy/discussions)**
+
+---
+
+## Why testmcpy?
+
+- **Validate tool calling**: Ensure LLMs call the right tools with correct parameters
+- **Compare models**: Find the best price/performance balance for your use case
+- **Prevent regressions**: Catch breaking changes in your MCP service with CI/CD
+- **Optimize costs**: Track token usage and identify the most cost-effective models
 
 ## Quick Start
 
-### Installation
-
-**From source (development):**
 ```bash
-git clone https://github.com/preset-io/testmcpy.git
-cd testmcpy
-pip install -e .
-```
-
-**From PyPI (once published):**
-```bash
+# Install testmcpy
 pip install testmcpy
-```
 
-**Via Homebrew (once published to PyPI):**
-```bash
-brew tap preset-io/testmcpy
-brew install testmcpy
-```
-
-See [INSTALLATION.md](INSTALLATION.md) for detailed installation instructions and distribution options.
-
-### Quick Usage
-
-```bash
-# First-time setup: Create user config file
+# Run interactive setup
 testmcpy setup
 
-# View current configuration
-testmcpy config-cmd
-
-# List MCP tools
-testmcpy tools
-testmcpy tools --detail --filter chart
-
-# Research LLM capabilities
-testmcpy research --model claude-sonnet-4-5 --provider anthropic
-
-# Run test suites
-testmcpy run tests/ --model claude-haiku-4-5 --provider anthropic
-
-# Interactive chat
-testmcpy chat --provider anthropic --model claude-sonnet-4-5
-
-# Compare test results
-testmcpy report reports/model1.yaml reports/model2.yaml
-
-# Initialize new project
-testmcpy init my_project
+# Start testing
+testmcpy chat                     # Interactive chat with MCP tools
+testmcpy research                 # Test LLM tool-calling capabilities
+testmcpy run tests/              # Run your test suite
 ```
 
-## Framework Structure
+That's it! No complex configuration needed to get started.
 
-```
-mcp_testing/
-├── research/               # Research scripts for testing LLM capabilities
-│   └── test_ollama_tools.py
-├── src/                    # Core framework modules
-│   ├── mcp_client.py      # MCP protocol client
-│   ├── llm_integration.py # LLM provider abstraction
-│   └── test_runner.py     # Test execution engine
-├── evals/                  # Evaluation functions
-│   └── base_evaluators.py # Standard evaluators
-├── tests/                  # Test cases (YAML/JSON)
-│   ├── basic_test.yaml
-│   └── example_mcp_tests.yaml
-├── reports/                # Test reports and comparisons
-└── cli.py                  # CLI interface
+## Key Features
 
-```
+### Multi-Provider Support
+Test with **Claude**, **GPT-4**, **Llama**, and other models. Works with both paid APIs and free local models via Ollama.
 
-## Writing Test Cases
+[Screenshot: Model selector showing Claude, GPT-4, and Ollama options]
 
-Test cases are defined in YAML files:
+### Built-in Evaluators
+Comprehensive validation out of the box:
+- **Tool Selection**: Did the LLM call the right tool?
+- **Parameter Validation**: Were correct parameters passed?
+- **Execution Success**: Did the tool call complete without errors?
+- **Performance**: Response time and token usage tracking
+- **Cost Analysis**: Monitor API costs across test runs
+
+[Screenshot: Test results showing pass/fail for different evaluators]
+
+### Beautiful CLI & Web UI
+- **Rich terminal UI**: Progress bars, colored output, formatted tables
+- **Optional web interface**: Visual tool explorer and interactive chat
+- **Real-time feedback**: Watch tests execute with live updates
+
+[Screenshot: Split view of CLI and Web UI running the same test]
+
+### YAML Test Definitions
+Define test suites as code for repeatable, version-controlled testing:
 
 ```yaml
 version: "1.0"
-name: "My Test Suite"
+name: "Chart Operations Test Suite"
 
 tests:
-  - name: "test_chart_creation"
+  - name: "test_create_chart"
     prompt: "Create a bar chart showing sales by region"
-    expected_tools:
-      - "create_chart"
     evaluators:
       - name: "was_mcp_tool_called"
         args:
           tool_name: "create_chart"
       - name: "execution_successful"
-      - name: "final_answer_contains"
-        args:
-          expected_content: ["chart", "created"]
-      - name: "within_time_limit"
-        args:
-          max_seconds: 30
 ```
 
-## Available Evaluators
+## Use Cases
 
-### Generic Evaluators
-- `was_mcp_tool_called` - Verify MCP tool was called
-- `execution_successful` - Check for successful execution
-- `final_answer_contains` - Validate response content
-- `answer_contains_link` - Check for links in response
-- `within_time_limit` - Verify performance
-- `token_usage_reasonable` - Check token/cost efficiency
+Perfect for:
 
-### Superset-Specific Evaluators
-- `was_superset_chart_created` - Verify chart creation
-- `sql_query_valid` - Validate SQL syntax
+- **LLM Benchmarking**: Compare tool-calling accuracy across Claude, GPT-4, and Llama
+- **MCP Service Testing**: Validate your MCP integrations work correctly
+- **Regression Prevention**: Catch breaking changes in CI/CD pipelines
+- **Model Selection**: Make data-driven decisions about which LLM to use
+- **Cost Optimization**: Find the best price/performance balance for your workload
+- **Parameter Validation**: Ensure LLMs pass correct parameters to your tools
 
-## Supported LLM Providers
+## Architecture
 
-### Anthropic (Recommended) ✅
+testmcpy connects your LLM provider to your MCP service and validates the interactions:
 
-The **Anthropic API** (`anthropic`) provider is recommended for most users:
+```mermaid
+graph TB
+    subgraph "CLI Interface"
+        CLI[testmcpy CLI]
+        WebUI[Web UI - Optional]
+    end
+
+    subgraph "Core Framework"
+        TestRunner[Test Runner]
+        Evaluators[Evaluators]
+        Config[Configuration Manager]
+    end
+
+    subgraph "LLM Providers"
+        Anthropic[Anthropic API]
+        OpenAI[OpenAI API]
+        Ollama[Ollama Local]
+    end
+
+    subgraph "MCP Integration"
+        MCPClient[MCP Client]
+        MCPService[MCP Service<br/>HTTP/SSE]
+    end
+
+    CLI --> TestRunner
+    WebUI --> TestRunner
+    TestRunner --> Config
+    TestRunner --> Evaluators
+    TestRunner --> Anthropic
+    TestRunner --> OpenAI
+    TestRunner --> Ollama
+    Anthropic --> MCPClient
+    OpenAI --> MCPClient
+    Ollama --> MCPClient
+    MCPClient --> MCPService
+
+    style CLI fill:#4A90E2
+    style WebUI fill:#4A90E2
+    style TestRunner fill:#50E3C2
+    style MCPClient fill:#F5A623
+    style MCPService fill:#BD10E0
+```
+
+**How it works:**
+1. Define test cases in YAML with prompts and expected behavior
+2. testmcpy sends prompts to your chosen LLM (Claude, GPT-4, Llama, etc.)
+3. LLM calls tools via MCP protocol to your service
+4. Evaluators validate tool selection, parameters, execution, and performance
+5. Get detailed pass/fail results with metrics and cost analysis
+
+## Installation
 
 ```bash
-# Add to ~/.testmcpy
-ANTHROPIC_API_KEY=sk-ant-your-key-here
-DEFAULT_PROVIDER=anthropic
-DEFAULT_MODEL=claude-haiku-4-5
+# Install base package
+pip install testmcpy
+
+# With web UI support
+pip install 'testmcpy[server]'
+
+# All optional features
+pip install 'testmcpy[all]'
 ```
 
-**Available Models:**
-- `claude-sonnet-4-5` - Newest, most capable
-- `claude-haiku-4-5` - Fast, cost-effective (recommended)
-- `claude-3-5-sonnet-20241022` - Balanced performance
-- All Claude models via API
+**Requirements:** Python 3.9-3.12 (3.13+ not yet supported)
 
-**Features:**
-- ✅ Full support for HTTP-based MCP services (like Superset MCP)
-- ✅ Best tool calling accuracy
-- ✅ Production-ready
-- ✅ Simple API key setup
+## Getting Started
 
-**Get an API key:** https://console.anthropic.com/
+### 1. Configuration
 
-### Ollama (Local, Free)
-
-For **local development** without API costs:
-
-```bash
-# 1. Install Ollama
-# macOS
-brew install ollama
-
-# Linux
-curl -fsSL https://ollama.com/install.sh | sh
-
-# 2. Start Ollama service
-ollama serve
-
-# 3. Pull a model with tool calling support
-ollama pull llama3.1:8b
-
-# 4. Configure testmcpy
-# Add to ~/.testmcpy:
-OLLAMA_BASE_URL=http://localhost:11434
-DEFAULT_PROVIDER=ollama
-DEFAULT_MODEL=llama3.1:8b
-```
-
-**Recommended Models:**
-- `llama3.1:8b` - Best tool calling support
-- `mistral-nemo` - Good alternative
-- `qwen2.5:7b` - Fast, smaller model
-
-**Note:** Requires Ollama running locally. Not recommended for production testing (less reliable tool calling than Claude).
-
-### OpenAI
-
-```bash
-# Add to ~/.testmcpy
-OPENAI_API_KEY=sk-your-key-here
-DEFAULT_PROVIDER=openai
-DEFAULT_MODEL=gpt-4-turbo
-```
-
-### Other Providers
-
-- **Claude Agent SDK** (`claude-sdk`) - ⚠️ Only for stdio-based MCP servers (not HTTP)
-- **Local** (`local`) - Transformers-based local models
-- **Claude CLI** (`claude-cli`) - Uses Claude Code binary
-
-## Configuration
-
-testmcpy uses a multi-layer configuration system with clear priority ordering:
-
-**Priority Order (highest to lowest):**
-1. Command-line options
-2. `.env` file in current directory
-3. `~/.testmcpy` user configuration file
-4. Environment variables
-5. Built-in defaults
-
-### First-Time Setup
-
-Create your user configuration file with helpful comments:
+Run the interactive setup wizard:
 
 ```bash
 testmcpy setup
 ```
 
-This creates `~/.testmcpy` with examples for all configuration options. Edit the file to add your API keys and preferences.
-
-### View Current Configuration
+Or manually create `~/.testmcpy`:
 
 ```bash
-testmcpy config-cmd
-```
-
-This displays all configuration values with their sources and checks which config files exist.
-
-### Configuration Files
-
-#### User Config: `~/.testmcpy`
-
-Create with `testmcpy setup`, or manually create `~/.testmcpy` to set your personal defaults:
-
-```bash
-# MCP Service Configuration
+# MCP Service
 MCP_URL=http://localhost:5008/mcp/
-
-# Option 1: Static Bearer Token
-MCP_AUTH_TOKEN=your_token_here
-
-# Option 2: Dynamic JWT Token (for Preset/Superset)
-# MCP_AUTH_API_URL=https://api.app.preset.io/v1/auth/
-# MCP_AUTH_API_TOKEN=your_preset_api_token
-# MCP_AUTH_API_SECRET=your_preset_api_secret
-
-# Default LLM Settings
-DEFAULT_MODEL=claude-haiku-4-5
-DEFAULT_PROVIDER=anthropic
-
-# API Keys
-ANTHROPIC_API_KEY=sk-ant-...
-# OPENAI_API_KEY=sk-...
-```
-
-See [`.testmcpy.example`](.testmcpy.example) for a complete example with detailed comments.
-
-#### Project Config: `.env`
-
-Create `.env` in your project directory to override user defaults:
-
-```bash
-# Project-specific settings
-MCP_URL=https://my-project.mcp.example.com/mcp/
-MCP_AUTH_TOKEN=project_specific_token
-DEFAULT_MODEL=claude-sonnet-4-5
-```
-
-### Authentication Options
-
-testmcpy supports two methods for MCP authentication:
-
-**1. Static Bearer Token** (simplest):
-```bash
 MCP_AUTH_TOKEN=your_bearer_token
+
+# LLM Provider (choose one)
+DEFAULT_PROVIDER=anthropic
+DEFAULT_MODEL=claude-haiku-4-5
+ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-**2. Dynamic JWT Generation** (for Preset/Superset):
+**Configuration priority:** CLI options > `.env` > `~/.testmcpy` > Environment variables > Defaults
 
-Instead of manually managing JWT tokens, configure API credentials and testmcpy will automatically fetch and cache JWT tokens:
+### 2. Test Your MCP Service
 
 ```bash
-MCP_AUTH_API_URL=https://api.app.preset.io/v1/auth/
-MCP_AUTH_API_TOKEN=your_api_token
-MCP_AUTH_API_SECRET=your_api_secret
+# List available MCP tools
+testmcpy tools
+
+# Interactive chat to explore your tools
+testmcpy chat
+
+# Run automated research on tool-calling capabilities
+testmcpy research --model claude-haiku-4-5
 ```
 
-When configured, testmcpy will:
-- Call the auth API with your credentials
-- Extract the JWT access token from the response
-- Cache the token for 50 minutes (tokens typically expire in 1 hour)
-- Automatically refresh when needed
+### 3. Create Test Suites
 
-**Note:** Static `MCP_AUTH_TOKEN` takes priority. If both are configured, the static token is used.
+Define tests in YAML (`tests/my_tests.yaml`):
 
-### Environment Variables
+```yaml
+version: "1.0"
+name: "My MCP Service Tests"
 
-All configuration keys can also be set via environment variables:
+tests:
+  - name: "test_tool_selection"
+    prompt: "Create a bar chart showing sales by region"
+    evaluators:
+      - name: "was_mcp_tool_called"
+        args:
+          tool_name: "create_chart"
+      - name: "execution_successful"
+      - name: "within_time_limit"
+        args:
+          max_seconds: 30
+```
+
+Run your tests:
 
 ```bash
-# For Claude providers
-export ANTHROPIC_API_KEY="sk-ant-..."
-
-# For OpenAI provider
-export OPENAI_API_KEY="sk-..."
-
-# MCP service
-export MCP_URL="http://localhost:5008/mcp/"
-export MCP_AUTH_TOKEN="your_token"
-
-# Or use dynamic token generation
-export MCP_AUTH_API_URL="https://api.app.preset.io/v1/auth/"
-export MCP_AUTH_API_TOKEN="your_api_token"
-export MCP_AUTH_API_SECRET="your_api_secret"
-
-# Default LLM settings
-export DEFAULT_MODEL="claude-sonnet-4-5"
-export DEFAULT_PROVIDER="anthropic"
+testmcpy run tests/ --model claude-haiku-4-5
 ```
 
-## Development Status
+## Documentation
 
-### Phase 0: Research & Prototype ✅
-- [x] Research local LLM options with tool calling
-- [x] Build minimal Python script for LLM+MCP integration
-- [x] Validate tool calling with selected LLM
-- [x] Create basic framework structure
+### Core Guides
+- **[Evaluator Reference](docs/EVALUATOR_REFERENCE.md)** - All available evaluators and usage examples
+- **[Client Usage Guide](docs/CLIENT_USAGE_GUIDE.md)** - Complete guide for testing your MCP service
+- **[MCP Profiles](docs/MCP_PROFILES.md)** - Managing multiple MCP service configurations
 
-### Phase 1: Foundation (In Progress)
-- [x] CLI framework with typer + rich
-- [x] Basic test execution engine
-- [x] MCP protocol client
-- [x] LLM provider abstraction
-- [x] Core evaluation functions
-- [ ] Integration with existing Superset tests
+### Examples
+- **[Basic Tests](examples/)** - Simple test cases to get started
+- **[CI/CD Integration](examples/ci-cd/)** - GitHub Actions and GitLab CI configurations
+- **[Custom Evaluators](examples/)** - Building your own validation logic
 
-### Phase 2: Core Features (Planned)
-- [ ] Multi-model comparison support
-- [ ] Advanced reporting with charts
-- [ ] Test suite versioning
-- [ ] Parallel test execution
+### Commands Reference
 
-### Phase 3: Advanced Capabilities (Future)
-- [ ] CI/CD integration
-- [ ] Interactive test development mode
-- [ ] Performance profiling
-- [ ] Cost optimization insights
+| Command | Description |
+|---------|-------------|
+| `testmcpy setup` | Interactive configuration wizard |
+| `testmcpy tools` | List available MCP tools |
+| `testmcpy research` | Test LLM tool-calling capabilities |
+| `testmcpy run <path>` | Execute test suite |
+| `testmcpy chat` | Interactive chat with MCP tools |
+| `testmcpy serve` | Start web UI server |
+| `testmcpy report` | Compare test results across models |
+| `testmcpy config-cmd` | View current configuration |
+| `testmcpy doctor` | Diagnose installation issues |
 
-## Known Limitations
+## LLM Providers
 
-- **Claude SDK Provider**: Only supports stdio-based MCP servers (command-line tools)
-  - **Not compatible** with HTTP-based MCP services (like Superset MCP)
-  - Use `anthropic` provider for HTTP MCP services
-- **HTTP MCP Services**: Use `anthropic` provider (fully supported)
-- **Ollama models**: Require specific formatting for reliable tool calling
-- **CPU-only execution**: May be slow for larger local models
-- **Tool calling accuracy**: Varies by model (Claude models generally most reliable)
-- **Cost**: Claude API providers (`anthropic`) incur API costs; consider using Ollama for development
+### Anthropic (Recommended)
+Best tool-calling accuracy, native MCP support:
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-your-key
+DEFAULT_MODEL=claude-haiku-4-5  # Fast & cost-effective
+```
+
+**Available models:** `claude-haiku-4-5`, `claude-sonnet-4-5`, `claude-opus-4-1`
+
+### Ollama (Free, Local)
+Perfect for development without API costs:
+
+```bash
+# Install Ollama
+brew install ollama  # macOS
+# or: curl -fsSL https://ollama.com/install.sh | sh
+
+# Start Ollama and pull a model
+ollama serve
+ollama pull llama3.1:8b
+
+# Configure testmcpy
+DEFAULT_PROVIDER=ollama
+DEFAULT_MODEL=llama3.1:8b
+```
+
+### OpenAI
+```bash
+OPENAI_API_KEY=sk-your-key
+DEFAULT_MODEL=gpt-4-turbo
+```
+
+## Built-in Evaluators
+
+testmcpy includes comprehensive evaluators for validating LLM behavior:
+
+### Tool Calling
+- `was_mcp_tool_called` - Verify specific tool was invoked
+- `tool_call_count` - Validate number of tool calls
+- `tool_called_with_parameter` - Check specific parameter was passed
+- `tool_called_with_parameters` - Validate multiple parameters
+- `parameter_value_in_range` - Ensure numeric parameters are valid
+
+### Execution
+- `execution_successful` - Check for errors or failures
+- `within_time_limit` - Performance validation
+- `final_answer_contains` - Validate response content
+
+### Cost & Performance
+- `token_usage_reasonable` - Cost efficiency validation
+- Performance metrics automatically tracked
+
+**Extensible:** Easily add custom evaluators for your domain-specific needs.
+
+See **[Evaluator Reference](docs/EVALUATOR_REFERENCE.md)** for complete documentation.
+
+## For MCP Service Developers
+
+Integrate testmcpy into your MCP service for automated testing:
+
+```bash
+# Install testmcpy in your project
+pip install testmcpy[all]
+
+# Create tests for your MCP tools
+cat > tests/my_service_tests.yaml <<EOF
+version: "1.0"
+name: "My MCP Service Tests"
+tests:
+  - name: "test_tool_selection"
+    prompt: "List all items"
+    evaluators:
+      - name: "was_mcp_tool_called"
+        args:
+          tool_name: "list_items"
+      - name: "execution_successful"
+EOF
+
+# Run tests in CI/CD
+testmcpy run tests/ --model claude-haiku-4-5
+```
+
+**[Client Usage Guide](docs/CLIENT_USAGE_GUIDE.md)** - Complete integration guide for your MCP service
+
+**[CI/CD Examples](examples/ci-cd/)** - GitHub Actions and GitLab CI configurations
+
+## Web Interface
+
+Optional React-based UI for visual testing:
+
+[Screenshot: Web UI dashboard with tool explorer]
+
+```bash
+# Install with UI support
+pip install 'testmcpy[server]'
+
+# Start server
+testmcpy serve
+```
+
+Features:
+- Visual MCP tool explorer
+- Interactive chat interface
+- Test management and execution
+- Real-time results display
+
+Access at `http://localhost:8000`
+
+## Examples
+
+Check out the `examples/` directory for:
+
+- **Basic test suites** - Simple examples to get started
+- **CI/CD integration** - GitHub Actions and GitLab CI workflows
+- **Custom evaluators** - Building domain-specific validation
+- **Multi-model comparison** - Benchmarking different LLMs
 
 ## Contributing
 
-This framework follows the patterns established by promptimize and superset-sup. When contributing:
+We welcome contributions! Whether it's bug reports, feature requests, documentation improvements, or code contributions.
 
-1. Use modern Python practices (type hints, async/await)
-2. Follow the existing code style
-3. Add tests for new evaluators
-4. Document new features in this README
+**[Read the Contributing Guide](CONTRIBUTING.md)** to get started.
+
+Quick guidelines:
+- Follow Black code formatting (100 char line length)
+- Add tests for new features
+- Ensure multi-provider compatibility (test with Ollama, Claude, GPT)
+- Document your changes
+- Be respectful and collaborative
+
+## Contributors
+
+Built with contributions from:
+
+<!-- Add contributor images here when ready -->
+
+Want to see your name here? Check out our [Contributing Guide](CONTRIBUTING.md)!
+
+## Community & Support
+
+- **Issues**: [Report bugs or request features](https://github.com/preset-io/testmcpy/issues)
+- **Discussions**: [Ask questions and share ideas](https://github.com/preset-io/testmcpy/discussions)
+- **Documentation**: Browse the [docs/](docs/) directory
+- **Examples**: Explore [examples/](examples/) for sample code
 
 ## License
 
-Same as the parent promptimize project.
+Apache License 2.0 - See [LICENSE](LICENSE) for details.
+
+By contributing, you agree that your contributions will be licensed under Apache 2.0.
+
+---
+
+## Acknowledgments
+
+Built by the team at [Preset](https://preset.io) to enable better LLM testing and integration with Apache Superset and beyond.
+
+Special thanks to the MCP community and all our contributors!

@@ -1,0 +1,183 @@
+# Example GitHub Actions workflow for testing MCP services with testmcpy
+# Copy this to .github/workflows/mcp-tests.yml in your repository
+
+name: MCP Integration Tests
+
+on:
+  # Run on pushes to main/dev branches
+  push:
+    branches: [main, dev]
+
+  # Run on pull requests
+  pull_request:
+    branches: [main]
+
+  # Allow manual triggers
+  workflow_dispatch:
+
+  # Optional: Run on a schedule (daily at 2 AM UTC)
+  schedule:
+    - cron: '0 2 * * *'
+
+jobs:
+  test-mcp-service:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        # Test with multiple LLM models
+        model:
+          - provider: anthropic
+            name: claude-haiku-4-5
+          - provider: anthropic
+            name: claude-sonnet-4-5
+      # Continue testing other models even if one fails
+      fail-fast: false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install testmcpy[all]
+
+      # Option 1: If your MCP service is in the same repo
+      - name: Start MCP service
+        run: |
+          # Start your MCP service in the background
+          python -m your_mcp_service.server &
+          # Save the PID
+          echo $! > mcp_service.pid
+        env:
+          DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+          PORT: 5008
+
+      # Option 2: If using Docker
+      # - name: Start MCP service (Docker)
+      #   run: |
+      #     docker-compose -f docker-compose.test.yml up -d
+      #     docker-compose -f docker-compose.test.yml ps
+
+      # Option 3: If MCP service is external
+      # - name: Configure for external MCP service
+      #   run: |
+      #     echo "Using external MCP service at ${{ secrets.MCP_URL }}"
+
+      - name: Wait for MCP service to be ready
+        run: |
+          echo "Waiting for MCP service..."
+          timeout 60 bash -c 'until curl -f http://localhost:5008/health 2>/dev/null; do
+            echo "Service not ready, waiting..."
+            sleep 2
+          done'
+          echo "MCP service is ready!"
+
+      - name: Verify MCP tools are available
+        env:
+          MCP_URL: http://localhost:5008/mcp/
+          MCP_AUTH_TOKEN: ${{ secrets.MCP_AUTH_TOKEN }}
+        run: |
+          testmcpy tools
+
+      - name: Run testmcpy integration tests
+        env:
+          MCP_URL: http://localhost:5008/mcp/
+          MCP_AUTH_TOKEN: ${{ secrets.MCP_AUTH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          DEFAULT_PROVIDER: ${{ matrix.model.provider }}
+          DEFAULT_MODEL: ${{ matrix.model.name }}
+        run: |
+          echo "Testing with ${{ matrix.model.provider }}:${{ matrix.model.name }}"
+          testmcpy run tests/ --verbose --model ${{ matrix.model.name }} --provider ${{ matrix.model.provider }}
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.model.provider }}-${{ matrix.model.name }}
+          path: |
+            reports/
+            *.log
+          retention-days: 30
+
+      - name: Stop MCP service
+        if: always()
+        run: |
+          if [ -f mcp_service.pid ]; then
+            kill $(cat mcp_service.pid) || true
+          fi
+          # Or for Docker:
+          # docker-compose -f docker-compose.test.yml down
+
+      # Optional: Post results to PR comment
+      - name: Comment test results on PR
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const reportPath = 'reports/latest.json';
+
+            if (fs.existsSync(reportPath)) {
+              const report = JSON.parse(fs.readFileSync(reportPath));
+              const passed = report.passed || 0;
+              const failed = report.failed || 0;
+              const total = passed + failed;
+
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `## MCP Test Results (${{ matrix.model.provider }}:${{ matrix.model.name }})\n\n` +
+                      `✅ Passed: ${passed}/${total}\n` +
+                      `❌ Failed: ${failed}/${total}`
+              });
+            }
+
+  # Optional: Compare models and generate report
+  compare-models:
+    needs: test-mcp-service
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all test results
+        uses: actions/download-artifact@v4
+        with:
+          path: all-results/
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install testmcpy
+        run: pip install testmcpy[all]
+
+      - name: Generate comparison report
+        run: |
+          testmcpy report all-results/ > model-comparison.md
+
+      - name: Upload comparison report
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-comparison-report
+          path: model-comparison.md
+
+# Required GitHub Secrets:
+# - ANTHROPIC_API_KEY: Your Anthropic API key
+# - OPENAI_API_KEY: Your OpenAI API key (if testing with GPT models)
+# - MCP_AUTH_TOKEN: Bearer token for your MCP service
+# - TEST_DATABASE_URL: Database connection string for tests (if needed)

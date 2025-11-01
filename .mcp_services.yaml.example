@@ -1,0 +1,82 @@
+# MCP Service Configuration Profiles
+# Copy to .mcp_services.yaml and customize for your services
+#
+# Security Notes:
+# - Keep secrets in environment variables (referenced with ${VAR_NAME})
+# - Add .mcp_services.yaml to .gitignore if it contains sensitive data
+# - For team sharing, use .mcp_services.yaml.example with ${} placeholders
+
+# Default profile (used when no --profile specified)
+default: local
+
+# Profile definitions
+profiles:
+  # Local development
+  local:
+    name: "Local Development"
+    mcp_url: "http://localhost:5008/mcp/"
+    auth:
+      type: "bearer"  # Options: bearer, oauth, jwt, none
+      token: "${MCP_AUTH_TOKEN}"  # Reference env var
+
+  # Development cluster
+  dev:
+    name: "Development Cluster"
+    mcp_url: "https://dev.example.com/mcp/"
+    auth:
+      type: "jwt"
+      # JWT configuration for dynamic token generation
+      api_url: "https://dev.example.com/v1/auth/"
+      api_token: "${DEV_API_TOKEN}"
+      api_secret: "${DEV_API_SECRET}"
+
+  # Staging environment
+  staging:
+    name: "Staging Environment"
+    mcp_url: "https://staging.example.com/mcp/"
+    auth:
+      type: "oauth"
+      # OAuth configuration
+      client_id: "${STAGING_CLIENT_ID}"
+      client_secret: "${STAGING_CLIENT_SECRET}"
+      token_url: "https://staging.example.com/oauth/token"
+      scopes: ["mcp:read", "mcp:write"]
+
+  # Production
+  prod:
+    name: "Production Environment"
+    mcp_url: "https://api.example.com/mcp/"
+    auth:
+      type: "jwt"
+      api_url: "https://api.example.com/v1/auth/"
+      api_token: "${PROD_API_TOKEN}"
+      api_secret: "${PROD_API_SECRET}"
+
+  # Custom profile example
+  customer-acme:
+    name: "Acme Corp Instance"
+    mcp_url: "https://acme.example.com/mcp/"
+    auth:
+      type: "bearer"
+      token: "${ACME_MCP_TOKEN}"
+
+  # Testing with no auth
+  test-local:
+    name: "Local Testing (No Auth)"
+    mcp_url: "http://localhost:5008/mcp/"
+    auth:
+      type: "none"
+
+# Optional: Global settings applied to all profiles
+global:
+  # Default timeout for requests (seconds)
+  timeout: 30
+
+  # Rate limiting
+  rate_limit:
+    requests_per_minute: 60
+
+  # Retry configuration
+  retry:
+    max_attempts: 3
+    backoff_multiplier: 2

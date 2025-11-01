@@ -25,6 +25,7 @@ import yaml
 from dotenv import load_dotenv
 
 from testmcpy.config import get_config
+from testmcpy import __version__
 
 # Suppress MCP notification validation warnings
 logging.getLogger().setLevel(logging.ERROR)
@@ -39,6 +40,32 @@ app = typer.Typer(
 )
 
 console = Console()
+
+
+def version_callback(value: bool):
+    """Display version and exit."""
+    if value:
+        console.print(f"[bold cyan]testmcpy[/bold cyan] version [green]{__version__}[/green]")
+        raise typer.Exit()
+
+
+@app.callback()
+def main(
+    version: bool = typer.Option(
+        None,
+        "--version",
+        "-v",
+        help="Show version and exit",
+        callback=version_callback,
+        is_eager=True,
+    )
+):
+    """
+    testmcpy - MCP Testing Framework
+
+    Test and validate LLM tool calling capabilities with MCP services.
+    """
+    pass
 
 # Get config instance
 config = get_config()
@@ -68,7 +95,8 @@ class ModelProvider(str, Enum):
 def research(
     model: str = typer.Option(DEFAULT_MODEL, "--model", "-m", help="Model to test"),
     provider: ModelProvider = typer.Option(DEFAULT_PROVIDER, "--provider", "-p", help="Model provider"),
-    mcp_url: str = typer.Option(DEFAULT_MCP_URL, "--mcp-url", help="MCP service URL"),
+    mcp_url: Optional[str] = typer.Option(None, "--mcp-url", help="MCP service URL (overrides profile)"),
+    profile: Optional[str] = typer.Option(None, "--profile", help="MCP service profile from .mcp_services.yaml"),
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output file for results"),
     format: OutputFormat = typer.Option(OutputFormat.table, "--format", "-f", help="Output format"),
 ):
@@ -77,6 +105,14 @@ def research(
 
     This command tests whether a given LLM model can successfully call MCP tools.
     """
+    # Load config with profile if specified
+    if profile:
+        from testmcpy.config import Config
+        cfg = Config(profile=profile)
+        effective_mcp_url = mcp_url or cfg.mcp_url
+    else:
+        effective_mcp_url = mcp_url or DEFAULT_MCP_URL
+
     console.print(Panel.fit(
         "[bold cyan]MCP Testing Framework - Research Mode[/bold cyan]\n"
         f"Testing {model} via {provider.value}",
@@ -89,7 +125,7 @@ def research(
 
         # Test MCP connection
         console.print("\n[bold]Testing MCP Service[/bold]")
-        mcp_tester = MCPServiceTester(mcp_url)
+        mcp_tester = MCPServiceTester(effective_mcp_url)
 
         with Progress(
             SpinnerColumn(),
@@ -208,7 +244,8 @@ def run(
     test_path: Path = typer.Argument(..., help="Path to test file or directory"),
     model: str = typer.Option(DEFAULT_MODEL, "--model", "-m", help="Model to use"),
     provider: ModelProvider = typer.Option(DEFAULT_PROVIDER, "--provider", "-p", help="Model provider"),
-    mcp_url: str = typer.Option(DEFAULT_MCP_URL, "--mcp-url", help="MCP service URL"),
+    mcp_url: Optional[str] = typer.Option(None, "--mcp-url", help="MCP service URL (overrides profile)"),
+    profile: Optional[str] = typer.Option(None, "--profile", help="MCP service profile from .mcp_services.yaml"),
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output report file"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Don't actually run tests"),
@@ -219,6 +256,14 @@ def run(
 
     This command executes test cases defined in YAML/JSON files.
     """
+    # Load config with profile if specified
+    if profile:
+        from testmcpy.config import Config
+        cfg = Config(profile=profile)
+        effective_mcp_url = mcp_url or cfg.mcp_url
+    else:
+        effective_mcp_url = mcp_url or DEFAULT_MCP_URL
+
     console.print(Panel.fit(
         "[bold cyan]MCP Testing Framework - Run Tests[/bold cyan]\n"
         f"Model: {model} | Provider: {provider.value}",
@@ -232,7 +277,7 @@ def run(
         runner = TestRunner(
             model=model,
             provider=provider.value,
-            mcp_url=mcp_url,
+            mcp_url=effective_mcp_url,
             verbose=verbose,
             hide_tool_output=hide_tool_output
         )
@@ -336,7 +381,8 @@ def run(
 
 @app.command()
 def tools(
-    mcp_url: str = typer.Option(DEFAULT_MCP_URL, "--mcp-url", help="MCP service URL"),
+    mcp_url: Optional[str] = typer.Option(None, "--mcp-url", help="MCP service URL (overrides profile)"),
+    profile: Optional[str] = typer.Option(None, "--profile", help="MCP service profile from .mcp_services.yaml"),
     format: OutputFormat = typer.Option(OutputFormat.table, "--format", "-f", help="Output format"),
     detail: bool = typer.Option(False, "--detail", "-d", help="Show detailed parameter schemas"),
     filter: Optional[str] = typer.Option(None, "--filter", help="Filter tools by name"),
@@ -347,6 +393,14 @@ def tools(
     This command connects to the MCP service and displays all available tools
     with their descriptions and parameter schemas in a readable format.
     """
+    # Load config with profile if specified
+    if profile:
+        from testmcpy.config import Config
+        cfg = Config(profile=profile)
+        effective_mcp_url = mcp_url or cfg.mcp_url
+    else:
+        effective_mcp_url = mcp_url or DEFAULT_MCP_URL
+
     async def list_tools():
         from testmcpy.src.mcp_client import MCPClient
         from rich.tree import Tree
@@ -355,13 +409,13 @@ def tools(
 
         console.print(Panel.fit(
             f"[bold cyan]MCP Tools Explorer[/bold cyan]\n"
-            f"Service: {mcp_url}",
+            f"Service: {effective_mcp_url}",
             border_style="cyan"
         ))
 
         try:
             with console.status("[bold green]Connecting to MCP service...[/bold green]"):
-                async with MCPClient(mcp_url) as client:
+                async with MCPClient(effective_mcp_url) as client:
                     all_tools = await client.list_tools()
 
                     # Apply filter if provided
@@ -595,7 +649,8 @@ def report(
 def chat(
     model: str = typer.Option(DEFAULT_MODEL, "--model", "-m", help="Model to use"),
     provider: ModelProvider = typer.Option(DEFAULT_PROVIDER, "--provider", "-p", help="Model provider"),
-    mcp_url: str = typer.Option(DEFAULT_MCP_URL, "--mcp-url", help="MCP service URL"),
+    mcp_url: Optional[str] = typer.Option(None, "--mcp-url", help="MCP service URL (overrides profile)"),
+    profile: Optional[str] = typer.Option(None, "--profile", help="MCP service profile from .mcp_services.yaml"),
     no_mcp: bool = typer.Option(False, "--no-mcp", help="Chat without MCP tools"),
 ):
     """
@@ -606,6 +661,14 @@ def chat(
 
     Use --no-mcp flag to chat without MCP tools.
     """
+    # Load config with profile if specified
+    if profile:
+        from testmcpy.config import Config
+        cfg = Config(profile=profile)
+        effective_mcp_url = mcp_url or cfg.mcp_url
+    else:
+        effective_mcp_url = mcp_url or DEFAULT_MCP_URL
+
     if no_mcp:
         console.print(Panel.fit(
             f"[bold cyan]Interactive Chat with {model}[/bold cyan]\n"
@@ -616,7 +679,7 @@ def chat(
     else:
         console.print(Panel.fit(
             f"[bold cyan]Interactive Chat with {model}[/bold cyan]\n"
-            f"Provider: {provider.value}\nMCP Service: {mcp_url}\n\n"
+            f"Provider: {provider.value}\nMCP Service: {effective_mcp_url}\n\n"
             "[dim]Type your message and press Enter. Type 'exit' or 'quit' to end session.[/dim]",
             border_style="cyan"
         ))
@@ -639,7 +702,7 @@ def chat(
         if not no_mcp:
             try:
                 # Initialize MCP client
-                mcp_client = MCPClient(mcp_url)
+                mcp_client = MCPClient(effective_mcp_url)
                 await mcp_client.initialize()
 
                 # Get available tools
@@ -877,7 +940,7 @@ def setup(
             console.print(f"[dim]  Current: {current_api_url}[/dim]")
             api_url = console.input(f"  New URL (or press Enter to keep current): ").strip() or current_api_url
         else:
-            api_url = console.input("Auth API URL [https://api.app.preset.io/v1/auth/]: ").strip() or "https://api.app.preset.io/v1/auth/"
+            api_url = console.input("Auth API URL (e.g., https://api.app.preset.io/v1/auth/): ").strip()
 
         if current_api_token:
             masked = f"{current_api_token[:8]}...{current_api_token[-4:]}"
@@ -1178,7 +1241,7 @@ def serve(
         import uvicorn
     except ImportError:
         console.print("[red]Error: FastAPI and uvicorn are required for the web server[/red]")
-        console.print("Install with: pip install 'testmcpy[server]'")
+        console.print("Install with: pip install 'testmcpy[server]'", markup=False)
         return
 
     # Build frontend if not in dev mode and dist doesn't exist
@@ -1536,6 +1599,229 @@ def config_mcp(
     except Exception as e:
         console.print(f"[red]Error writing config file:[/red] {e}")
         return
+
+
+@app.command()
+def doctor():
+    """
+    Run health checks to diagnose installation issues.
+
+    This command checks Python version, dependencies, configuration,
+    and MCP connectivity to help identify and resolve issues.
+    """
+    console.print(Panel.fit(
+        "[bold cyan]testmcpy Health Check[/bold cyan]\n"
+        "[dim]Diagnosing installation and configuration...[/dim]",
+        border_style="cyan"
+    ))
+
+    issues_found = []
+    warnings_found = []
+
+    # 1. Check Python version
+    console.print("\n[bold]1. Python Version[/bold]")
+    import sys
+    python_version = sys.version_info
+    version_str = f"{python_version.major}.{python_version.minor}.{python_version.micro}"
+
+    if python_version >= (3, 9) and python_version < (3, 13):
+        console.print(f"[green]✓[/green] Python {version_str} (compatible)")
+    elif python_version < (3, 9):
+        console.print(f"[red]✗[/red] Python {version_str} (too old, requires 3.9+)")
+        issues_found.append(f"Python version {version_str} is too old. Requires Python 3.9 or higher.")
+    else:
+        console.print(f"[yellow]⚠[/yellow] Python {version_str} (not tested, may not work)")
+        warnings_found.append(f"Python {version_str} is newer than 3.12 and has not been tested with testmcpy.")
+
+    # 2. Check core dependencies
+    console.print("\n[bold]2. Core Dependencies[/bold]")
+    core_deps = [
+        ("typer", "typer"),
+        ("rich", "rich"),
+        ("yaml", "pyyaml"),
+        ("httpx", "httpx"),
+        ("anthropic", "anthropic"),
+        ("fastmcp", "fastmcp"),
+        ("dotenv", "python-dotenv"),
+    ]
+
+    all_core_deps_ok = True
+    for import_name, package_name in core_deps:
+        try:
+            __import__(import_name)
+            console.print(f"[green]✓[/green] {package_name}")
+        except ImportError:
+            console.print(f"[red]✗[/red] {package_name} - not installed")
+            issues_found.append(f"Missing required dependency: {package_name}")
+            all_core_deps_ok = False
+
+    # 3. Check optional dependencies
+    console.print("\n[bold]3. Optional Dependencies[/bold]")
+
+    # Server dependencies
+    console.print("[dim]Server (Web UI):[/dim]")
+    try:
+        import fastapi
+        import uvicorn
+        console.print(f"[green]✓[/green] fastapi, uvicorn - Web UI available")
+    except ImportError:
+        console.print("[dim]✗[/dim] fastapi, uvicorn - Install with: pip install 'testmcpy[server]'", markup=False)
+
+    # SDK dependency
+    console.print("[dim]Claude Agent SDK:[/dim]")
+    try:
+        import claude_agent_sdk
+        console.print(f"[green]✓[/green] claude-agent-sdk - SDK provider available")
+    except ImportError:
+        console.print("[dim]✗[/dim] claude-agent-sdk - Install with: pip install 'testmcpy[sdk]'", markup=False)
+
+    # 4. Check configuration
+    console.print("\n[bold]4. Configuration[/bold]")
+
+    cfg = get_config()
+
+    # Check MCP URL
+    mcp_url = cfg.mcp_url
+    if mcp_url and mcp_url != "http://localhost:5008/mcp/":
+        console.print(f"[green]✓[/green] MCP URL configured: {mcp_url}")
+    else:
+        console.print(f"[yellow]⚠[/yellow] MCP URL not configured (using default)")
+        warnings_found.append("MCP URL not configured. Run: testmcpy setup")
+
+    # Check authentication
+    has_dynamic_jwt = all([
+        cfg.get("MCP_AUTH_API_URL"),
+        cfg.get("MCP_AUTH_API_TOKEN"),
+        cfg.get("MCP_AUTH_API_SECRET")
+    ])
+    has_static_token = cfg.get("MCP_AUTH_TOKEN") or cfg.get("SUPERSET_MCP_TOKEN")
+
+    if has_dynamic_jwt:
+        console.print(f"[green]✓[/green] MCP Authentication: Dynamic JWT configured")
+    elif has_static_token:
+        console.print(f"[green]✓[/green] MCP Authentication: Static token configured")
+    else:
+        console.print(f"[yellow]⚠[/yellow] MCP Authentication: Not configured")
+        warnings_found.append("MCP authentication not configured. Run: testmcpy setup")
+
+    # Check LLM provider
+    provider = cfg.default_provider
+    model = cfg.default_model
+    if provider:
+        console.print(f"[green]✓[/green] LLM Provider: {provider}")
+        console.print(f"[dim]  Model: {model}[/dim]")
+
+        # Check provider-specific API keys
+        if provider == "anthropic":
+            api_key = cfg.get("ANTHROPIC_API_KEY")
+            if api_key:
+                console.print(f"[green]✓[/green] Anthropic API key configured")
+            else:
+                console.print(f"[red]✗[/red] Anthropic API key missing")
+                issues_found.append("Anthropic API key not configured. Set ANTHROPIC_API_KEY in ~/.testmcpy")
+        elif provider == "openai":
+            api_key = cfg.get("OPENAI_API_KEY")
+            if api_key:
+                console.print(f"[green]✓[/green] OpenAI API key configured")
+            else:
+                console.print(f"[red]✗[/red] OpenAI API key missing")
+                issues_found.append("OpenAI API key not configured. Set OPENAI_API_KEY in ~/.testmcpy")
+        elif provider == "ollama":
+            base_url = cfg.get("OLLAMA_BASE_URL") or "http://localhost:11434"
+            console.print(f"[dim]  Ollama URL: {base_url}[/dim]")
+    else:
+        console.print(f"[yellow]⚠[/yellow] LLM Provider: Not configured")
+        warnings_found.append("LLM provider not configured. Run: testmcpy setup")
+
+    # 5. Check MCP connectivity (if configured)
+    if mcp_url and mcp_url != "http://localhost:5008/mcp/" and all_core_deps_ok:
+        console.print("\n[bold]5. MCP Connectivity[/bold]")
+
+        async def check_mcp():
+            try:
+                from testmcpy.src.mcp_client import MCPClient
+                with console.status("[dim]Connecting to MCP service...[/dim]"):
+                    client = MCPClient(mcp_url)
+                    await client.initialize()
+                    tools = await client.list_tools()
+                    await client.close()
+
+                console.print(f"[green]✓[/green] MCP service reachable")
+                console.print(f"[dim]  Found {len(tools)} tools[/dim]")
+                return True
+            except Exception as e:
+                console.print(f"[red]✗[/red] MCP service unreachable: {str(e)}")
+                issues_found.append(f"Cannot connect to MCP service: {str(e)}")
+                return False
+
+        try:
+            asyncio.run(check_mcp())
+        except Exception as e:
+            console.print(f"[red]✗[/red] MCP connectivity test failed: {str(e)}")
+            issues_found.append(f"MCP connectivity test error: {str(e)}")
+    else:
+        console.print("\n[bold]5. MCP Connectivity[/bold]")
+        console.print("[dim]Skipped (MCP not configured or missing dependencies)[/dim]")
+
+    # 6. Check virtual environment
+    console.print("\n[bold]6. Environment[/bold]")
+    if hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix):
+        console.print(f"[green]✓[/green] Running in virtual environment")
+        console.print(f"[dim]  Location: {sys.prefix}[/dim]")
+    else:
+        console.print(f"[yellow]⚠[/yellow] Not running in virtual environment")
+        warnings_found.append("Not using a virtual environment. Consider using: python3 -m venv venv")
+
+    # 7. Check config files
+    console.print("\n[bold]7. Configuration Files[/bold]")
+    cwd_env = Path.cwd() / ".env"
+    user_config = Path.home() / ".testmcpy"
+
+    config_files_exist = False
+    if cwd_env.exists():
+        console.print(f"[green]✓[/green] {cwd_env}")
+        config_files_exist = True
+    else:
+        console.print(f"[dim]✗ {cwd_env} (not found)[/dim]")
+
+    if user_config.exists():
+        console.print(f"[green]✓[/green] {user_config}")
+        config_files_exist = True
+    else:
+        console.print(f"[dim]✗ {user_config} (not found)[/dim]")
+
+    if not config_files_exist:
+        warnings_found.append("No configuration files found. Run: testmcpy setup")
+
+    # Summary
+    console.print("\n" + "="*50)
+    if not issues_found and not warnings_found:
+        console.print("\n[bold green]✓ All checks passed![/bold green]")
+        console.print("[dim]Your testmcpy installation is healthy.[/dim]")
+    else:
+        if issues_found:
+            console.print(f"\n[bold red]Found {len(issues_found)} issue(s):[/bold red]")
+            for i, issue in enumerate(issues_found, 1):
+                console.print(f"  {i}. {issue}")
+
+        if warnings_found:
+            console.print(f"\n[bold yellow]Found {len(warnings_found)} warning(s):[/bold yellow]")
+            for i, warning in enumerate(warnings_found, 1):
+                console.print(f"  {i}. {warning}")
+
+        console.print("\n[bold]Recommended Actions:[/bold]")
+        if any("Python version" in issue for issue in issues_found):
+            console.print("• Upgrade Python to 3.9 or higher: https://www.python.org/downloads/")
+        if any("Missing required dependency" in issue for issue in issues_found):
+            console.print("• Reinstall testmcpy: pip install --upgrade testmcpy")
+        if any("API key" in issue for issue in issues_found):
+            console.print("• Configure API keys: testmcpy setup")
+        if any("MCP" in str(warnings_found) or "MCP" in str(issues_found)):
+            console.print("• Configure MCP service: testmcpy setup")
+        if any("virtual environment" in warning for warning in warnings_found):
+            console.print("• Create virtual environment: python3 -m venv venv && source venv/bin/activate")
+
+    console.print()
 
 
 if __name__ == "__main__":

@@ -2,11 +2,12 @@
 Configuration management for testmcpy.
 
 Priority order (highest to lowest):
-1. Command-line options
-2. .env file in current directory
-3. ~/.testmcpy (user config file)
-4. Environment variables
-5. Built-in defaults
+1. Command-line options (--profile, --mcp-url, etc.)
+2. MCP Profile from .mcp_services.yaml
+3. .env file in current directory
+4. ~/.testmcpy (user config file)
+5. Environment variables
+6. Built-in defaults
 """
 
 import os
@@ -17,10 +18,21 @@ from typing import Optional, Dict, Any
 from dotenv import load_dotenv
 import httpx
 
+# Import profile configuration
+try:
+    from .mcp_profiles import load_profile, MCPProfile, list_available_profiles
+except ImportError:
+    # Fallback if mcp_profiles not available
+    def load_profile(profile_id=None):
+        return None
+    def list_available_profiles():
+        return []
+    MCPProfile = None
+
 
 class Config:
     """Manages testmcpy configuration from multiple sources."""
-    
+
     # Default values
     # Note: We don't set DEFAULT_MODEL or DEFAULT_PROVIDER by default
     # to avoid assuming any particular setup. Users should configure
@@ -28,14 +40,14 @@ class Config:
     DEFAULTS = {
         "MCP_URL": "http://localhost:5008/mcp/",
     }
-    
+
     # Generic keys that should fall back to environment variables
     GENERIC_KEYS = {
         "ANTHROPIC_API_KEY",
         "OPENAI_API_KEY",
         "OLLAMA_BASE_URL",
     }
-    
+
     # testmcpy-specific keys
     TESTMCPY_KEYS = {
         "MCP_URL",
@@ -49,38 +61,82 @@ class Config:
         "MCP_AUTH_API_SECRET",
     }
 
-    def __init__(self):
+    def __init__(self, profile: Optional[str] = None):
         self._config: Dict[str, Any] = {}
         self._sources: Dict[str, str] = {}
         self._cached_token: Optional[str] = None
         self._token_expiry: Optional[float] = None
+        self._profile: Optional[MCPProfile] = None
+        self._profile_id: Optional[str] = profile
         self._load_config()
     
     def _load_config(self):
         """Load configuration from all sources in priority order."""
-        
+
         # 1. Load from environment variables first (lowest priority for testmcpy keys)
         for key in self.GENERIC_KEYS | self.TESTMCPY_KEYS:
             value = os.getenv(key)
             if value:
                 self._config[key] = value
                 self._sources[key] = "Environment"
-        
+
         # 2. Load from ~/.testmcpy (user config)
         user_config_file = Path.home() / ".testmcpy"
         if user_config_file.exists():
             self._load_env_file(user_config_file, "~/.testmcpy")
-        
-        # 3. Load from .env in current directory (highest priority)
+
+        # 3. Load from .env in current directory
         cwd_env_file = Path.cwd() / ".env"
         if cwd_env_file.exists():
             self._load_env_file(cwd_env_file, ".env (current dir)")
-        
-        # 4. Apply defaults for missing values
+
+        # 4. Load from MCP profile (.mcp_services.yaml) if specified
+        if self._profile_id is not None or load_profile() is not None:
+            self._load_profile(self._profile_id)
+
+        # 5. Apply defaults for missing values
         for key, default_value in self.DEFAULTS.items():
             if key not in self._config:
                 self._config[key] = default_value
                 self._sources[key] = "Default"
+
+    def _load_profile(self, profile_id: Optional[str] = None):
+        """Load configuration from MCP profile."""
+        try:
+            profile = load_profile(profile_id)
+            if not profile:
+                return
+
+            self._profile = profile
+
+            # Set MCP URL
+            self._config["MCP_URL"] = profile.mcp_url
+            self._sources["MCP_URL"] = f"Profile ({profile.profile_id})"
+
+            # Set auth configuration based on auth type
+            if profile.auth.auth_type == "bearer" and profile.auth.token:
+                self._config["MCP_AUTH_TOKEN"] = profile.auth.token
+                self._sources["MCP_AUTH_TOKEN"] = f"Profile ({profile.profile_id})"
+
+            elif profile.auth.auth_type == "jwt":
+                if profile.auth.api_url:
+                    self._config["MCP_AUTH_API_URL"] = profile.auth.api_url
+                    self._sources["MCP_AUTH_API_URL"] = f"Profile ({profile.profile_id})"
+                if profile.auth.api_token:
+                    self._config["MCP_AUTH_API_TOKEN"] = profile.auth.api_token
+                    self._sources["MCP_AUTH_API_TOKEN"] = f"Profile ({profile.profile_id})"
+                if profile.auth.api_secret:
+                    self._config["MCP_AUTH_API_SECRET"] = profile.auth.api_secret
+                    self._sources["MCP_AUTH_API_SECRET"] = f"Profile ({profile.profile_id})"
+
+            # OAuth not yet implemented in auth flow, but store for future use
+            elif profile.auth.auth_type == "oauth":
+                # Store OAuth config for future use
+                pass
+
+        except Exception as e:
+            import warnings
+            warnings.warn(f"Failed to load MCP profile '{profile_id}': {e}")
     
     def _load_env_file(self, file_path: Path, source_name: str):
         """Load configuration from an env file."""

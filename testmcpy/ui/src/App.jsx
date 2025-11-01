@@ -64,10 +64,10 @@ function App() {
         {/* Sidebar */}
         <aside
           className={`${
-            sidebarOpen ? 'w-64' : 'w-16'
+            sidebarOpen ? 'w-50' : 'w-16'
           } bg-surface-elevated border-r border-border transition-all duration-300 flex flex-col shadow-medium`}
         >
-          <div className="p-4 flex items-center justify-between border-b border-border">
+          <div className="p-3 flex items-center justify-between border-b border-border">
             {sidebarOpen && (
               <h1 className="text-xl font-bold text-primary">testmcpy</h1>
             )}
@@ -87,7 +87,7 @@ function App() {
                   key={item.path}
                   to={item.path}
                   className={({ isActive }) =>
-                    `flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ${
+                    `flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 ${
                       isActive
                         ? 'bg-primary text-white shadow-sm'
                         : 'hover:bg-surface-hover text-text-secondary hover:text-text-primary'
@@ -104,41 +104,24 @@ function App() {
           {/* Connection Status */}
           <div className="px-3 pb-3 border-t border-border space-y-2">
             {sidebarOpen ? (
-              <div className="mt-3 bg-primary/10 border border-primary/30 rounded-lg p-3 space-y-2.5">
-                <div className="flex items-start gap-2">
-                  <CheckCircle2 size={16} className="text-success mt-0.5 flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs font-semibold text-success mb-0.5">Connected</div>
-                    <div className="flex items-center gap-1.5">
-                      <Server size={12} className="text-primary-light flex-shrink-0" />
-                      <div className="text-xs text-text-secondary truncate" title={config.MCP_URL?.value}>
-                        {getMcpUrl()}
-                      </div>
-                    </div>
-                  </div>
+              <div className="mt-2 bg-primary/10 border border-primary/30 rounded-lg p-2 space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <CheckCircle2 size={14} className="text-success flex-shrink-0" />
+                  <div className="text-xs font-semibold text-success">Connected</div>
                 </div>
-
-                <div className="flex items-start gap-2 pt-2 border-t border-border/50">
-                  <Cpu size={16} className="text-primary-light mt-0.5 flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs font-semibold text-primary-light mb-0.5">Model</div>
-                    <div className="text-xs text-text-secondary">
-                      <div className="truncate">{getModel().model}</div>
-                      <div className="text-text-tertiary text-[10px] capitalize">{getModel().provider}</div>
-                    </div>
-                  </div>
+                <div className="flex items-center gap-1.5 text-[10px] text-text-tertiary truncate">
+                  <Server size={10} className="flex-shrink-0" />
+                  <span className="truncate">{getModel().provider} · {getModel().model}</span>
                 </div>
               </div>
             ) : (
-              <div className="mt-3 flex flex-col items-center gap-2 py-2">
-                <CheckCircle2 size={20} className="text-success" />
-                <Server size={18} className="text-primary-light" />
-                <Cpu size={18} className="text-primary-light" />
+              <div className="mt-2 flex flex-col items-center gap-2 py-2">
+                <CheckCircle2 size={18} className="text-success" />
               </div>
             )}
           </div>
 
-          <div className="p-4 border-t border-border">
+          <div className="p-3 border-t border-border">
             {sidebarOpen && (
               <div className="text-xs text-text-tertiary space-y-0.5">
                 <div className="font-medium">MCP Testing Framework</div>

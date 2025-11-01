@@ -23,10 +23,10 @@ MCP_AUTH_TOKEN=your_token_here
 # This is useful for services like Preset that require API credentials
 # to generate short-lived JWT tokens.
 #
-# Example for Preset API:
-# MCP_AUTH_API_URL=https://api.app.preset.io/v1/auth/
-# MCP_AUTH_API_TOKEN=your_preset_api_token
-# MCP_AUTH_API_SECRET=your_preset_api_secret
+# Example for JWT authentication:
+# MCP_AUTH_API_URL=https://api.example.com/v1/auth/
+# MCP_AUTH_API_TOKEN=your_api_token
+# MCP_AUTH_API_SECRET=your_api_secret
 #
 # When these are configured, testmcpy will:
 # 1. Make a POST request to MCP_AUTH_API_URL with name/secret

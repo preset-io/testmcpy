@@ -1,0 +1,142 @@
+version: "1.0"
+name: "Multi-Evaluator Test Suite"
+description: "Demonstrates using multiple evaluators for comprehensive test validation"
+
+# This example shows how to combine different evaluators to thoroughly test
+# LLM behavior, including tool selection, parameters, performance, and cost.
+
+tests:
+  # Test 1: Comprehensive validation with multiple checks
+  - name: "test_complete_validation"
+    prompt: "List the first 5 datasets"
+    timeout: 15
+    evaluators:
+      # 1. Verify correct tool was called
+      - name: "was_mcp_tool_called"
+        args:
+          tool_name: "list_datasets"
+
+      # 2. Check that a specific parameter was passed
+      - name: "tool_called_with_parameter"
+        args:
+          tool_name: "list_datasets"
+          parameter_name: "page_size"
+
+      # 3. Verify parameter value is reasonable
+      - name: "parameter_value_in_range"
+        args:
+          tool_name: "list_datasets"
+          parameter_name: "page_size"
+          min_value: 1
+          max_value: 10
+
+      # 4. Ensure successful execution
+      - name: "execution_successful"
+
+      # 5. Check response time
+      - name: "within_time_limit"
+        args:
+          max_seconds: 10
+
+  # Test 2: Parameter validation with multiple parameters
+  - name: "test_parameter_validation"
+    prompt: "Show me page 2 of datasets, with 10 results per page, sorted by name"
+    timeout: 15
+    evaluators:
+      # Check the tool was called
+      - name: "was_mcp_tool_called"
+        args:
+          tool_name: "list_datasets"
+
+      # Validate multiple parameters together
+      - name: "tool_called_with_parameters"
+        args:
+          tool_name: "list_datasets"
+          parameters:
+            page: 2
+            page_size: 10
+          partial_match: true  # Allow other parameters too
+
+      # Verify execution
+      - name: "execution_successful"
+
+      # Check the response contains relevant information
+      - name: "final_answer_contains"
+        args:
+          expected_substring: "dataset"
+
+  # Test 3: Token usage and cost validation
+  - name: "test_token_efficiency"
+    prompt: "List datasets"
+    timeout: 15
+    evaluators:
+      - name: "was_mcp_tool_called"
+        args:
+          tool_name: "list_datasets"
+
+      # Ensure token usage is reasonable
+      - name: "token_usage_reasonable"
+        args:
+          max_tokens: 2000
+
+      - name: "execution_successful"
+
+  # Test 4: Multi-step workflow validation
+  - name: "test_multi_step_workflow"
+    prompt: "First list datasets, then get detailed information about dataset id 1"
+    timeout: 30
+    evaluators:
+      # Check that multiple tool calls were made
+      - name: "tool_call_count"
+        args:
+          min_count: 2
+          max_count: 3
+
+      # Verify both expected tools were called
+      - name: "was_mcp_tool_called"
+        args:
+          tool_name: "list_datasets"
+
+      - name: "was_mcp_tool_called"
+        args:
+          tool_name: "get_dataset_info"
+
+      - name: "execution_successful"
+
+      # Check overall response time for multi-step operation
+      - name: "within_time_limit"
+        args:
+          max_seconds: 25
+
+  # Test 5: Error handling validation
+  - name: "test_graceful_error_handling"
+    prompt: "Get information about dataset id 999999 (which probably doesn't exist)"
+    timeout: 15
+    evaluators:
+      # Verify the tool was attempted
+      - name: "was_mcp_tool_called"
+        args:
+          tool_name: "get_dataset_info"
+
+      # This test expects execution to complete, even if the dataset doesn't exist
+      # The LLM should handle the error gracefully
+      - name: "execution_successful"
+
+# How to run this test suite:
+# testmcpy run examples/basic/multi_evaluator_test.yaml --model claude-haiku-4-5
+
+# Test with multiple models for comparison:
+# testmcpy run examples/basic/multi_evaluator_test.yaml --model claude-haiku-4-5
+# testmcpy run examples/basic/multi_evaluator_test.yaml --model claude-sonnet-4-5
+# testmcpy run examples/basic/multi_evaluator_test.yaml --model gpt-4-turbo --provider openai
+
+# Compare results:
+# testmcpy report reports/
+
+# Tips:
+# - Combine evaluators to create comprehensive tests
+# - Use parameter validation to ensure LLMs pass correct values
+# - Set reasonable timeouts for complex operations
+# - Test both success and error scenarios
+# - Monitor token usage to optimize costs
+# - See docs/EVALUATOR_REFERENCE.md for complete evaluator documentation

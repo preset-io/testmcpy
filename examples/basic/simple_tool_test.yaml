@@ -1,0 +1,58 @@
+version: "1.0"
+name: "Simple Tool Calling Test"
+description: "A basic example demonstrating how to test MCP tool calls with testmcpy"
+
+# This is a minimal test case that verifies an LLM can successfully call an MCP tool.
+# Use this as a starting point for your own test suites.
+
+tests:
+  # Test 1: Basic tool invocation
+  - name: "test_tool_is_called"
+    prompt: "List all datasets"
+    evaluators:
+      # Check that the specific MCP tool was invoked
+      - name: "was_mcp_tool_called"
+        args:
+          tool_name: "list_datasets"
+
+      # Verify the execution completed without errors
+      - name: "execution_successful"
+
+  # Test 2: Tool call with response validation
+  - name: "test_tool_with_response_check"
+    prompt: "Show me the datasets"
+    evaluators:
+      - name: "was_mcp_tool_called"
+        args:
+          tool_name: "list_datasets"
+
+      - name: "execution_successful"
+
+      # Check that the response contains expected content
+      - name: "final_answer_contains"
+        args:
+          expected_substring: "dataset"
+
+  # Test 3: Performance testing
+  - name: "test_tool_response_time"
+    prompt: "List datasets quickly"
+    evaluators:
+      - name: "was_mcp_tool_called"
+        args:
+          tool_name: "list_datasets"
+
+      # Ensure the tool call completes within a time limit
+      - name: "within_time_limit"
+        args:
+          max_seconds: 10
+
+      - name: "execution_successful"
+
+# How to run this test:
+# testmcpy run examples/basic/simple_tool_test.yaml --model claude-haiku-4-5
+
+# Tips:
+# - Adjust the tool_name to match your MCP service's tools
+# - Use "testmcpy tools" to see available tools in your MCP service
+# - Add more evaluators to check specific behaviors
+# - See docs/EVALUATOR_REFERENCE.md for all available evaluators

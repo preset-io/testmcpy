@@ -1,5 +1,5 @@
 """
-Base evaluation functions for MCP Testing Framework.
+Base evaluation functions for testmcpy.
 
 These evaluators can be used to validate LLM responses and tool calling behavior.
 """
@@ -364,6 +364,383 @@ class TokenUsageReasonable(BaseEvaluator):
         )
 
 
+# Parameter validation evaluators
+
+class ToolCalledWithParameter(BaseEvaluator):
+    """Check if a tool was called with a specific parameter."""
+
+    def __init__(self, tool_name: str, parameter_name: str, parameter_value: Optional[Any] = None):
+        """
+        Check if tool was called with a specific parameter.
+
+        Args:
+            tool_name: Name of the tool to check
+            parameter_name: Name of the parameter to check for
+            parameter_value: Optional - specific value to check for. If None, just checks parameter exists
+        """
+        self.tool_name = tool_name
+        self.parameter_name = parameter_name
+        self.parameter_value = parameter_value
+
+    @property
+    def name(self) -> str:
+        if self.parameter_value is not None:
+            return f"tool_called_with_param:{self.tool_name}.{self.parameter_name}={self.parameter_value}"
+        return f"tool_called_with_param:{self.tool_name}.{self.parameter_name}"
+
+    @property
+    def description(self) -> str:
+        if self.parameter_value is not None:
+            return f"Checks if '{self.tool_name}' was called with {self.parameter_name}={self.parameter_value}"
+        return f"Checks if '{self.tool_name}' was called with parameter '{self.parameter_name}'"
+
+    def evaluate(self, context: Dict[str, Any]) -> EvalResult:
+        tool_calls = context.get("tool_calls", [])
+
+        if not tool_calls:
+            return EvalResult(
+                passed=False,
+                score=0.0,
+                reason="No tool calls found in response"
+            )
+
+        # Find tool call matching the tool name
+        matching_calls = [call for call in tool_calls if call.get("name") == self.tool_name]
+
+        if not matching_calls:
+            return EvalResult(
+                passed=False,
+                score=0.0,
+                reason=f"Tool '{self.tool_name}' was not called",
+                details={"tools_called": [c.get("name") for c in tool_calls]}
+            )
+
+        # Check if parameter exists in any matching call
+        for call in matching_calls:
+            arguments = call.get("arguments", {})
+
+            if self.parameter_name in arguments:
+                actual_value = arguments[self.parameter_name]
+
+                # If we're checking for a specific value
+                if self.parameter_value is not None:
+                    if actual_value == self.parameter_value:
+                        return EvalResult(
+                            passed=True,
+                            score=1.0,
+                            reason=f"Tool '{self.tool_name}' called with {self.parameter_name}={actual_value}",
+                            details={"tool_call": call, "parameter_value": actual_value}
+                        )
+                else:
+                    # Just checking parameter exists
+                    return EvalResult(
+                        passed=True,
+                        score=1.0,
+                        reason=f"Tool '{self.tool_name}' called with parameter '{self.parameter_name}'",
+                        details={"tool_call": call, "parameter_value": actual_value}
+                    )
+
+        # Parameter not found or value didn't match
+        if self.parameter_value is not None:
+            return EvalResult(
+                passed=False,
+                score=0.0,
+                reason=f"Tool '{self.tool_name}' was called but parameter '{self.parameter_name}' was not set to '{self.parameter_value}'",
+                details={"tool_calls": matching_calls}
+            )
+        else:
+            return EvalResult(
+                passed=False,
+                score=0.0,
+                reason=f"Tool '{self.tool_name}' was called but parameter '{self.parameter_name}' was not provided",
+                details={"tool_calls": matching_calls}
+            )
+
+
+class ToolCalledWithParameters(BaseEvaluator):
+    """Check if a tool was called with multiple specific parameters."""
+
+    def __init__(self, tool_name: str, parameters: Dict[str, Any], partial_match: bool = False):
+        """
+        Check if tool was called with specific parameters.
+
+        Args:
+            tool_name: Name of the tool to check
+            parameters: Dictionary of parameter_name -> expected_value
+            partial_match: If True, additional parameters are allowed. If False, must match exactly
+        """
+        self.tool_name = tool_name
+        self.parameters = parameters
+        self.partial_match = partial_match
+
+    @property
+    def name(self) -> str:
+        mode = "partial" if self.partial_match else "exact"
+        return f"tool_called_with_params:{self.tool_name}:{mode}"
+
+    @property
+    def description(self) -> str:
+        mode = "at least" if self.partial_match else "exactly"
+        params_str = ", ".join(f"{k}={v}" for k, v in self.parameters.items())
+        return f"Checks if '{self.tool_name}' was called with {mode} parameters: {params_str}"
+
+    def evaluate(self, context: Dict[str, Any]) -> EvalResult:
+        tool_calls = context.get("tool_calls", [])
+
+        if not tool_calls:
+            return EvalResult(
+                passed=False,
+                score=0.0,
+                reason="No tool calls found in response"
+            )
+
+        # Find tool call matching the tool name
+        matching_calls = [call for call in tool_calls if call.get("name") == self.tool_name]
+
+        if not matching_calls:
+            return EvalResult(
+                passed=False,
+                score=0.0,
+                reason=f"Tool '{self.tool_name}' was not called",
+                details={"tools_called": [c.get("name") for c in tool_calls]}
+            )
+
+        # Check each matching call for parameter match
+        for call in matching_calls:
+            arguments = call.get("arguments", {})
+
+            # Check if all required parameters match
+            matches = []
+            mismatches = []
+
+            for param_name, expected_value in self.parameters.items():
+                actual_value = arguments.get(param_name)
+
+                if actual_value == expected_value:
+                    matches.append(param_name)
+                else:
+                    mismatches.append({
+                        "parameter": param_name,
+                        "expected": expected_value,
+                        "actual": actual_value
+                    })
+
+            # If all parameters match
+            if len(matches) == len(self.parameters):
+                # For exact match, check no extra parameters
+                if not self.partial_match:
+                    extra_params = set(arguments.keys()) - set(self.parameters.keys())
+                    if extra_params:
+                        return EvalResult(
+                            passed=False,
+                            score=0.8,
+                            reason=f"Tool called with correct parameters but has extra parameters: {extra_params}",
+                            details={"tool_call": call, "extra_parameters": list(extra_params)}
+                        )
+
+                return EvalResult(
+                    passed=True,
+                    score=1.0,
+                    reason=f"Tool '{self.tool_name}' called with matching parameters",
+                    details={"tool_call": call, "matched_parameters": matches}
+                )
+
+        # No matching call found
+        score = len(matches) / len(self.parameters) if self.parameters else 0.0
+        return EvalResult(
+            passed=False,
+            score=score,
+            reason=f"Tool '{self.tool_name}' called but parameters don't match",
+            details={
+                "tool_calls": matching_calls,
+                "matched": matches,
+                "mismatched": mismatches
+            }
+        )
+
+
+class ParameterValueInRange(BaseEvaluator):
+    """Check if a parameter value is within expected range."""
+
+    def __init__(self, tool_name: str, parameter_name: str, min_value: Optional[float] = None, max_value: Optional[float] = None):
+        """
+        Check if parameter value is in range.
+
+        Args:
+            tool_name: Name of the tool
+            parameter_name: Name of the parameter
+            min_value: Minimum acceptable value (inclusive)
+            max_value: Maximum acceptable value (inclusive)
+        """
+        self.tool_name = tool_name
+        self.parameter_name = parameter_name
+        self.min_value = min_value
+        self.max_value = max_value
+
+    @property
+    def name(self) -> str:
+        range_str = f"{self.min_value or '-∞'}-{self.max_value or '∞'}"
+        return f"param_in_range:{self.tool_name}.{self.parameter_name}:{range_str}"
+
+    @property
+    def description(self) -> str:
+        range_str = f"[{self.min_value or '-∞'}, {self.max_value or '∞'}]"
+        return f"Checks if {self.tool_name}.{self.parameter_name} is in range {range_str}"
+
+    def evaluate(self, context: Dict[str, Any]) -> EvalResult:
+        tool_calls = context.get("tool_calls", [])
+
+        matching_calls = [call for call in tool_calls if call.get("name") == self.tool_name]
+
+        if not matching_calls:
+            return EvalResult(
+                passed=False,
+                score=0.0,
+                reason=f"Tool '{self.tool_name}' was not called"
+            )
+
+        for call in matching_calls:
+            arguments = call.get("arguments", {})
+
+            if self.parameter_name not in arguments:
+                continue
+
+            value = arguments[self.parameter_name]
+
+            try:
+                numeric_value = float(value)
+
+                in_range = True
+                if self.min_value is not None and numeric_value < self.min_value:
+                    in_range = False
+                if self.max_value is not None and numeric_value > self.max_value:
+                    in_range = False
+
+                if in_range:
+                    return EvalResult(
+                        passed=True,
+                        score=1.0,
+                        reason=f"Parameter {self.parameter_name}={numeric_value} is in valid range",
+                        details={"value": numeric_value}
+                    )
+                else:
+                    return EvalResult(
+                        passed=False,
+                        score=0.0,
+                        reason=f"Parameter {self.parameter_name}={numeric_value} is out of range",
+                        details={"value": numeric_value, "min": self.min_value, "max": self.max_value}
+                    )
+
+            except (ValueError, TypeError):
+                return EvalResult(
+                    passed=False,
+                    score=0.0,
+                    reason=f"Parameter {self.parameter_name} value '{value}' is not numeric",
+                    details={"value": value}
+                )
+
+        return EvalResult(
+            passed=False,
+            score=0.0,
+            reason=f"Parameter '{self.parameter_name}' not found in tool calls",
+            details={"tool_calls": matching_calls}
+        )
+
+
+class ToolCallCount(BaseEvaluator):
+    """Check the number of times a tool was called."""
+
+    def __init__(self, tool_name: Optional[str] = None, expected_count: Optional[int] = None,
+                 min_count: Optional[int] = None, max_count: Optional[int] = None):
+        """
+        Check tool call count.
+
+        Args:
+            tool_name: Specific tool to count. If None, counts all tools
+            expected_count: Exact number of calls expected
+            min_count: Minimum number of calls
+            max_count: Maximum number of calls
+        """
+        self.tool_name = tool_name
+        self.expected_count = expected_count
+        self.min_count = min_count
+        self.max_count = max_count
+
+    @property
+    def name(self) -> str:
+        tool = self.tool_name or "any_tool"
+        if self.expected_count is not None:
+            return f"tool_call_count:{tool}=={self.expected_count}"
+        return f"tool_call_count:{tool}"
+
+    @property
+    def description(self) -> str:
+        tool = self.tool_name or "any tool"
+        if self.expected_count is not None:
+            return f"Checks if '{tool}' was called exactly {self.expected_count} time(s)"
+        ranges = []
+        if self.min_count is not None:
+            ranges.append(f"at least {self.min_count}")
+        if self.max_count is not None:
+            ranges.append(f"at most {self.max_count}")
+        range_str = " and ".join(ranges) if ranges else "any number of"
+        return f"Checks if '{tool}' was called {range_str} times"
+
+    def evaluate(self, context: Dict[str, Any]) -> EvalResult:
+        tool_calls = context.get("tool_calls", [])
+
+        if self.tool_name:
+            count = sum(1 for call in tool_calls if call.get("name") == self.tool_name)
+            tool_desc = f"'{self.tool_name}'"
+        else:
+            count = len(tool_calls)
+            tool_desc = "tools"
+
+        # Check expected count
+        if self.expected_count is not None:
+            if count == self.expected_count:
+                return EvalResult(
+                    passed=True,
+                    score=1.0,
+                    reason=f"{tool_desc} called exactly {count} time(s) as expected",
+                    details={"count": count}
+                )
+            else:
+                return EvalResult(
+                    passed=False,
+                    score=0.0,
+                    reason=f"{tool_desc} called {count} time(s), expected {self.expected_count}",
+                    details={"count": count, "expected": self.expected_count}
+                )
+
+        # Check range
+        passed = True
+        issues = []
+
+        if self.min_count is not None and count < self.min_count:
+            passed = False
+            issues.append(f"called {count} time(s), minimum {self.min_count}")
+
+        if self.max_count is not None and count > self.max_count:
+            passed = False
+            issues.append(f"called {count} time(s), maximum {self.max_count}")
+
+        if passed:
+            return EvalResult(
+                passed=True,
+                score=1.0,
+                reason=f"{tool_desc} called {count} time(s), within expected range",
+                details={"count": count}
+            )
+        else:
+            return EvalResult(
+                passed=False,
+                score=0.0,
+                reason="; ".join(issues),
+                details={"count": count, "min": self.min_count, "max": self.max_count}
+            )
+
+
 # Superset-specific evaluators
 
 class WasSupersetChartCreated(BaseEvaluator):
@@ -523,12 +900,19 @@ class CompositeEvaluator(BaseEvaluator):
 def create_evaluator(name: str, **kwargs) -> BaseEvaluator:
     """Factory function to create evaluators by name."""
     evaluators = {
+        # Basic evaluators
         "was_mcp_tool_called": WasMCPToolCalled,
         "execution_successful": ExecutionSuccessful,
         "final_answer_contains": FinalAnswerContains,
         "answer_contains_link": AnswerContainsLink,
         "within_time_limit": WithinTimeLimit,
         "token_usage_reasonable": TokenUsageReasonable,
+        # Parameter validation evaluators
+        "tool_called_with_parameter": ToolCalledWithParameter,
+        "tool_called_with_parameters": ToolCalledWithParameters,
+        "parameter_value_in_range": ParameterValueInRange,
+        "tool_call_count": ToolCallCount,
+        # Superset-specific evaluators
         "was_superset_chart_created": WasSupersetChartCreated,
         "sql_query_valid": SQLQueryValid,
     }

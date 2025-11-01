@@ -542,11 +542,40 @@ async def run_eval(request: EvalRunRequest):
             }
         }
 
-        # Default evaluators to run for chat interactions
+        # Build evaluators based on actual tool calls
         default_evaluators = [
             {"name": "execution_successful"},
-            {"name": "was_mcp_tool_called"},
         ]
+
+        # If tool calls were made, add specific tool validation
+        if request.tool_calls and len(request.tool_calls) > 0:
+            first_tool = request.tool_calls[0]
+
+            # Check specific tool was called
+            default_evaluators.append({
+                "name": "was_mcp_tool_called",
+                "args": {"tool_name": first_tool.get("name")}
+            })
+
+            # Check tool call count
+            default_evaluators.append({
+                "name": "tool_call_count",
+                "args": {"expected_count": len(request.tool_calls)}
+            })
+
+            # Validate parameters if present
+            if first_tool.get("arguments") and len(first_tool.get("arguments")) > 0:
+                default_evaluators.append({
+                    "name": "tool_called_with_parameters",
+                    "args": {
+                        "tool_name": first_tool.get("name"),
+                        "parameters": first_tool.get("arguments"),
+                        "partial_match": True
+                    }
+                })
+        else:
+            # No tools called - just check if any tool was called
+            default_evaluators.append({"name": "was_mcp_tool_called"})
 
         # Run evaluators
         evaluations = []
