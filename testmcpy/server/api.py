@@ -3,6 +3,7 @@ FastAPI server for testmcpy web UI.
 """
 
 import json
+import warnings
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -13,6 +14,13 @@ from fastapi import FastAPI, HTTPException, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+
+# Suppress websockets deprecation warnings from uvicorn (third-party code)
+# uvicorn hasn't updated to websockets 14.0 API yet
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="websockets.legacy")
+warnings.filterwarnings(
+    "ignore", category=DeprecationWarning, module="uvicorn.protocols.websockets"
+)
 
 from testmcpy.config import get_config
 from testmcpy.evals.base_evaluators import create_evaluator
