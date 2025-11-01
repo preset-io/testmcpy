@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'v*'  # Trigger on version tags like v0.1.0
+  release:
+    types: [published]  # Also trigger on GitHub releases
 
 jobs:
   publish:
