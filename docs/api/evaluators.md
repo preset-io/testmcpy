@@ -189,6 +189,44 @@ Verifies the number of times a tool (or all tools) was called.
     min_count: 2
 ```
 
+### `tool_call_sequence`
+
+Validates that tools were called in a specific order, useful for testing multi-step workflows.
+
+**Parameters:**
+- `sequence` (required): List of tool names that should be called in order
+- `strict` (optional, default: true): If true, sequence must match exactly (no extra tools). If false, only checks that sequence appears in order
+- `allow_intermediate` (optional, default: false): If true, allows other tools between sequence steps. Only applies when strict=false
+
+**Examples:**
+
+```yaml
+# Strict sequence - must be exactly these tools in this order
+- name: "tool_call_sequence"
+  args:
+    sequence: ["list_datasets", "generate_chart"]
+    strict: true
+
+# Loose sequence - these tools must appear in order, but other tools allowed
+- name: "tool_call_sequence"
+  args:
+    sequence: ["list_datasets", "generate_chart"]
+    strict: false
+    allow_intermediate: true
+
+# Multi-step workflow validation
+- name: "tool_call_sequence"
+  args:
+    sequence: ["search_datasets", "get_dataset", "generate_chart"]
+    strict: false
+    allow_intermediate: true
+```
+
+**Use Cases:**
+- Validate multi-step workflows (e.g., "generate a chart about births" should first list datasets, then create chart)
+- Ensure LLM follows logical tool ordering
+- Test that LLM gathers necessary information before performing actions
+
 ## Content Validation Evaluators
 
 ### `final_answer_contains`
