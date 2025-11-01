@@ -1,0 +1,96 @@
+version: "1.0"
+name: "Multi-Step Workflow Tests"
+description: |
+  Tests that validate multi-step workflows where the LLM must call
+  multiple tools in a specific sequence to complete a task.
+
+tests:
+  - name: "test_chart_creation_requires_dataset_lookup"
+    prompt: "Generate me a chart about number of births per year"
+    timeout: 60
+    evaluators:
+      # Verify the LLM calls tools in the correct sequence
+      - name: "tool_call_sequence"
+        args:
+          sequence: ["list_datasets", "generate_chart"]
+          strict: false  # Allow other tools between these two
+          allow_intermediate: true
+
+      # Verify both tools were actually called
+      - name: "was_mcp_tool_called"
+        args:
+          tool_name: "list_datasets"
+
+      - name: "was_mcp_tool_called"
+        args:
+          tool_name: "generate_chart"
+
+      # Verify execution succeeded
+      - name: "execution_successful"
+
+      # Verify the response mentions the chart
+      - name: "final_answer_contains"
+        args:
+          expected_content: ["chart", "births"]
+
+  - name: "test_strict_two_step_workflow"
+    prompt: "First, list all available datasets. Then create a bar chart using dataset ID 1 showing sales by region."
+    timeout: 60
+    evaluators:
+      # Strict sequence - must be exactly these two tools in this order
+      - name: "tool_call_sequence"
+        args:
+          sequence: ["list_datasets", "generate_chart"]
+          strict: true
+
+      - name: "tool_call_count"
+        args:
+          expected_count: 2
+
+      - name: "execution_successful"
+
+  - name: "test_multi_step_with_intermediate_tools"
+    prompt: "Search for datasets about customer data, then create a visualization showing customer distribution"
+    timeout: 60
+    evaluators:
+      # Allow other tools between search and visualization
+      - name: "tool_call_sequence"
+        args:
+          sequence: ["search_datasets", "generate_chart"]
+          strict: false
+          allow_intermediate: true
+
+      # At least 2 tools should be called
+      - name: "tool_call_count"
+        args:
+          min_count: 2
+
+      - name: "execution_successful"
+
+  - name: "test_complex_multi_step_workflow"
+    prompt: "Find datasets related to sales, filter for the most recent one, then create a line chart showing trends over time"
+    timeout: 90
+    evaluators:
+      # Verify the expected sequence appears (but allow other tools)
+      - name: "tool_call_sequence"
+        args:
+          sequence: ["list_datasets", "get_dataset", "generate_chart"]
+          strict: false
+          allow_intermediate: true
+
+      # Should make at least 3 tool calls
+      - name: "tool_call_count"
+        args:
+          min_count: 3
+          max_count: 6
+
+      - name: "execution_successful"
+
+      - name: "final_answer_contains"
+        args:
+          expected_content: ["chart", "sales", "trend"]
+
+metadata:
+  category: "multi_step_workflows"
+  priority: "high"
+  tags: ["workflows", "sequences", "integration"]

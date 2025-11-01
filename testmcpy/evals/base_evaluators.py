@@ -731,6 +731,127 @@ class ToolCallCount(BaseEvaluator):
             )
 
 
+class ToolCallSequence(BaseEvaluator):
+    """Check that tools were called in a specific order."""
+
+    def __init__(
+        self,
+        sequence: list[str],
+        strict: bool = True,
+        allow_intermediate: bool = False,
+    ):
+        """
+        Check tool call sequence.
+
+        Args:
+            sequence: List of tool names that should be called in order
+            strict: If True, sequence must match exactly (no extra tools).
+                   If False, only checks that sequence appears in order.
+            allow_intermediate: If True, allows other tools between sequence steps.
+                              Only applies when strict=False.
+
+        Examples:
+            # Strict sequence - must be exactly these tools in this order
+            ToolCallSequence(["list_datasets", "generate_chart"], strict=True)
+
+            # Loose sequence - these tools must appear in order, but other tools allowed
+            ToolCallSequence(["list_datasets", "generate_chart"], strict=False, allow_intermediate=True)
+        """
+        self.sequence = sequence
+        self.strict = strict
+        self.allow_intermediate = allow_intermediate
+
+    @property
+    def name(self) -> str:
+        return f"tool_call_sequence:{' -> '.join(self.sequence)}"
+
+    @property
+    def description(self) -> str:
+        if self.strict:
+            return f"Checks that tools are called in exact sequence: {' -> '.join(self.sequence)}"
+        elif self.allow_intermediate:
+            return f"Checks that tools appear in order (other tools allowed): {' -> '.join(self.sequence)}"
+        else:
+            return f"Checks that only these tools are called in order: {' -> '.join(self.sequence)}"
+
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
+        tool_calls = context.get("tool_calls", [])
+
+        if not tool_calls:
+            return EvalResult(
+                passed=False,
+                score=0.0,
+                reason="No tool calls found in response",
+            )
+
+        actual_sequence = [call.get("name") for call in tool_calls]
+
+        if self.strict:
+            # Exact match required
+            if actual_sequence == self.sequence:
+                return EvalResult(
+                    passed=True,
+                    score=1.0,
+                    reason=f"Tools called in exact sequence: {' -> '.join(actual_sequence)}",
+                    details={"actual_sequence": actual_sequence, "expected_sequence": self.sequence},
+                )
+            else:
+                return EvalResult(
+                    passed=False,
+                    score=0.0,
+                    reason=f"Sequence mismatch. Expected: {' -> '.join(self.sequence)}, Got: {' -> '.join(actual_sequence)}",
+                    details={"actual_sequence": actual_sequence, "expected_sequence": self.sequence},
+                )
+
+        # Non-strict mode: check if sequence appears in order
+        sequence_idx = 0
+        found_positions = []
+
+        for i, tool_name in enumerate(actual_sequence):
+            if sequence_idx < len(self.sequence) and tool_name == self.sequence[sequence_idx]:
+                found_positions.append(i)
+                sequence_idx += 1
+            elif not self.allow_intermediate and tool_name not in self.sequence:
+                # Found a tool not in our sequence and intermediates not allowed
+                return EvalResult(
+                    passed=False,
+                    score=sequence_idx / len(self.sequence),
+                    reason=f"Unexpected tool '{tool_name}' at position {i}. Only {self.sequence} allowed.",
+                    details={
+                        "actual_sequence": actual_sequence,
+                        "expected_sequence": self.sequence,
+                        "found_up_to_index": sequence_idx,
+                        "unexpected_tool": tool_name,
+                    },
+                )
+
+        # Check if we found all tools in the sequence
+        if sequence_idx == len(self.sequence):
+            return EvalResult(
+                passed=True,
+                score=1.0,
+                reason=f"Required tools called in correct order: {' -> '.join([actual_sequence[i] for i in found_positions])}",
+                details={
+                    "actual_sequence": actual_sequence,
+                    "expected_sequence": self.sequence,
+                    "found_positions": found_positions,
+                },
+            )
+        else:
+            missing_tools = self.sequence[sequence_idx:]
+            return EvalResult(
+                passed=False,
+                score=sequence_idx / len(self.sequence),
+                reason=f"Incomplete sequence. Found {sequence_idx}/{len(self.sequence)} tools. Missing: {' -> '.join(missing_tools)}",
+                details={
+                    "actual_sequence": actual_sequence,
+                    "expected_sequence": self.sequence,
+                    "found_up_to_index": sequence_idx,
+                    "missing_tools": missing_tools,
+                },
+            )
+
+
 # Superset-specific evaluators
 
 
@@ -898,6 +1019,7 @@ def create_evaluator(name: str, **kwargs) -> BaseEvaluator:
         "tool_called_with_parameters": ToolCalledWithParameters,
         "parameter_value_in_range": ParameterValueInRange,
         "tool_call_count": ToolCallCount,
+        "tool_call_sequence": ToolCallSequence,
         # Superset-specific evaluators
         "was_superset_chart_created": WasSupersetChartCreated,
         "sql_query_valid": SQLQueryValid,
