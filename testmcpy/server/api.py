@@ -2,38 +2,35 @@
 FastAPI server for testmcpy web UI.
 """
 
-import asyncio
 import json
-import os
-from pathlib import Path
-from typing import Dict, List, Any, Optional
 from datetime import datetime
+from pathlib import Path
+from typing import Any
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel
 import yaml
+from fastapi import FastAPI, HTTPException, WebSocket
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
-from testmcpy.src.mcp_client import MCPClient, MCPToolCall
-from testmcpy.src.llm_integration import create_llm_provider
-from testmcpy.src.test_runner import TestRunner, TestCase
 from testmcpy.config import get_config
 from testmcpy.evals.base_evaluators import create_evaluator
+from testmcpy.src.llm_integration import create_llm_provider
+from testmcpy.src.mcp_client import MCPClient, MCPToolCall
+from testmcpy.src.test_runner import TestCase, TestRunner
 
 
 # Pydantic models for request/response
 class ChatRequest(BaseModel):
     message: str
-    model: Optional[str] = None
-    provider: Optional[str] = None
+    model: str | None = None
+    provider: str | None = None
 
 
 class ChatResponse(BaseModel):
     response: str
-    tool_calls: List[Dict[str, Any]] = []
-    token_usage: Optional[Dict[str, int]] = None
+    tool_calls: list[dict[str, Any]] = []
+    token_usage: dict[str, int] | None = None
     cost: float = 0.0
     duration: float = 0.0
 
@@ -49,23 +46,23 @@ class TestFileUpdate(BaseModel):
 
 class TestRunRequest(BaseModel):
     test_path: str
-    model: Optional[str] = None
-    provider: Optional[str] = None
+    model: str | None = None
+    provider: str | None = None
 
 
 class EvalRunRequest(BaseModel):
     prompt: str
     response: str
-    tool_calls: List[Dict[str, Any]] = []
-    model: Optional[str] = None
-    provider: Optional[str] = None
+    tool_calls: list[dict[str, Any]] = []
+    model: str | None = None
+    provider: str | None = None
 
 
 # Initialize FastAPI app
 app = FastAPI(
     title="testmcpy Web UI",
     description="Web interface for testing MCP services with LLMs",
-    version="1.0.0"
+    version="1.0.0",
 )
 
 # Enable CORS
@@ -79,8 +76,8 @@ app.add_middleware(
 
 # Global state
 config = get_config()
-mcp_client: Optional[MCPClient] = None
-active_websockets: List[WebSocket] = []
+mcp_client: MCPClient | None = None
+active_websockets: list[WebSocket] = []
 
 
 @app.on_event("startup")
@@ -105,6 +102,7 @@ async def shutdown_event():
 
 # API Routes
 
+
 @app.get("/")
 async def root():
     """Root endpoint - serves the React app."""
@@ -121,7 +119,7 @@ async def health_check():
     return {
         "status": "healthy",
         "mcp_connected": mcp_client is not None,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
     }
 
 
@@ -141,10 +139,7 @@ async def get_configuration():
         else:
             masked_value = value
 
-        masked_config[key] = {
-            "value": masked_value,
-            "source": source
-        }
+        masked_config[key] = {"value": masked_value, "source": source}
 
     return masked_config
 
@@ -154,27 +149,64 @@ async def list_models():
     """List available models for each provider."""
     return {
         "anthropic": [
-            {"id": "claude-sonnet-4-5", "name": "Claude Sonnet 4.5", "description": "Latest Sonnet 4.5 (most capable)"},
-            {"id": "claude-haiku-4-5", "name": "Claude Haiku 4.5", "description": "Latest Haiku 4.5 (fast & efficient)"},
-            {"id": "claude-opus-4-1", "name": "Claude Opus 4.1", "description": "Latest Opus 4.1 (most powerful)"},
-            {"id": "claude-haiku-4-5", "name": "Claude 3.5 Haiku", "description": "Legacy Haiku 3.5"}
+            {
+                "id": "claude-sonnet-4-5",
+                "name": "Claude Sonnet 4.5",
+                "description": "Latest Sonnet 4.5 (most capable)",
+            },
+            {
+                "id": "claude-haiku-4-5",
+                "name": "Claude Haiku 4.5",
+                "description": "Latest Haiku 4.5 (fast & efficient)",
+            },
+            {
+                "id": "claude-opus-4-1",
+                "name": "Claude Opus 4.1",
+                "description": "Latest Opus 4.1 (most powerful)",
+            },
+            {
+                "id": "claude-haiku-4-5",
+                "name": "Claude 3.5 Haiku",
+                "description": "Legacy Haiku 3.5",
+            },
         ],
         "ollama": [
-            {"id": "llama3.1:8b", "name": "Llama 3.1 8B", "description": "Meta's Llama 3.1 8B (good balance)"},
-            {"id": "llama3.1:70b", "name": "Llama 3.1 70B", "description": "Meta's Llama 3.1 70B (more capable)"},
-            {"id": "qwen2.5:14b", "name": "Qwen 2.5 14B", "description": "Alibaba's Qwen 2.5 14B (strong coding)"},
-            {"id": "mistral:7b", "name": "Mistral 7B", "description": "Mistral 7B (efficient)"}
+            {
+                "id": "llama3.1:8b",
+                "name": "Llama 3.1 8B",
+                "description": "Meta's Llama 3.1 8B (good balance)",
+            },
+            {
+                "id": "llama3.1:70b",
+                "name": "Llama 3.1 70B",
+                "description": "Meta's Llama 3.1 70B (more capable)",
+            },
+            {
+                "id": "qwen2.5:14b",
+                "name": "Qwen 2.5 14B",
+                "description": "Alibaba's Qwen 2.5 14B (strong coding)",
+            },
+            {"id": "mistral:7b", "name": "Mistral 7B", "description": "Mistral 7B (efficient)"},
         ],
         "openai": [
-            {"id": "gpt-4o", "name": "GPT-4 Optimized", "description": "GPT-4 Optimized (recommended)"},
+            {
+                "id": "gpt-4o",
+                "name": "GPT-4 Optimized",
+                "description": "GPT-4 Optimized (recommended)",
+            },
             {"id": "gpt-4-turbo", "name": "GPT-4 Turbo", "description": "GPT-4 Turbo"},
             {"id": "gpt-4", "name": "GPT-4", "description": "GPT-4 (original)"},
-            {"id": "gpt-3.5-turbo", "name": "GPT-3.5 Turbo", "description": "GPT-3.5 Turbo (faster, cheaper)"}
-        ]
+            {
+                "id": "gpt-3.5-turbo",
+                "name": "GPT-3.5 Turbo",
+                "description": "GPT-3.5 Turbo (faster, cheaper)",
+            },
+        ],
     }
 
 
 # MCP Tools, Resources, Prompts
+
 
 @app.get("/api/mcp/tools")
 async def list_mcp_tools():
@@ -185,11 +217,7 @@ async def list_mcp_tools():
     try:
         tools = await mcp_client.list_tools()
         return [
-            {
-                "name": tool.name,
-                "description": tool.description,
-                "input_schema": tool.input_schema
-            }
+            {"name": tool.name, "description": tool.description, "input_schema": tool.input_schema}
             for tool in tools
         ]
     except Exception as e:
@@ -224,6 +252,7 @@ async def list_mcp_prompts():
 
 # Chat endpoint
 
+
 @app.post("/api/chat")
 async def chat(request: ChatRequest) -> ChatResponse:
     """Send a message to the LLM with MCP tools."""
@@ -242,8 +271,8 @@ async def chat(request: ChatRequest) -> ChatResponse:
                 "function": {
                     "name": tool.name,
                     "description": tool.description,
-                    "parameters": tool.input_schema
-                }
+                    "parameters": tool.input_schema,
+                },
             }
             for tool in tools
         ]
@@ -254,9 +283,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
 
         # Generate response
         result = await llm_provider.generate_with_tools(
-            prompt=request.message,
-            tools=formatted_tools,
-            timeout=30.0
+            prompt=request.message, tools=formatted_tools, timeout=30.0
         )
 
         # Execute tool calls if any
@@ -266,7 +293,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
                 mcp_tool_call = MCPToolCall(
                     name=tool_call["name"],
                     arguments=tool_call.get("arguments", {}),
-                    id=tool_call.get("id", "unknown")
+                    id=tool_call.get("id", "unknown"),
                 )
                 tool_result = await mcp_client.call_tool(mcp_tool_call)
 
@@ -277,7 +304,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
                     "id": tool_call.get("id", "unknown"),
                     "result": tool_result.content if not tool_result.is_error else None,
                     "error": tool_result.error_message if tool_result.is_error else None,
-                    "is_error": tool_result.is_error
+                    "is_error": tool_result.is_error,
                 }
                 tool_calls_with_results.append(tool_call_with_result)
 
@@ -287,29 +314,31 @@ async def chat(request: ChatRequest) -> ChatResponse:
         clean_response = result.response
         if tool_calls_with_results:
             # Remove lines that start with "Tool <name> executed" or "Tool <name> failed"
-            lines = clean_response.split('\n')
+            lines = clean_response.split("\n")
             filtered_lines = []
             skip_next = False
             for line in lines:
                 # Skip tool execution status lines
-                if line.strip().startswith('Tool ') and (' executed successfully' in line or ' failed' in line):
+                if line.strip().startswith("Tool ") and (
+                    " executed successfully" in line or " failed" in line
+                ):
                     skip_next = True
                     continue
                 # Skip the raw content line after tool execution
-                if skip_next and (line.strip().startswith('[') or line.strip().startswith('{')):
+                if skip_next and (line.strip().startswith("[") or line.strip().startswith("{")):
                     skip_next = False
                     continue
                 skip_next = False
                 filtered_lines.append(line)
 
-            clean_response = '\n'.join(filtered_lines).strip()
+            clean_response = "\n".join(filtered_lines).strip()
 
         return ChatResponse(
             response=clean_response,
             tool_calls=tool_calls_with_results,
             token_usage=result.token_usage,
             cost=result.cost,
-            duration=result.duration
+            duration=result.duration,
         )
 
     except Exception as e:
@@ -317,6 +346,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
 
 
 # Test file management
+
 
 @app.get("/api/tests")
 async def list_tests():
@@ -335,13 +365,15 @@ async def list_tests():
                 # Count tests
                 test_count = len(data.get("tests", [])) if "tests" in data else 1
 
-                test_files.append({
-                    "filename": file.name,
-                    "path": str(file),
-                    "test_count": test_count,
-                    "size": file.stat().st_size,
-                    "modified": file.stat().st_mtime
-                })
+                test_files.append(
+                    {
+                        "filename": file.name,
+                        "path": str(file),
+                        "test_count": test_count,
+                        "size": file.stat().st_size,
+                        "modified": file.stat().st_mtime,
+                    }
+                )
         except Exception as e:
             print(f"Error reading {file}: {e}")
 
@@ -361,11 +393,7 @@ async def get_test_file(filename: str):
         with open(file_path) as f:
             content = f.read()
 
-        return {
-            "filename": filename,
-            "content": content,
-            "path": str(file_path)
-        }
+        return {"filename": filename, "content": content, "path": str(file_path)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -388,13 +416,13 @@ async def create_test_file(request: TestFileCreate):
         raise HTTPException(status_code=400, detail=f"Invalid YAML: {str(e)}")
 
     try:
-        with open(file_path, 'w') as f:
+        with open(file_path, "w") as f:
             f.write(request.content)
 
         return {
             "message": "Test file created successfully",
             "filename": request.filename,
-            "path": str(file_path)
+            "path": str(file_path),
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -416,13 +444,13 @@ async def update_test_file(filename: str, request: TestFileUpdate):
         raise HTTPException(status_code=400, detail=f"Invalid YAML: {str(e)}")
 
     try:
-        with open(file_path, 'w') as f:
+        with open(file_path, "w") as f:
             f.write(request.content)
 
         return {
             "message": "Test file updated successfully",
             "filename": filename,
-            "path": str(file_path)
+            "path": str(file_path),
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -439,15 +467,13 @@ async def delete_test_file(filename: str):
 
     try:
         file_path.unlink()
-        return {
-            "message": "Test file deleted successfully",
-            "filename": filename
-        }
+        return {"message": "Test file deleted successfully", "filename": filename}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 # Test execution
+
 
 @app.post("/api/tests/run")
 async def run_tests(request: TestRunRequest):
@@ -481,7 +507,7 @@ async def run_tests(request: TestRunRequest):
             provider=provider,
             mcp_url=config.mcp_url,
             verbose=False,
-            hide_tool_output=True
+            hide_tool_output=True,
         )
 
         results = await runner.run_tests(test_cases)
@@ -493,9 +519,11 @@ async def run_tests(request: TestRunRequest):
                 "passed": sum(1 for r in results if r.passed),
                 "failed": sum(1 for r in results if not r.passed),
                 "total_cost": sum(r.cost for r in results),
-                "total_tokens": sum(r.token_usage.get("total", 0) for r in results if r.token_usage)
+                "total_tokens": sum(
+                    r.token_usage.get("total", 0) for r in results if r.token_usage
+                ),
             },
-            "results": [r.to_dict() for r in results]
+            "results": [r.to_dict() for r in results],
         }
 
     except Exception as e:
@@ -503,6 +531,7 @@ async def run_tests(request: TestRunRequest):
 
 
 # Eval endpoints
+
 
 @app.post("/api/eval/run")
 async def run_eval(request: EvalRunRequest):
@@ -521,12 +550,14 @@ async def run_eval(request: EvalRunRequest):
             print(f"[EVAL DEBUG] - is_error: {tool_call.get('is_error', False)}")
 
             # Create MCPToolResult from embedded result data
-            tool_results.append(MCPToolResult(
-                tool_call_id=tool_call.get("id", "unknown"),
-                content=tool_call.get("result"),
-                is_error=tool_call.get("is_error", False),
-                error_message=tool_call.get("error")
-            ))
+            tool_results.append(
+                MCPToolResult(
+                    tool_call_id=tool_call.get("id", "unknown"),
+                    content=tool_call.get("result"),
+                    is_error=tool_call.get("is_error", False),
+                    error_message=tool_call.get("error"),
+                )
+            )
 
         print(f"[EVAL DEBUG] Created {len(tool_results)} tool_results")
 
@@ -539,7 +570,7 @@ async def run_eval(request: EvalRunRequest):
             "metadata": {
                 "model": request.model or config.default_model,
                 "provider": request.provider or config.default_provider,
-            }
+            },
         }
 
         # Build evaluators based on actual tool calls
@@ -552,27 +583,27 @@ async def run_eval(request: EvalRunRequest):
             first_tool = request.tool_calls[0]
 
             # Check specific tool was called
-            default_evaluators.append({
-                "name": "was_mcp_tool_called",
-                "args": {"tool_name": first_tool.get("name")}
-            })
+            default_evaluators.append(
+                {"name": "was_mcp_tool_called", "args": {"tool_name": first_tool.get("name")}}
+            )
 
             # Check tool call count
-            default_evaluators.append({
-                "name": "tool_call_count",
-                "args": {"expected_count": len(request.tool_calls)}
-            })
+            default_evaluators.append(
+                {"name": "tool_call_count", "args": {"expected_count": len(request.tool_calls)}}
+            )
 
             # Validate parameters if present
             if first_tool.get("arguments") and len(first_tool.get("arguments")) > 0:
-                default_evaluators.append({
-                    "name": "tool_called_with_parameters",
-                    "args": {
-                        "tool_name": first_tool.get("name"),
-                        "parameters": first_tool.get("arguments"),
-                        "partial_match": True
+                default_evaluators.append(
+                    {
+                        "name": "tool_called_with_parameters",
+                        "args": {
+                            "tool_name": first_tool.get("name"),
+                            "parameters": first_tool.get("arguments"),
+                            "partial_match": True,
+                        },
                     }
-                })
+                )
         else:
             # No tools called - just check if any tool was called
             default_evaluators.append({"name": "was_mcp_tool_called"})
@@ -587,26 +618,30 @@ async def run_eval(request: EvalRunRequest):
                 evaluator = create_evaluator(eval_config["name"], **eval_config.get("args", {}))
                 eval_result = evaluator.evaluate(context)
 
-                evaluations.append({
-                    "evaluator": evaluator.name,
-                    "passed": eval_result.passed,
-                    "score": eval_result.score,
-                    "reason": eval_result.reason,
-                    "details": eval_result.details
-                })
+                evaluations.append(
+                    {
+                        "evaluator": evaluator.name,
+                        "passed": eval_result.passed,
+                        "score": eval_result.score,
+                        "reason": eval_result.reason,
+                        "details": eval_result.details,
+                    }
+                )
 
                 if not eval_result.passed:
                     all_passed = False
                 total_score += eval_result.score
             except Exception as e:
                 # If evaluator fails, mark it as failed but continue
-                evaluations.append({
-                    "evaluator": eval_config["name"],
-                    "passed": False,
-                    "score": 0.0,
-                    "reason": f"Evaluator error: {str(e)}",
-                    "details": None
-                })
+                evaluations.append(
+                    {
+                        "evaluator": eval_config["name"],
+                        "passed": False,
+                        "score": 0.0,
+                        "reason": f"Evaluator error: {str(e)}",
+                        "details": None,
+                    }
+                )
                 all_passed = False
 
         avg_score = total_score / len(default_evaluators) if default_evaluators else 0.0
@@ -615,7 +650,7 @@ async def run_eval(request: EvalRunRequest):
             "passed": all_passed,
             "score": avg_score,
             "reason": "All evaluators passed" if all_passed else "Some evaluators failed",
-            "evaluations": evaluations
+            "evaluations": evaluations,
         }
 
     except Exception as e:

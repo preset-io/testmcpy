@@ -3,16 +3,15 @@ Test runner for executing MCP test cases with LLMs.
 """
 
 import asyncio
-import time
-from typing import Dict, List, Any, Optional
-from dataclasses import dataclass, asdict, field
 import json
-import re
+import time
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
+from typing import Any
 
-from .mcp_client import MCPClient, MCPToolCall, MCPToolResult
+from ..evals.base_evaluators import BaseEvaluator, create_evaluator
 from .llm_integration import LLMProvider, create_llm_provider
-from ..evals.base_evaluators import BaseEvaluator, EvalResult, create_evaluator
+from .mcp_client import MCPClient, MCPToolCall
 
 
 class RateLimitTracker:
@@ -27,7 +26,9 @@ class RateLimitTracker:
         self.token_usage_history.append((datetime.now(), tokens))
         # Clean up old entries (older than 1 minute)
         cutoff = datetime.now() - timedelta(minutes=1)
-        self.token_usage_history = [(ts, tokens) for ts, tokens in self.token_usage_history if ts > cutoff]
+        self.token_usage_history = [
+            (ts, tokens) for ts, tokens in self.token_usage_history if ts > cutoff
+        ]
 
     def get_current_usage(self) -> int:
         """Get token usage in the last minute."""
@@ -64,15 +65,16 @@ class RateLimitTracker:
 @dataclass
 class TestCase:
     """Represents a single test case."""
+
     name: str
     prompt: str
-    evaluators: List[Dict[str, Any]]
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    expected_tools: Optional[List[str]] = None
+    evaluators: list[dict[str, Any]]
+    metadata: dict[str, Any] = field(default_factory=dict)
+    expected_tools: list[str] | None = None
     timeout: float = 30.0
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "TestCase":
+    def from_dict(cls, data: dict[str, Any]) -> "TestCase":
         """Create TestCase from dictionary."""
         return cls(
             name=data["name"],
@@ -80,27 +82,28 @@ class TestCase:
             evaluators=data.get("evaluators", []),
             metadata=data.get("metadata", {}),
             expected_tools=data.get("expected_tools"),
-            timeout=data.get("timeout", 30.0)
+            timeout=data.get("timeout", 30.0),
         )
 
 
 @dataclass
 class TestResult:
     """Result from running a test case."""
+
     test_name: str
     passed: bool
     score: float
     duration: float
-    reason: Optional[str] = None
-    tool_calls: List[Dict[str, Any]] = field(default_factory=list)
-    tool_results: List[Dict[str, Any]] = field(default_factory=list)
-    response: Optional[str] = None
-    evaluations: List[Dict[str, Any]] = field(default_factory=list)
+    reason: str | None = None
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    tool_results: list[dict[str, Any]] = field(default_factory=list)
+    response: str | None = None
+    evaluations: list[dict[str, Any]] = field(default_factory=list)
     cost: float = 0.0
-    token_usage: Optional[Dict[str, int]] = None
-    error: Optional[str] = None
+    token_usage: dict[str, int] | None = None
+    error: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return asdict(self)
 
@@ -112,37 +115,37 @@ class TestRunner:
         self,
         model: str,
         provider: str = "ollama",
-        mcp_url: Optional[str] = None,
+        mcp_url: str | None = None,
         verbose: bool = False,
-        hide_tool_output: bool = False
+        hide_tool_output: bool = False,
     ):
         self.model = model
         self.provider = provider
         # Use MCP_URL from environment if not provided
         if mcp_url is None:
             import os
+
             mcp_url = os.environ.get("MCP_URL", "http://localhost:5008/mcp/")
         self.mcp_url = mcp_url
         self.verbose = verbose
         self.hide_tool_output = hide_tool_output
-        self.llm_provider: Optional[LLMProvider] = None
+        self.llm_provider: LLMProvider | None = None
         self.rate_limiter = RateLimitTracker()
-        self.mcp_client: Optional[MCPClient] = None
+        self.mcp_client: MCPClient | None = None
 
     async def initialize(self):
         """Initialize LLM provider and MCP client."""
         if not self.llm_provider:
-            self.llm_provider = create_llm_provider(
-                provider=self.provider,
-                model=self.model
-            )
+            self.llm_provider = create_llm_provider(provider=self.provider, model=self.model)
             await self.llm_provider.initialize()
 
         if not self.mcp_client:
             self.mcp_client = MCPClient(self.mcp_url)
             await self.mcp_client.initialize()
 
-    async def _call_llm_with_rate_limiting(self, prompt: str, tools: List[Dict], timeout: float, max_retries: int = 3):
+    async def _call_llm_with_rate_limiting(
+        self, prompt: str, tools: list[dict], timeout: float, max_retries: int = 3
+    ):
         """Call LLM with intelligent rate limiting and retry logic."""
         # Conservative token estimation - we know cache tokens are ~46K from previous runs
         # Use fixed conservative estimates to avoid 429 errors
@@ -151,7 +154,9 @@ class TestRunner:
         estimated_tokens = estimated_request_tokens + estimated_cache_tokens
 
         if self.verbose:
-            print(f"  Token estimation: {estimated_request_tokens} request + {estimated_cache_tokens} cache = {estimated_tokens} total")
+            print(
+                f"  Token estimation: {estimated_request_tokens} request + {estimated_cache_tokens} cache = {estimated_tokens} total"
+            )
 
         total_wait_time = 0.0  # Track wait time separately
 
@@ -161,15 +166,15 @@ class TestRunner:
                 wait_time = self.rate_limiter.calculate_wait_time(estimated_tokens)
                 if wait_time > 0:
                     if self.verbose:
-                        print(f"  Rate limit protection: waiting {wait_time:.1f}s (current usage: {self.rate_limiter.get_current_usage():,} tokens/min)")
+                        print(
+                            f"  Rate limit protection: waiting {wait_time:.1f}s (current usage: {self.rate_limiter.get_current_usage():,} tokens/min)"
+                        )
                     await asyncio.sleep(wait_time)
                     total_wait_time += wait_time
 
                 # Make the LLM call
                 llm_result = await self.llm_provider.generate_with_tools(
-                    prompt=prompt,
-                    tools=tools,
-                    timeout=timeout
+                    prompt=prompt, tools=tools, timeout=timeout
                 )
 
                 # Record successful token usage - include cache tokens for rate limiting
@@ -187,7 +192,9 @@ class TestRunner:
                     if self.verbose:
                         charged = llm_result.token_usage.get("total", 0)
                         cached = llm_result.token_usage.get("cache_read", 0)
-                        print(f"  Rate limit tracking: {charged} charged + {cached} cached = {rate_limit_tokens} total tokens")
+                        print(
+                            f"  Rate limit tracking: {charged} charged + {cached} cached = {rate_limit_tokens} total tokens"
+                        )
                 else:
                     # Fallback to estimate
                     self.rate_limiter.add_usage(estimated_tokens)
@@ -203,7 +210,9 @@ class TestRunner:
                     if attempt < max_retries - 1:
                         retry_wait_time = 60 + (attempt * 30)  # Progressive backoff: 60s, 90s, 120s
                         if self.verbose:
-                            print(f"  Rate limit hit (attempt {attempt + 1}/{max_retries}). Waiting {retry_wait_time}s before retry...")
+                            print(
+                                f"  Rate limit hit (attempt {attempt + 1}/{max_retries}). Waiting {retry_wait_time}s before retry..."
+                            )
                         await asyncio.sleep(retry_wait_time)
                         total_wait_time += retry_wait_time
                         continue
@@ -236,8 +245,8 @@ class TestRunner:
                     "function": {
                         "name": tool.name,
                         "description": tool.description,
-                        "parameters": tool.input_schema
-                    }
+                        "parameters": tool.input_schema,
+                    },
                 }
                 for tool in mcp_tools
             ]
@@ -251,23 +260,21 @@ class TestRunner:
 
             # Get LLM response with tool calls (with rate limiting)
             llm_result = await self._call_llm_with_rate_limiting(
-                prompt=test_case.prompt,
-                tools=formatted_tools,
-                timeout=test_case.timeout
+                prompt=test_case.prompt, tools=formatted_tools, timeout=test_case.timeout
             )
 
             # Show requested tool calls before executing them
             if self.verbose and not self.hide_tool_output and llm_result.tool_calls:
                 print(f"  LLM requested {len(llm_result.tool_calls)} tool call(s):")
                 for i, tool_call in enumerate(llm_result.tool_calls, 1):
-                    name = tool_call.get('name', 'unknown')
-                    args = tool_call.get('arguments', {})
+                    name = tool_call.get("name", "unknown")
+                    args = tool_call.get("arguments", {})
                     # Pretty print arguments as JSON
                     if args:
                         args_json = json.dumps(args, indent=6)
                         print(f"    {i}. {name}(")
                         print(f"      {args_json}")
-                        print(f"    )")
+                        print("    )")
                     else:
                         print(f"    {i}. {name}()")
 
@@ -275,11 +282,10 @@ class TestRunner:
             tool_results = []
             if llm_result.tool_calls:
                 if self.verbose and not self.hide_tool_output:
-                    print(f"  Executing tool calls...")
+                    print("  Executing tool calls...")
                 for tool_call in llm_result.tool_calls:
                     mcp_tool_call = MCPToolCall(
-                        name=tool_call["name"],
-                        arguments=tool_call.get("arguments", {})
+                        name=tool_call["name"], arguments=tool_call.get("arguments", {})
                     )
                     result = await self.mcp_client.call_tool(mcp_tool_call)
                     tool_results.append(result)
@@ -293,9 +299,11 @@ class TestRunner:
                 "metadata": {
                     "duration_seconds": time.time() - start_time,
                     "model": self.model,
-                    "total_tokens": llm_result.token_usage.get("total", 0) if llm_result.token_usage else 0,
-                    "cost": llm_result.cost
-                }
+                    "total_tokens": llm_result.token_usage.get("total", 0)
+                    if llm_result.token_usage
+                    else 0,
+                    "cost": llm_result.cost,
+                },
             }
 
             # Run evaluators
@@ -307,17 +315,21 @@ class TestRunner:
                 evaluator = self._create_evaluator(eval_config)
                 eval_result = evaluator.evaluate(context)
 
-                evaluations.append({
-                    "evaluator": evaluator.name,
-                    "passed": eval_result.passed,
-                    "score": eval_result.score,
-                    "reason": eval_result.reason,
-                    "details": eval_result.details
-                })
+                evaluations.append(
+                    {
+                        "evaluator": evaluator.name,
+                        "passed": eval_result.passed,
+                        "score": eval_result.score,
+                        "reason": eval_result.reason,
+                        "details": eval_result.details,
+                    }
+                )
 
                 if self.verbose:
                     status = "PASS" if eval_result.passed else "FAIL"
-                    print(f"  Evaluator {evaluator.name}: {status} (score: {eval_result.score:.2f})")
+                    print(
+                        f"  Evaluator {evaluator.name}: {status} (score: {eval_result.score:.2f})"
+                    )
                     print(f"    Reason: {eval_result.reason}")
                     if eval_result.details:
                         print(f"    Details: {eval_result.details}")
@@ -328,8 +340,8 @@ class TestRunner:
 
             if self.verbose and not self.hide_tool_output:
                 # Display LLM response
-                print(f"  LLM Response:")
-                response_lines = llm_result.response.split('\n')
+                print("  LLM Response:")
+                response_lines = llm_result.response.split("\n")
                 for line in response_lines:
                     print(f"    {line}")
 
@@ -337,12 +349,14 @@ class TestRunner:
                 if llm_result.tool_calls:
                     print(f"  Tool Calls: {len(llm_result.tool_calls)}")
                     for i, tool_call in enumerate(llm_result.tool_calls, 1):
-                        print(f"    {i}. {tool_call.get('name', 'unknown')}({tool_call.get('arguments', {})})")
+                        print(
+                            f"    {i}. {tool_call.get('name', 'unknown')}({tool_call.get('arguments', {})})"
+                        )
 
                 # Display token usage and cost information
                 tokens = llm_result.token_usage
                 if tokens:
-                    print(f"  Token Usage:")
+                    print("  Token Usage:")
                     if "prompt" in tokens:
                         print(f"    Input: {tokens['prompt']} tokens")
                     if "completion" in tokens:
@@ -361,11 +375,13 @@ class TestRunner:
 
             # Calculate actual execution duration (excluding wait times)
             total_duration = time.time() - start_time
-            wait_time = getattr(llm_result, 'wait_time', 0.0)
+            wait_time = getattr(llm_result, "wait_time", 0.0)
             actual_duration = max(0.0, total_duration - wait_time)  # Ensure non-negative
 
             if self.verbose and wait_time > 0:
-                print(f"  Timing: {actual_duration:.2f}s execution + {wait_time:.2f}s wait = {total_duration:.2f}s total")
+                print(
+                    f"  Timing: {actual_duration:.2f}s execution + {wait_time:.2f}s wait = {total_duration:.2f}s total"
+                )
 
             return TestResult(
                 test_name=test_case.name,
@@ -378,7 +394,7 @@ class TestRunner:
                 response=llm_result.response,
                 evaluations=evaluations,
                 cost=llm_result.cost,
-                token_usage=llm_result.token_usage
+                token_usage=llm_result.token_usage,
             )
 
         except Exception as e:
@@ -386,7 +402,7 @@ class TestRunner:
             total_duration = time.time() - start_time
             # Try to get wait time from any partial LLM result, default to 0
             wait_time = 0.0
-            if 'llm_result' in locals() and hasattr(llm_result, 'wait_time'):
+            if "llm_result" in locals() and hasattr(llm_result, "wait_time"):
                 wait_time = llm_result.wait_time
             actual_duration = max(0.0, total_duration - wait_time)
 
@@ -396,10 +412,10 @@ class TestRunner:
                 score=0.0,
                 duration=actual_duration,
                 reason=f"Test failed with error: {str(e)}",
-                error=str(e)
+                error=str(e),
             )
 
-    async def run_tests(self, test_cases: List[TestCase]) -> List[TestResult]:
+    async def run_tests(self, test_cases: list[TestCase]) -> list[TestResult]:
         """Run multiple test cases."""
         results = []
 
@@ -412,13 +428,17 @@ class TestRunner:
                 results.append(result)
 
                 if self.verbose:
-                    print(f"Test {test_case.name}: {'PASS' if result.passed else 'FAIL'} (score: {result.score:.2f})")
+                    print(
+                        f"Test {test_case.name}: {'PASS' if result.passed else 'FAIL'} (score: {result.score:.2f})"
+                    )
 
                 # Add minimum delay between tests to prevent rate limiting bursts
                 if i < len(test_cases) - 1:  # Don't wait after the last test
                     min_delay = 15  # 15 seconds minimum between tests
                     if self.verbose:
-                        print(f"  Waiting {min_delay}s before next test to prevent rate limiting...")
+                        print(
+                            f"  Waiting {min_delay}s before next test to prevent rate limiting..."
+                        )
                     await asyncio.sleep(min_delay)
 
         finally:
@@ -426,29 +446,33 @@ class TestRunner:
 
         return results
 
-    async def _run_test_with_retry(self, test_case: TestCase, max_test_retries: int = 2) -> TestResult:
+    async def _run_test_with_retry(
+        self, test_case: TestCase, max_test_retries: int = 2
+    ) -> TestResult:
         """Run a test with retry logic for rate limit failures."""
         for attempt in range(max_test_retries + 1):
             result = await self.run_test(test_case)
 
             # Check if this was a rate limit failure
             is_rate_limit_failure = (
-                not result.passed and
-                result.error and
-                self.rate_limiter.is_rate_limit_error(result.error)
+                not result.passed
+                and result.error
+                and self.rate_limiter.is_rate_limit_error(result.error)
             )
 
             # Also check if the response contains rate limit error
             is_rate_limit_response = (
-                not result.passed and
-                result.response and
-                ("rate_limit" in result.response.lower() or "429" in result.response)
+                not result.passed
+                and result.response
+                and ("rate_limit" in result.response.lower() or "429" in result.response)
             )
 
             if (is_rate_limit_failure or is_rate_limit_response) and attempt < max_test_retries:
                 retry_wait = 120 + (attempt * 60)  # 120s, 180s, etc.
                 if self.verbose:
-                    print(f"  Test failed due to rate limiting (attempt {attempt + 1}/{max_test_retries + 1})")
+                    print(
+                        f"  Test failed due to rate limiting (attempt {attempt + 1}/{max_test_retries + 1})"
+                    )
                     print(f"  Waiting {retry_wait}s before retrying test...")
                 await asyncio.sleep(retry_wait)
                 continue
@@ -458,7 +482,7 @@ class TestRunner:
 
         return result
 
-    def _create_evaluator(self, eval_config: Dict[str, Any]) -> BaseEvaluator:
+    def _create_evaluator(self, eval_config: dict[str, Any]) -> BaseEvaluator:
         """Create evaluator from configuration."""
         if isinstance(eval_config, str):
             # Simple evaluator name
@@ -479,22 +503,22 @@ class TestRunner:
 
 # Batch test runner for running multiple test suites
 
+
 class BatchTestRunner:
     """Run multiple test suites with different models."""
 
-    def __init__(self, mcp_url: Optional[str] = None):
+    def __init__(self, mcp_url: str | None = None):
         # Use MCP_URL from environment if not provided
         if mcp_url is None:
             import os
+
             mcp_url = os.environ.get("MCP_URL", "http://localhost:5008/mcp/")
         self.mcp_url = mcp_url
-        self.results: Dict[str, List[TestResult]] = {}
+        self.results: dict[str, list[TestResult]] = {}
 
     async def run_suite_with_models(
-        self,
-        test_cases: List[TestCase],
-        models: List[Dict[str, str]]
-    ) -> Dict[str, List[TestResult]]:
+        self, test_cases: list[TestCase], models: list[dict[str, str]]
+    ) -> dict[str, list[TestResult]]:
         """
         Run test suite with multiple models.
 
@@ -512,24 +536,20 @@ class BatchTestRunner:
 
             print(f"\nRunning tests with {model_key}")
 
-            runner = TestRunner(
-                model=model,
-                provider=provider,
-                mcp_url=self.mcp_url
-            )
+            runner = TestRunner(model=model, provider=provider, mcp_url=self.mcp_url)
 
             results = await runner.run_tests(test_cases)
             self.results[model_key] = results
 
         return self.results
 
-    def generate_comparison_report(self) -> Dict[str, Any]:
+    def generate_comparison_report(self) -> dict[str, Any]:
         """Generate comparison report across all models."""
         report = {
             "models": list(self.results.keys()),
             "test_count": len(next(iter(self.results.values()))) if self.results else 0,
             "model_summaries": {},
-            "test_comparisons": {}
+            "test_comparisons": {},
         }
 
         # Generate per-model summaries
@@ -545,7 +565,7 @@ class BatchTestRunner:
                 "total": total,
                 "success_rate": passed / total if total > 0 else 0,
                 "avg_score": avg_score,
-                "avg_duration": avg_duration
+                "avg_duration": avg_duration,
             }
 
         # Generate per-test comparisons
@@ -561,7 +581,7 @@ class BatchTestRunner:
                         report["test_comparisons"][test_name][model] = {
                             "passed": result.passed,
                             "score": result.score,
-                            "duration": result.duration
+                            "duration": result.duration,
                         }
 
         return report

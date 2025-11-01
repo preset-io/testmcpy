@@ -11,22 +11,23 @@ Priority order (highest to lowest):
 """
 
 import os
-import json
 import time
 from pathlib import Path
-from typing import Optional, Dict, Any
-from dotenv import load_dotenv
+from typing import Any
+
 import httpx
 
 # Import profile configuration
 try:
-    from .mcp_profiles import load_profile, MCPProfile, list_available_profiles
+    from .mcp_profiles import MCPProfile, list_available_profiles, load_profile
 except ImportError:
     # Fallback if mcp_profiles not available
     def load_profile(profile_id=None):
         return None
+
     def list_available_profiles():
         return []
+
     MCPProfile = None
 
 
@@ -61,15 +62,15 @@ class Config:
         "MCP_AUTH_API_SECRET",
     }
 
-    def __init__(self, profile: Optional[str] = None):
-        self._config: Dict[str, Any] = {}
-        self._sources: Dict[str, str] = {}
-        self._cached_token: Optional[str] = None
-        self._token_expiry: Optional[float] = None
-        self._profile: Optional[MCPProfile] = None
-        self._profile_id: Optional[str] = profile
+    def __init__(self, profile: str | None = None):
+        self._config: dict[str, Any] = {}
+        self._sources: dict[str, str] = {}
+        self._cached_token: str | None = None
+        self._token_expiry: float | None = None
+        self._profile: MCPProfile | None = None
+        self._profile_id: str | None = profile
         self._load_config()
-    
+
     def _load_config(self):
         """Load configuration from all sources in priority order."""
 
@@ -100,7 +101,7 @@ class Config:
                 self._config[key] = default_value
                 self._sources[key] = "Default"
 
-    def _load_profile(self, profile_id: Optional[str] = None):
+    def _load_profile(self, profile_id: str | None = None):
         """Load configuration from MCP profile."""
         try:
             profile = load_profile(profile_id)
@@ -136,8 +137,9 @@ class Config:
 
         except Exception as e:
             import warnings
-            warnings.warn(f"Failed to load MCP profile '{profile_id}': {e}")
-    
+
+            warnings.warn(f"Failed to load MCP profile '{profile_id}': {e}", stacklevel=2)
+
     def _load_env_file(self, file_path: Path, source_name: str):
         """Load configuration from an env file."""
         try:
@@ -145,61 +147,64 @@ class Config:
                 for line in f:
                     line = line.strip()
                     # Skip comments and empty lines
-                    if not line or line.startswith('#'):
+                    if not line or line.startswith("#"):
                         continue
-                    
+
                     # Parse KEY=VALUE
-                    if '=' in line:
-                        key, value = line.split('=', 1)
+                    if "=" in line:
+                        key, value = line.split("=", 1)
                         key = key.strip()
                         value = value.strip()
-                        
+
                         # Remove quotes if present
                         if value.startswith('"') and value.endswith('"'):
                             value = value[1:-1]
                         elif value.startswith("'") and value.endswith("'"):
                             value = value[1:-1]
-                        
+
                         # Only override if key is relevant and not already set from higher priority
                         if key in self.GENERIC_KEYS | self.TESTMCPY_KEYS:
                             # For generic keys, only override if not from environment
                             if key in self.GENERIC_KEYS:
-                                if key not in self._config or self._sources.get(key) != "Environment":
+                                if (
+                                    key not in self._config
+                                    or self._sources.get(key) != "Environment"
+                                ):
                                     self._config[key] = value
                                     self._sources[key] = source_name
                             # For testmcpy-specific keys, always override
                             elif key in self.TESTMCPY_KEYS:
                                 self._config[key] = value
                                 self._sources[key] = source_name
-        except Exception as e:
+        except Exception:
             # Silently ignore errors reading config files
             pass
-    
-    def get(self, key: str, default: Optional[str] = None) -> Optional[str]:
+
+    def get(self, key: str, default: str | None = None) -> str | None:
         """Get a configuration value."""
         return self._config.get(key, default)
-    
+
     def get_source(self, key: str) -> str:
         """Get the source of a configuration value."""
         return self._sources.get(key, "Not set")
-    
-    def get_all(self) -> Dict[str, Any]:
+
+    def get_all(self) -> dict[str, Any]:
         """Get all configuration values."""
         return self._config.copy()
-    
-    def get_all_with_sources(self) -> Dict[str, tuple]:
+
+    def get_all_with_sources(self) -> dict[str, tuple]:
         """Get all configuration values with their sources."""
         result = {}
         for key in self._config:
             result[key] = (self._config[key], self._sources.get(key, "Unknown"))
         return result
-    
+
     @property
     def mcp_url(self) -> str:
         """Get MCP URL."""
         return self.get("MCP_URL", self.DEFAULTS["MCP_URL"])
-    
-    def _fetch_jwt_token(self) -> Optional[str]:
+
+    def _fetch_jwt_token(self) -> str | None:
         """Fetch JWT token from MCP auth API."""
         api_url = self.get("MCP_AUTH_API_URL")
         api_token = self.get("MCP_AUTH_API_TOKEN")
@@ -211,15 +216,9 @@ class Config:
         try:
             response = httpx.post(
                 api_url,
-                headers={
-                    "Content-Type": "application/json",
-                    "Accept": "application/json"
-                },
-                json={
-                    "name": api_token,
-                    "secret": api_secret
-                },
-                timeout=10.0
+                headers={"Content-Type": "application/json", "Accept": "application/json"},
+                json={"name": api_token, "secret": api_secret},
+                timeout=10.0,
             )
             response.raise_for_status()
             data = response.json()
@@ -241,11 +240,12 @@ class Config:
         except Exception as e:
             # Log error but don't fail - fall back to static token
             import warnings
-            warnings.warn(f"Failed to fetch JWT token: {e}")
+
+            warnings.warn(f"Failed to fetch JWT token: {e}", stacklevel=2)
             return None
 
     @property
-    def mcp_auth_token(self) -> Optional[str]:
+    def mcp_auth_token(self) -> str | None:
         """
         Get MCP auth token with the following priority:
         1. Dynamically generated JWT from MCP_AUTH_API_URL if configured
@@ -254,11 +254,13 @@ class Config:
         For dynamic tokens, caches the JWT for 50 minutes to avoid excessive API calls.
         """
         # Check if dynamic JWT credentials are configured
-        has_dynamic_config = all([
-            self.get("MCP_AUTH_API_URL"),
-            self.get("MCP_AUTH_API_TOKEN"),
-            self.get("MCP_AUTH_API_SECRET")
-        ])
+        has_dynamic_config = all(
+            [
+                self.get("MCP_AUTH_API_URL"),
+                self.get("MCP_AUTH_API_TOKEN"),
+                self.get("MCP_AUTH_API_SECRET"),
+            ]
+        )
 
         # If dynamic JWT is configured, use it (with caching)
         if has_dynamic_config:
@@ -279,30 +281,30 @@ class Config:
             return static_token
 
         return None
-    
+
     @property
-    def default_model(self) -> Optional[str]:
+    def default_model(self) -> str | None:
         """Get default model."""
         return self.get("DEFAULT_MODEL")
 
     @property
-    def default_provider(self) -> Optional[str]:
+    def default_provider(self) -> str | None:
         """Get default provider."""
         return self.get("DEFAULT_PROVIDER")
-    
+
     @property
-    def anthropic_api_key(self) -> Optional[str]:
+    def anthropic_api_key(self) -> str | None:
         """Get Anthropic API key."""
         return self.get("ANTHROPIC_API_KEY")
-    
+
     @property
-    def openai_api_key(self) -> Optional[str]:
+    def openai_api_key(self) -> str | None:
         """Get OpenAI API key."""
         return self.get("OPENAI_API_KEY")
 
 
 # Global config instance
-_config: Optional[Config] = None
+_config: Config | None = None
 
 
 def get_config() -> Config:

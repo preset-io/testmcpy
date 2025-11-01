@@ -7,31 +7,34 @@ profiles (dev, staging, prod, etc.) and environment variable substitution.
 
 import os
 import re
-from pathlib import Path
-from typing import Dict, Any, Optional, List
-import yaml
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+import yaml
 
 
 @dataclass
 class AuthConfig:
     """Authentication configuration for MCP service."""
+
     auth_type: str  # bearer, oauth, jwt, none
-    token: Optional[str] = None
+    token: str | None = None
     # JWT fields
-    api_url: Optional[str] = None
-    api_token: Optional[str] = None
-    api_secret: Optional[str] = None
+    api_url: str | None = None
+    api_token: str | None = None
+    api_secret: str | None = None
     # OAuth fields
-    client_id: Optional[str] = None
-    client_secret: Optional[str] = None
-    token_url: Optional[str] = None
-    scopes: List[str] = field(default_factory=list)
+    client_id: str | None = None
+    client_secret: str | None = None
+    token_url: str | None = None
+    scopes: list[str] = field(default_factory=list)
 
 
 @dataclass
 class MCPProfile:
     """MCP Service profile configuration."""
+
     name: str
     profile_id: str
     mcp_url: str
@@ -43,7 +46,7 @@ class MCPProfile:
 class MCPProfileConfig:
     """Manages MCP service profile configurations."""
 
-    def __init__(self, config_path: Optional[str] = None):
+    def __init__(self, config_path: str | None = None):
         """
         Initialize profile configuration.
 
@@ -52,14 +55,14 @@ class MCPProfileConfig:
                         in current directory or parent directories.
         """
         self.config_path = self._find_config_file(config_path)
-        self.profiles: Dict[str, MCPProfile] = {}
-        self.default_profile: Optional[str] = None
-        self.global_config: Dict[str, Any] = {}
+        self.profiles: dict[str, MCPProfile] = {}
+        self.default_profile: str | None = None
+        self.global_config: dict[str, Any] = {}
 
         if self.config_path:
             self._load_config()
 
-    def _find_config_file(self, config_path: Optional[str] = None) -> Optional[Path]:
+    def _find_config_file(self, config_path: str | None = None) -> Path | None:
         """
         Find MCP services configuration file.
 
@@ -100,7 +103,7 @@ class MCPProfileConfig:
         """
         if isinstance(value, str):
             # Match ${VAR_NAME} or ${VAR_NAME:-default}
-            pattern = r'\$\{([^}:]+)(?::-([^}]*))?\}'
+            pattern = r"\$\{([^}:]+)(?::-([^}]*))?\}"
 
             def replace_var(match):
                 var_name = match.group(1)
@@ -146,7 +149,7 @@ class MCPProfileConfig:
         except Exception as e:
             print(f"Warning: Failed to load MCP profile config from {self.config_path}: {e}")
 
-    def _parse_profile(self, profile_id: str, data: Dict[str, Any]) -> MCPProfile:
+    def _parse_profile(self, profile_id: str, data: dict[str, Any]) -> MCPProfile:
         """Parse a single profile from configuration."""
         # Parse auth configuration
         auth_data = data.get("auth", {})
@@ -163,7 +166,7 @@ class MCPProfileConfig:
             client_id=auth_data.get("client_id"),
             client_secret=auth_data.get("client_secret"),
             token_url=auth_data.get("token_url"),
-            scopes=auth_data.get("scopes", [])
+            scopes=auth_data.get("scopes", []),
         )
 
         # Get timeout from profile or global config
@@ -171,7 +174,9 @@ class MCPProfileConfig:
 
         # Get rate limit from profile or global config
         rate_limit = data.get("rate_limit", self.global_config.get("rate_limit", {}))
-        rate_limit_rpm = rate_limit.get("requests_per_minute", 60) if isinstance(rate_limit, dict) else 60
+        rate_limit_rpm = (
+            rate_limit.get("requests_per_minute", 60) if isinstance(rate_limit, dict) else 60
+        )
 
         return MCPProfile(
             name=data.get("name", profile_id),
@@ -179,10 +184,10 @@ class MCPProfileConfig:
             mcp_url=data["mcp_url"],
             auth=auth,
             timeout=timeout,
-            rate_limit_rpm=rate_limit_rpm
+            rate_limit_rpm=rate_limit_rpm,
         )
 
-    def get_profile(self, profile_id: Optional[str] = None) -> Optional[MCPProfile]:
+    def get_profile(self, profile_id: str | None = None) -> MCPProfile | None:
         """
         Get a profile by ID.
 
@@ -197,7 +202,7 @@ class MCPProfileConfig:
 
         return self.profiles.get(profile_id)
 
-    def list_profiles(self) -> List[str]:
+    def list_profiles(self) -> list[str]:
         """Get list of available profile IDs."""
         return list(self.profiles.keys())
 
@@ -207,7 +212,7 @@ class MCPProfileConfig:
 
 
 # Global instance
-_profile_config: Optional[MCPProfileConfig] = None
+_profile_config: MCPProfileConfig | None = None
 
 
 def get_profile_config() -> MCPProfileConfig:
@@ -218,7 +223,7 @@ def get_profile_config() -> MCPProfileConfig:
     return _profile_config
 
 
-def load_profile(profile_id: Optional[str] = None) -> Optional[MCPProfile]:
+def load_profile(profile_id: str | None = None) -> MCPProfile | None:
     """
     Load an MCP profile by ID.
 
@@ -232,7 +237,7 @@ def load_profile(profile_id: Optional[str] = None) -> Optional[MCPProfile]:
     return config.get_profile(profile_id)
 
 
-def list_available_profiles() -> List[str]:
+def list_available_profiles() -> list[str]:
     """Get list of available profile IDs."""
     config = get_profile_config()
     return config.list_profiles()

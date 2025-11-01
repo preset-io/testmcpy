@@ -13,17 +13,16 @@ Run with: python research/claude_sdk_working_poc.py
 import asyncio
 import os
 import time
-import json
 from pathlib import Path
 
-from claude_agent_sdk import query, ClaudeSDKClient, ClaudeAgentOptions, tool, create_sdk_mcp_server
+from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, create_sdk_mcp_server, query, tool
 
 
 async def test_simple_query():
     """Test 1: Simple query() usage without tools."""
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("TEST 1: Simple query() - One-shot question")
-    print("="*80)
+    print("=" * 80)
 
     start = time.time()
 
@@ -37,7 +36,7 @@ async def test_simple_query():
         async for message in query(prompt=prompt):
             print(f"  Message type: {type(message).__name__}")
             # Try to extract text content
-            if hasattr(message, 'content'):
+            if hasattr(message, "content"):
                 response_text += str(message.content)
             print(f"  Content: {message}")
 
@@ -47,14 +46,15 @@ async def test_simple_query():
     except Exception as e:
         print(f"❌ Test failed: {e}")
         import traceback
+
         traceback.print_exc()
 
 
 async def test_query_with_options():
     """Test 2: query() with ClaudeAgentOptions."""
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("TEST 2: query() with options")
-    print("="*80)
+    print("=" * 80)
 
     start = time.time()
 
@@ -62,7 +62,7 @@ async def test_query_with_options():
         options = ClaudeAgentOptions(
             system_prompt="You are a helpful assistant. Be concise.",
             permission_mode="bypassPermissions",  # Skip permission prompts
-            cwd=Path.cwd()
+            cwd=Path.cwd(),
         )
 
         prompt = "List 3 programming languages. One per line."
@@ -80,53 +80,39 @@ async def test_query_with_options():
     except Exception as e:
         print(f"❌ Test failed: {e}")
         import traceback
+
         traceback.print_exc()
 
 
 async def test_sdk_mcp_server():
     """Test 3: Creating SDK MCP server with custom tools."""
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("TEST 3: SDK MCP Server with custom tools")
-    print("="*80)
+    print("=" * 80)
 
     try:
         # Define a simple tool
         @tool("get_time", "Get the current time", {})
         async def get_time(args):
             import datetime
+
             current_time = datetime.datetime.now().isoformat()
-            return {
-                "content": [{
-                    "type": "text",
-                    "text": f"Current time is: {current_time}"
-                }]
-            }
+            return {"content": [{"type": "text", "text": f"Current time is: {current_time}"}]}
 
         @tool("add", "Add two numbers", {"a": float, "b": float})
         async def add_numbers(args):
             result = args["a"] + args["b"]
-            return {
-                "content": [{
-                    "type": "text",
-                    "text": f"The sum is: {result}"
-                }]
-            }
+            return {"content": [{"type": "text", "text": f"The sum is: {result}"}]}
 
         # Create SDK MCP server
-        server = create_sdk_mcp_server(
-            "test-tools",
-            [get_time, add_numbers]
-        )
+        server = create_sdk_mcp_server("test-tools", [get_time, add_numbers])
 
-        print(f"✅ Created SDK MCP server with tools: get_time, add")
+        print("✅ Created SDK MCP server with tools: get_time, add")
         print(f"   Server: {server}")
 
         # Now we can use this server in options
         options = ClaudeAgentOptions(
-            mcp_servers={
-                "test-tools": server
-            },
-            permission_mode="bypassPermissions"
+            mcp_servers={"test-tools": server}, permission_mode="bypassPermissions"
         )
 
         prompt = "What time is it? Also, what is 5 + 7?"
@@ -142,19 +128,19 @@ async def test_sdk_mcp_server():
     except Exception as e:
         print(f"❌ Test failed: {e}")
         import traceback
+
         traceback.print_exc()
 
 
 async def test_http_mcp_server():
     """Test 4: Connecting to HTTP MCP server (our existing service)."""
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("TEST 4: HTTP MCP Server Integration")
-    print("="*80)
+    print("=" * 80)
 
     try:
         # The SDK supports MCP servers via config
         # For HTTP MCP servers, we need McpHttpServerConfig
-        from claude_agent_sdk.types import McpHttpServerConfig
 
         mcp_url = os.environ.get("MCP_URL", "http://localhost:5008/mcp")
 
@@ -171,32 +157,28 @@ async def test_http_mcp_server():
     except Exception as e:
         print(f"❌ Test failed: {e}")
         import traceback
+
         traceback.print_exc()
 
 
 async def test_client_mode():
     """Test 5: ClaudeSDKClient for interactive conversations."""
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("TEST 5: ClaudeSDKClient - Interactive mode")
-    print("="*80)
+    print("=" * 80)
 
     try:
         # Create a simple tool for the client
         @tool("echo", "Echo back the input", {"text": str})
         async def echo_tool(args):
-            return {
-                "content": [{
-                    "type": "text",
-                    "text": f"Echo: {args['text']}"
-                }]
-            }
+            return {"content": [{"type": "text", "text": f"Echo: {args['text']}"}]}
 
         server = create_sdk_mcp_server("client-tools", [echo_tool])
 
         options = ClaudeAgentOptions(
             mcp_servers={"client-tools": server},
             permission_mode="bypassPermissions",
-            system_prompt="You are a helpful assistant."
+            system_prompt="You are a helpful assistant.",
         )
 
         client = ClaudeSDKClient(options=options)
@@ -215,14 +197,15 @@ async def test_client_mode():
     except Exception as e:
         print(f"❌ Test failed: {e}")
         import traceback
+
         traceback.print_exc()
 
 
 async def main():
     """Run all POC tests."""
-    print("\n" + "🔬" + "="*78 + "🔬")
+    print("\n" + "🔬" + "=" * 78 + "🔬")
     print("  CLAUDE AGENT SDK - Working Proof of Concept")
-    print("🔬" + "="*78 + "🔬\n")
+    print("🔬" + "=" * 78 + "🔬\n")
 
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     print(f"API Key: {'✅ Set' if api_key else '❌ Not set'}")
@@ -240,9 +223,9 @@ async def main():
     await test_http_mcp_server()
 
     # Summary
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("FINDINGS & RECOMMENDATIONS")
-    print("="*80 + "\n")
+    print("=" * 80 + "\n")
 
     print("✅ SDK Successfully Validated:")
     print("   1. query() function works for simple interactions")

@@ -8,24 +8,22 @@ running evaluation suites, and generating reports.
 
 import asyncio
 import json
-import os
 import logging
-from pathlib import Path
-from typing import Optional, List
+import os
 from enum import Enum
+from pathlib import Path
 
 import typer
-from rich.console import Console
-from rich.table import Table
-from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
-from rich.syntax import Syntax
-from rich import print as rprint
 import yaml
 from dotenv import load_dotenv
+from rich.console import Console
+from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.syntax import Syntax
+from rich.table import Table
 
-from testmcpy.config import get_config
 from testmcpy import __version__
+from testmcpy.config import get_config
 
 # Suppress MCP notification validation warnings
 logging.getLogger().setLevel(logging.ERROR)
@@ -58,7 +56,7 @@ def main(
         help="Show version and exit",
         callback=version_callback,
         is_eager=True,
-    )
+    ),
 ):
     """
     testmcpy - MCP Testing Framework
@@ -66,6 +64,7 @@ def main(
     Test and validate LLM tool calling capabilities with MCP services.
     """
     pass
+
 
 # Get config instance
 config = get_config()
@@ -76,6 +75,7 @@ DEFAULT_MCP_URL = config.mcp_url
 
 class OutputFormat(str, Enum):
     """Output format options."""
+
     yaml = "yaml"
     json = "json"
     table = "table"
@@ -83,6 +83,7 @@ class OutputFormat(str, Enum):
 
 class ModelProvider(str, Enum):
     """Supported model providers."""
+
     ollama = "ollama"
     openai = "openai"
     local = "local"
@@ -94,10 +95,16 @@ class ModelProvider(str, Enum):
 @app.command()
 def research(
     model: str = typer.Option(DEFAULT_MODEL, "--model", "-m", help="Model to test"),
-    provider: ModelProvider = typer.Option(DEFAULT_PROVIDER, "--provider", "-p", help="Model provider"),
-    mcp_url: Optional[str] = typer.Option(None, "--mcp-url", help="MCP service URL (overrides profile)"),
-    profile: Optional[str] = typer.Option(None, "--profile", help="MCP service profile from .mcp_services.yaml"),
-    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output file for results"),
+    provider: ModelProvider = typer.Option(
+        DEFAULT_PROVIDER, "--provider", "-p", help="Model provider"
+    ),
+    mcp_url: str | None = typer.Option(
+        None, "--mcp-url", help="MCP service URL (overrides profile)"
+    ),
+    profile: str | None = typer.Option(
+        None, "--profile", help="MCP service profile from .mcp_services.yaml"
+    ),
+    output: Path | None = typer.Option(None, "--output", "-o", help="Output file for results"),
     format: OutputFormat = typer.Option(OutputFormat.table, "--format", "-f", help="Output format"),
 ):
     """
@@ -108,20 +115,26 @@ def research(
     # Load config with profile if specified
     if profile:
         from testmcpy.config import Config
+
         cfg = Config(profile=profile)
         effective_mcp_url = mcp_url or cfg.mcp_url
     else:
         effective_mcp_url = mcp_url or DEFAULT_MCP_URL
 
-    console.print(Panel.fit(
-        "[bold cyan]MCP Testing Framework - Research Mode[/bold cyan]\n"
-        f"Testing {model} via {provider.value}",
-        border_style="cyan"
-    ))
+    console.print(
+        Panel.fit(
+            "[bold cyan]MCP Testing Framework - Research Mode[/bold cyan]\n"
+            f"Testing {model} via {provider.value}",
+            border_style="cyan",
+        )
+    )
 
     async def run_research():
         # Import here to avoid circular dependencies
-        from testmcpy.research.test_ollama_tools import OllamaToolTester, MCPServiceTester, TestResult
+        from testmcpy.research.test_ollama_tools import (
+            MCPServiceTester,
+            OllamaToolTester,
+        )
 
         # Test MCP connection
         console.print("\n[bold]Testing MCP Service[/bold]")
@@ -152,20 +165,22 @@ def research(
             tester = OllamaToolTester()
 
             # Define test tools
-            test_tools = [{
-                "type": "function",
-                "function": {
-                    "name": "get_chart_data",
-                    "description": "Get data for a specific chart",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "chart_id": {"type": "integer", "description": "Chart ID"}
+            test_tools = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "get_chart_data",
+                        "description": "Get data for a specific chart",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "chart_id": {"type": "integer", "description": "Chart ID"}
+                            },
+                            "required": ["chart_id"],
                         },
-                        "required": ["chart_id"]
-                    }
+                    },
                 }
-            }]
+            ]
 
             # Test prompt
             test_prompt = "Get the data for chart ID 42"
@@ -243,13 +258,21 @@ def research(
 def run(
     test_path: Path = typer.Argument(..., help="Path to test file or directory"),
     model: str = typer.Option(DEFAULT_MODEL, "--model", "-m", help="Model to use"),
-    provider: ModelProvider = typer.Option(DEFAULT_PROVIDER, "--provider", "-p", help="Model provider"),
-    mcp_url: Optional[str] = typer.Option(None, "--mcp-url", help="MCP service URL (overrides profile)"),
-    profile: Optional[str] = typer.Option(None, "--profile", help="MCP service profile from .mcp_services.yaml"),
-    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output report file"),
+    provider: ModelProvider = typer.Option(
+        DEFAULT_PROVIDER, "--provider", "-p", help="Model provider"
+    ),
+    mcp_url: str | None = typer.Option(
+        None, "--mcp-url", help="MCP service URL (overrides profile)"
+    ),
+    profile: str | None = typer.Option(
+        None, "--profile", help="MCP service profile from .mcp_services.yaml"
+    ),
+    output: Path | None = typer.Option(None, "--output", "-o", help="Output report file"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Don't actually run tests"),
-    hide_tool_output: bool = typer.Option(False, "--hide-tool-output", help="Hide detailed tool call output in verbose mode"),
+    hide_tool_output: bool = typer.Option(
+        False, "--hide-tool-output", help="Hide detailed tool call output in verbose mode"
+    ),
 ):
     """
     Run test cases against MCP service.
@@ -259,27 +282,30 @@ def run(
     # Load config with profile if specified
     if profile:
         from testmcpy.config import Config
+
         cfg = Config(profile=profile)
         effective_mcp_url = mcp_url or cfg.mcp_url
     else:
         effective_mcp_url = mcp_url or DEFAULT_MCP_URL
 
-    console.print(Panel.fit(
-        "[bold cyan]MCP Testing Framework - Run Tests[/bold cyan]\n"
-        f"Model: {model} | Provider: {provider.value}",
-        border_style="cyan"
-    ))
+    console.print(
+        Panel.fit(
+            "[bold cyan]MCP Testing Framework - Run Tests[/bold cyan]\n"
+            f"Model: {model} | Provider: {provider.value}",
+            border_style="cyan",
+        )
+    )
 
     async def run_tests():
         # Import test runner
-        from testmcpy.src.test_runner import TestRunner, TestCase
+        from testmcpy.src.test_runner import TestCase, TestRunner
 
         runner = TestRunner(
             model=model,
             provider=provider.value,
             mcp_url=effective_mcp_url,
             verbose=verbose,
-            hide_tool_output=hide_tool_output
+            hide_tool_output=hide_tool_output,
         )
 
         # Load test cases
@@ -334,15 +360,15 @@ def run(
 
             # Aggregate cost and tokens from TestResult
             total_cost += result.cost
-            if result.token_usage and 'total' in result.token_usage:
-                total_tokens += result.token_usage['total']
+            if result.token_usage and "total" in result.token_usage:
+                total_tokens += result.token_usage["total"]
 
             table.add_row(
                 result.test_name,
                 status,
                 f"{result.score:.2f}",
                 f"{result.duration:.2f}s",
-                result.reason or "-"
+                result.reason or "-",
             )
 
         console.print(table)
@@ -366,7 +392,7 @@ def run(
                     "passed": total_passed,
                     "failed": len(results) - total_passed,
                 },
-                "results": [r.to_dict() for r in results]
+                "results": [r.to_dict() for r in results],
             }
 
             if output.suffix == ".json":
@@ -381,11 +407,15 @@ def run(
 
 @app.command()
 def tools(
-    mcp_url: Optional[str] = typer.Option(None, "--mcp-url", help="MCP service URL (overrides profile)"),
-    profile: Optional[str] = typer.Option(None, "--profile", help="MCP service profile from .mcp_services.yaml"),
+    mcp_url: str | None = typer.Option(
+        None, "--mcp-url", help="MCP service URL (overrides profile)"
+    ),
+    profile: str | None = typer.Option(
+        None, "--profile", help="MCP service profile from .mcp_services.yaml"
+    ),
     format: OutputFormat = typer.Option(OutputFormat.table, "--format", "-f", help="Output format"),
     detail: bool = typer.Option(False, "--detail", "-d", help="Show detailed parameter schemas"),
-    filter: Optional[str] = typer.Option(None, "--filter", help="Filter tools by name"),
+    filter: str | None = typer.Option(None, "--filter", help="Filter tools by name"),
 ):
     """
     List available MCP tools with beautiful formatting.
@@ -396,6 +426,7 @@ def tools(
     # Load config with profile if specified
     if profile:
         from testmcpy.config import Config
+
         cfg = Config(profile=profile)
         effective_mcp_url = mcp_url or cfg.mcp_url
     else:
@@ -403,15 +434,13 @@ def tools(
 
     async def list_tools():
         from testmcpy.src.mcp_client import MCPClient
-        from rich.tree import Tree
-        from rich.json import JSON
-        from rich.markdown import Markdown
 
-        console.print(Panel.fit(
-            f"[bold cyan]MCP Tools Explorer[/bold cyan]\n"
-            f"Service: {effective_mcp_url}",
-            border_style="cyan"
-        ))
+        console.print(
+            Panel.fit(
+                f"[bold cyan]MCP Tools Explorer[/bold cyan]\nService: {effective_mcp_url}",
+                border_style="cyan",
+            )
+        )
 
         try:
             with console.status("[bold green]Connecting to MCP service...[/bold green]"):
@@ -435,44 +464,50 @@ def tools(
                                 tool_content = []
 
                                 # Description
-                                tool_content.append(f"[bold]Description:[/bold]")
-                                desc_lines = tool.description.split('\n')
+                                tool_content.append("[bold]Description:[/bold]")
+                                desc_lines = tool.description.split("\n")
                                 for line in desc_lines[:5]:  # First 5 lines
                                     if line.strip():
                                         tool_content.append(f"  {line.strip()}")
                                 if len(desc_lines) > 5:
-                                    tool_content.append(f"  [dim]... and {len(desc_lines) - 5} more lines[/dim]")
+                                    tool_content.append(
+                                        f"  [dim]... and {len(desc_lines) - 5} more lines[/dim]"
+                                    )
 
                                 tool_content.append("")
 
                                 # Parameters
                                 if tool.input_schema:
-                                    tool_content.append(f"[bold]Parameters:[/bold]")
-                                    props = tool.input_schema.get('properties', {})
-                                    required = tool.input_schema.get('required', [])
+                                    tool_content.append("[bold]Parameters:[/bold]")
+                                    props = tool.input_schema.get("properties", {})
+                                    required = tool.input_schema.get("required", [])
 
                                     if props:
                                         for param_name, param_info in props.items():
-                                            param_type = param_info.get('type', 'any')
-                                            param_desc = param_info.get('description', '')
-                                            is_required = '✓' if param_name in required else ' '
+                                            param_type = param_info.get("type", "any")
+                                            param_desc = param_info.get("description", "")
+                                            is_required = "✓" if param_name in required else " "
 
-                                            tool_content.append(f"  [{is_required}] [cyan]{param_name}[/cyan]: [yellow]{param_type}[/yellow]")
+                                            tool_content.append(
+                                                f"  [{is_required}] [cyan]{param_name}[/cyan]: [yellow]{param_type}[/yellow]"
+                                            )
                                             if param_desc:
                                                 # Wrap long descriptions
                                                 if len(param_desc) > 60:
                                                     param_desc = param_desc[:60] + "..."
-                                                tool_content.append(f"      [dim]{param_desc}[/dim]")
+                                                tool_content.append(
+                                                    f"      [dim]{param_desc}[/dim]"
+                                                )
                                     else:
                                         tool_content.append("  [dim]No parameters required[/dim]")
                                 else:
-                                    tool_content.append(f"[dim]No parameter schema[/dim]")
+                                    tool_content.append("[dim]No parameter schema[/dim]")
 
                                 panel = Panel(
                                     "\n".join(tool_content),
                                     title=f"[bold green]{i}. {tool.name}[/bold green]",
                                     border_style="green",
-                                    expand=False
+                                    expand=False,
                                 )
                                 console.print(panel)
                                 console.print()  # Spacing between tools
@@ -483,7 +518,7 @@ def tools(
                                 header_style="bold cyan",
                                 border_style="blue",
                                 title=f"[bold]Available MCP Tools ({len(tools)})[/bold]",
-                                title_style="bold magenta"
+                                title_style="bold magenta",
                             )
                             table.add_column("#", style="dim", width=4)
                             table.add_column("Tool Name", style="bold green", no_wrap=True)
@@ -495,22 +530,25 @@ def tools(
                                 desc = tool.description
                                 if len(desc) > 80:
                                     # Try to cut at sentence or word boundary
-                                    desc = desc[:80].rsplit('. ', 1)[0] + "..."
+                                    desc = desc[:80].rsplit(". ", 1)[0] + "..."
 
                                 # Count parameters
-                                param_count = len(tool.input_schema.get('properties', {})) if tool.input_schema else 0
-                                required_count = len(tool.input_schema.get('required', [])) if tool.input_schema else 0
+                                param_count = (
+                                    len(tool.input_schema.get("properties", {}))
+                                    if tool.input_schema
+                                    else 0
+                                )
+                                required_count = (
+                                    len(tool.input_schema.get("required", []))
+                                    if tool.input_schema
+                                    else 0
+                                )
 
                                 param_str = f"{param_count}"
                                 if required_count > 0:
                                     param_str = f"{param_count} ({required_count} req)"
 
-                                table.add_row(
-                                    str(i),
-                                    tool.name,
-                                    desc,
-                                    param_str
-                                )
+                                table.add_row(str(i), tool.name, desc, param_str)
 
                             console.print(table)
 
@@ -519,18 +557,20 @@ def tools(
                             {
                                 "name": tool.name,
                                 "description": tool.description,
-                                "input_schema": tool.input_schema
+                                "input_schema": tool.input_schema,
                             }
                             for tool in tools
                         ]
-                        console.print(Syntax(json.dumps(output_data, indent=2), "json", theme="monokai"))
+                        console.print(
+                            Syntax(json.dumps(output_data, indent=2), "json", theme="monokai")
+                        )
 
                     elif format == OutputFormat.yaml:
                         output_data = [
                             {
                                 "name": tool.name,
                                 "description": tool.description,
-                                "input_schema": tool.input_schema
+                                "input_schema": tool.input_schema,
                             }
                             for tool in tools
                         ]
@@ -540,37 +580,44 @@ def tools(
                     summary_parts = []
                     summary_parts.append(f"[green]{len(tools)} tool(s) displayed[/green]")
                     if filter:
-                        summary_parts.append(f"[yellow]filtered from {len(all_tools)} total[/yellow]")
+                        summary_parts.append(
+                            f"[yellow]filtered from {len(all_tools)} total[/yellow]"
+                        )
 
                     console.print(f"\n[bold]Summary:[/bold] {' | '.join(summary_parts)}")
 
                     if not detail and format == OutputFormat.table:
-                        console.print("[dim]Tip: Use --detail flag to see full parameter schemas[/dim]")
+                        console.print(
+                            "[dim]Tip: Use --detail flag to see full parameter schemas[/dim]"
+                        )
 
         except Exception as e:
-            console.print(Panel(
-                f"[red]Error connecting to MCP service:[/red]\n{str(e)}",
-                title="[red]Error[/red]",
-                border_style="red"
-            ))
+            console.print(
+                Panel(
+                    f"[red]Error connecting to MCP service:[/red]\n{str(e)}",
+                    title="[red]Error[/red]",
+                    border_style="red",
+                )
+            )
 
     asyncio.run(list_tools())
 
 
 @app.command()
 def report(
-    report_files: List[Path] = typer.Argument(..., help="Report files to compare"),
-    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output comparison file"),
+    report_files: list[Path] = typer.Argument(..., help="Report files to compare"),
+    output: Path | None = typer.Option(None, "--output", "-o", help="Output comparison file"),
 ):
     """
     Compare test reports from different models.
 
     This command takes multiple report files and generates a comparison.
     """
-    console.print(Panel.fit(
-        "[bold cyan]MCP Testing Framework - Report Comparison[/bold cyan]",
-        border_style="cyan"
-    ))
+    console.print(
+        Panel.fit(
+            "[bold cyan]MCP Testing Framework - Report Comparison[/bold cyan]", border_style="cyan"
+        )
+    )
 
     reports = []
     for file in report_files:
@@ -599,7 +646,7 @@ def report(
             str(summary["total"]),
             f"[green]{summary['passed']}[/green]",
             f"[red]{summary['failed']}[/red]",
-            f"{success_rate:.1f}%"
+            f"{success_rate:.1f}%",
         )
 
     console.print(table)
@@ -613,17 +660,29 @@ def report(
         r2_results = {r["test_name"]: r["passed"] for r in r2["results"]}
 
         # Tests that failed in r1 but passed in r2
-        failed_in_1 = [name for name, passed in r1_results.items() if not passed and r2_results.get(name, False)]
+        failed_in_1 = [
+            name
+            for name, passed in r1_results.items()
+            if not passed and r2_results.get(name, False)
+        ]
         # Tests that failed in r2 but passed in r1
-        failed_in_2 = [name for name, passed in r2_results.items() if not passed and r1_results.get(name, False)]
+        failed_in_2 = [
+            name
+            for name, passed in r2_results.items()
+            if not passed and r1_results.get(name, False)
+        ]
 
         if failed_in_1:
-            console.print(f"\n[yellow]Tests that failed in {r1['model']} but passed in {r2['model']}:[/yellow]")
+            console.print(
+                f"\n[yellow]Tests that failed in {r1['model']} but passed in {r2['model']}:[/yellow]"
+            )
             for test in failed_in_1:
                 console.print(f"  - {test}")
 
         if failed_in_2:
-            console.print(f"\n[yellow]Tests that failed in {r2['model']} but passed in {r1['model']}:[/yellow]")
+            console.print(
+                f"\n[yellow]Tests that failed in {r2['model']} but passed in {r1['model']}:[/yellow]"
+            )
             for test in failed_in_2:
                 console.print(f"  - {test}")
 
@@ -633,8 +692,8 @@ def report(
             "reports": reports,
             "comparison": {
                 "models": [r["model"] for r in reports],
-                "summary": [r["summary"] for r in reports]
-            }
+                "summary": [r["summary"] for r in reports],
+            },
         }
 
         if output.suffix == ".json":
@@ -648,9 +707,15 @@ def report(
 @app.command()
 def chat(
     model: str = typer.Option(DEFAULT_MODEL, "--model", "-m", help="Model to use"),
-    provider: ModelProvider = typer.Option(DEFAULT_PROVIDER, "--provider", "-p", help="Model provider"),
-    mcp_url: Optional[str] = typer.Option(None, "--mcp-url", help="MCP service URL (overrides profile)"),
-    profile: Optional[str] = typer.Option(None, "--profile", help="MCP service profile from .mcp_services.yaml"),
+    provider: ModelProvider = typer.Option(
+        DEFAULT_PROVIDER, "--provider", "-p", help="Model provider"
+    ),
+    mcp_url: str | None = typer.Option(
+        None, "--mcp-url", help="MCP service URL (overrides profile)"
+    ),
+    profile: str | None = typer.Option(
+        None, "--profile", help="MCP service profile from .mcp_services.yaml"
+    ),
     no_mcp: bool = typer.Option(False, "--no-mcp", help="Chat without MCP tools"),
 ):
     """
@@ -664,29 +729,35 @@ def chat(
     # Load config with profile if specified
     if profile:
         from testmcpy.config import Config
+
         cfg = Config(profile=profile)
         effective_mcp_url = mcp_url or cfg.mcp_url
     else:
         effective_mcp_url = mcp_url or DEFAULT_MCP_URL
 
     if no_mcp:
-        console.print(Panel.fit(
-            f"[bold cyan]Interactive Chat with {model}[/bold cyan]\n"
-            f"Provider: {provider.value}\nMode: Standalone (no MCP tools)\n\n"
-            "[dim]Type your message and press Enter. Type 'exit' or 'quit' to end session.[/dim]",
-            border_style="cyan"
-        ))
+        console.print(
+            Panel.fit(
+                f"[bold cyan]Interactive Chat with {model}[/bold cyan]\n"
+                f"Provider: {provider.value}\nMode: Standalone (no MCP tools)\n\n"
+                "[dim]Type your message and press Enter. Type 'exit' or 'quit' to end session.[/dim]",
+                border_style="cyan",
+            )
+        )
     else:
-        console.print(Panel.fit(
-            f"[bold cyan]Interactive Chat with {model}[/bold cyan]\n"
-            f"Provider: {provider.value}\nMCP Service: {effective_mcp_url}\n\n"
-            "[dim]Type your message and press Enter. Type 'exit' or 'quit' to end session.[/dim]",
-            border_style="cyan"
-        ))
+        console.print(
+            Panel.fit(
+                f"[bold cyan]Interactive Chat with {model}[/bold cyan]\n"
+                f"Provider: {provider.value}\nMCP Service: {effective_mcp_url}\n\n"
+                "[dim]Type your message and press Enter. Type 'exit' or 'quit' to end session.[/dim]",
+                border_style="cyan",
+            )
+        )
 
     async def chat_session():
-        import sys
         import os
+        import sys
+
         sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
         from testmcpy.src.llm_integration import create_llm_provider
@@ -707,7 +778,9 @@ def chat(
 
                 # Get available tools
                 tools = await mcp_client.list_tools()
-                console.print(f"[green]Connected to MCP service with {len(tools)} tools available[/green]\n")
+                console.print(
+                    f"[green]Connected to MCP service with {len(tools)} tools available[/green]\n"
+                )
             except Exception as e:
                 console.print(f"[yellow]MCP connection failed: {e}[/yellow]")
                 console.print("[yellow]Continuing without MCP tools...[/yellow]\n")
@@ -721,7 +794,7 @@ def chat(
                 # Get user input
                 user_input = console.input("[bold blue]You:[/bold blue] ")
 
-                if user_input.lower() in ['exit', 'quit', 'bye']:
+                if user_input.lower() in ["exit", "quit", "bye"]:
                     console.print("[yellow]Goodbye![/yellow]")
                     break
 
@@ -733,11 +806,13 @@ def chat(
                     # Convert MCPTool objects to dictionaries for LLM
                     tools_dict = []
                     for tool in tools:
-                        tools_dict.append({
-                            "name": tool.name,
-                            "description": tool.description,
-                            "inputSchema": tool.input_schema
-                        })
+                        tools_dict.append(
+                            {
+                                "name": tool.name,
+                                "description": tool.description,
+                                "inputSchema": tool.input_schema,
+                            }
+                        )
 
                     # Generate response with available tools
                     response = await llm.generate_with_tools(user_input, tools_dict)
@@ -776,10 +851,11 @@ def init(
 
     This command creates the standard directory structure and example files.
     """
-    console.print(Panel.fit(
-        "[bold cyan]MCP Testing Framework - Initialize Project[/bold cyan]",
-        border_style="cyan"
-    ))
+    console.print(
+        Panel.fit(
+            "[bold cyan]MCP Testing Framework - Initialize Project[/bold cyan]", border_style="cyan"
+        )
+    )
 
     # Create directories
     dirs = ["tests", "evals", "reports"]
@@ -798,8 +874,8 @@ def init(
                 "evaluators": [
                     {"name": "was_mcp_tool_called", "args": {"tool_name": "get_chart"}},
                     {"name": "execution_successful"},
-                    {"name": "final_answer_contains", "args": {"expected_content": "chart"}}
-                ]
+                    {"name": "final_answer_contains", "args": {"expected_content": "chart"}},
+                ],
             },
             {
                 "name": "test_create_dashboard",
@@ -807,10 +883,10 @@ def init(
                 "evaluators": [
                     {"name": "was_superset_chart_created"},
                     {"name": "execution_successful"},
-                    {"name": "within_time_limit", "args": {"max_seconds": 30}}
-                ]
-            }
-        ]
+                    {"name": "within_time_limit", "args": {"max_seconds": 30}},
+                ],
+            },
+        ],
     }
 
     test_file = path / "tests" / "example_tests.yaml"
@@ -822,11 +898,7 @@ def init(
         "mcp_url": DEFAULT_MCP_URL,
         "default_model": DEFAULT_MODEL,
         "default_provider": DEFAULT_PROVIDER,
-        "evaluators": {
-            "timeout": 30,
-            "max_tokens": 2000,
-            "max_cost": 0.10
-        }
+        "evaluators": {"timeout": 30, "max_tokens": 2000, "max_cost": 0.10},
     }
 
     config_file = path / "mcp_test_config.yaml"
@@ -843,7 +915,9 @@ def init(
 @app.command()
 def setup(
     force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing config file"),
-    location: Optional[str] = typer.Option(None, "--location", "-l", help="Config location: 'user' (~/.testmcpy) or 'project' (.env)"),
+    location: str | None = typer.Option(
+        None, "--location", "-l", help="Config location: 'user' (~/.testmcpy) or 'project' (.env)"
+    ),
 ):
     """
     Interactive setup wizard for testmcpy configuration.
@@ -853,11 +927,13 @@ def setup(
     """
     from testmcpy.config import get_config
 
-    console.print(Panel.fit(
-        "[bold cyan]testmcpy Interactive Setup[/bold cyan]\n"
-        "[dim]Configure MCP service and LLM provider settings[/dim]",
-        border_style="cyan"
-    ))
+    console.print(
+        Panel.fit(
+            "[bold cyan]testmcpy Interactive Setup[/bold cyan]\n"
+            "[dim]Configure MCP service and LLM provider settings[/dim]",
+            border_style="cyan",
+        )
+    )
 
     # Load current config to show existing values
     current_config = get_config()
@@ -876,17 +952,13 @@ def setup(
     if config_path.exists() and not force:
         console.print(f"\n[yellow]Config file already exists:[/yellow] {config_path}")
         overwrite = console.input("Overwrite? [y/N]: ").strip().lower()
-        if overwrite not in ['y', 'yes']:
+        if overwrite not in ["y", "yes"]:
             console.print("[yellow]Setup cancelled[/yellow]")
             return
 
     console.print(f"\n[green]Creating config file:[/green] {config_path}\n")
 
-    config_lines = [
-        "# testmcpy Configuration",
-        "# Generated by interactive setup",
-        ""
-    ]
+    config_lines = ["# testmcpy Configuration", "# Generated by interactive setup", ""]
 
     # MCP Service Configuration
     console.print("[bold]MCP Service Configuration[/bold]")
@@ -897,7 +969,9 @@ def setup(
         source = current_config.get_source("MCP_URL")
         console.print(f"[green]✓ MCP Service URL already configured[/green] ({source})")
         console.print(f"[dim]  Current: {current_mcp_url}[/dim]")
-        mcp_url = console.input(f"  New URL (or press Enter to keep current): ").strip() or current_mcp_url
+        mcp_url = (
+            console.input("  New URL (or press Enter to keep current): ").strip() or current_mcp_url
+        )
     else:
         mcp_url = console.input("MCP Service URL [https://your-workspace.preset.io/mcp]: ").strip()
 
@@ -908,12 +982,16 @@ def setup(
     console.print("\n[bold]MCP Authentication Method[/bold]")
 
     # Detect current auth method
-    has_dynamic_jwt = all([
-        current_config.get("MCP_AUTH_API_URL"),
-        current_config.get("MCP_AUTH_API_TOKEN"),
-        current_config.get("MCP_AUTH_API_SECRET")
-    ])
-    has_static_token = current_config.get("MCP_AUTH_TOKEN") or current_config.get("SUPERSET_MCP_TOKEN")
+    has_dynamic_jwt = all(
+        [
+            current_config.get("MCP_AUTH_API_URL"),
+            current_config.get("MCP_AUTH_API_TOKEN"),
+            current_config.get("MCP_AUTH_API_SECRET"),
+        ]
+    )
+    has_static_token = current_config.get("MCP_AUTH_TOKEN") or current_config.get(
+        "SUPERSET_MCP_TOKEN"
+    )
 
     if has_dynamic_jwt:
         console.print("[dim]Currently configured: Dynamic JWT[/dim]")
@@ -938,21 +1016,32 @@ def setup(
             source = current_config.get_source("MCP_AUTH_API_URL")
             console.print(f"[green]✓ Auth API URL already configured[/green] ({source})")
             console.print(f"[dim]  Current: {current_api_url}[/dim]")
-            api_url = console.input(f"  New URL (or press Enter to keep current): ").strip() or current_api_url
+            api_url = (
+                console.input("  New URL (or press Enter to keep current): ").strip()
+                or current_api_url
+            )
         else:
-            api_url = console.input("Auth API URL (e.g., https://api.app.preset.io/v1/auth/): ").strip()
+            api_url = console.input(
+                "Auth API URL (e.g., https://api.app.preset.io/v1/auth/): "
+            ).strip()
 
         if current_api_token:
             masked = f"{current_api_token[:8]}...{current_api_token[-4:]}"
             console.print(f"[dim]Current API Token: {masked}[/dim]")
-            api_token = console.input(f"API Token [press Enter to keep current]: ").strip() or current_api_token
+            api_token = (
+                console.input("API Token [press Enter to keep current]: ").strip()
+                or current_api_token
+            )
         else:
             api_token = console.input("API Token: ").strip()
 
         if current_api_secret:
             masked = f"{current_api_secret[:8]}...{current_api_secret[-4:]}"
             console.print(f"[dim]Current API Secret: {masked}[/dim]")
-            api_secret = console.input(f"API Secret [press Enter to keep current]: ").strip() or current_api_secret
+            api_secret = (
+                console.input("API Secret [press Enter to keep current]: ").strip()
+                or current_api_secret
+            )
         else:
             api_secret = console.input("API Secret: ").strip()
 
@@ -965,11 +1054,16 @@ def setup(
     else:
         config_lines.append("# Static Bearer Token")
 
-        current_token = current_config.get("MCP_AUTH_TOKEN") or current_config.get("SUPERSET_MCP_TOKEN")
+        current_token = current_config.get("MCP_AUTH_TOKEN") or current_config.get(
+            "SUPERSET_MCP_TOKEN"
+        )
         if current_token:
             masked = f"{current_token[:20]}...{current_token[-8:]}"
             console.print(f"[dim]Current Token: {masked}[/dim]")
-            static_token = console.input(f"Bearer Token [press Enter to keep current]: ").strip() or current_token
+            static_token = (
+                console.input("Bearer Token [press Enter to keep current]: ").strip()
+                or current_token
+            )
         else:
             static_token = console.input("Bearer Token: ").strip()
 
@@ -1005,13 +1099,17 @@ def setup(
 
         console.print("\n[bold]Available Anthropic Models:[/bold]")
         console.print("1. [cyan]claude-sonnet-4-5[/cyan] - Latest Sonnet 4.5 (most capable)")
-        console.print("2. [cyan]claude-haiku-4-5[/cyan] - Latest Haiku 4.5 (fast & efficient, recommended)")
+        console.print(
+            "2. [cyan]claude-haiku-4-5[/cyan] - Latest Haiku 4.5 (fast & efficient, recommended)"
+        )
         console.print("3. [cyan]claude-opus-4-1[/cyan] - Latest Opus 4.1 (most powerful)")
         console.print("4. [cyan]claude-haiku-4-5[/cyan] - Legacy Haiku 3.5")
         console.print("5. [cyan]Custom model name[/cyan]")
 
         current_model = current_config.default_model or "claude-haiku-4-5"
-        model_choice = console.input(f"\nChoice (or press Enter for current: {current_model}): ").strip()
+        model_choice = console.input(
+            f"\nChoice (or press Enter for current: {current_model}): "
+        ).strip()
 
         if model_choice == "1":
             model = "claude-sonnet-4-5"
@@ -1039,7 +1137,9 @@ def setup(
             masked = f"{current_api_key[:8]}...{current_api_key[-4:]}"
             console.print(f"[green]✓ Anthropic API Key already configured[/green] ({source})")
             console.print(f"[dim]  Current: {masked}[/dim]")
-            api_key = console.input(f"  New key (or press Enter to skip): ").strip() or current_api_key
+            api_key = (
+                console.input("  New key (or press Enter to skip): ").strip() or current_api_key
+            )
         else:
             api_key = console.input("Anthropic API Key: ").strip()
 
@@ -1059,7 +1159,9 @@ def setup(
         console.print("5. [cyan]Custom model name[/cyan]")
 
         current_model = current_config.default_model or "llama3.1:8b"
-        model_choice = console.input(f"\nChoice (or press Enter for current: {current_model}): ").strip()
+        model_choice = console.input(
+            f"\nChoice (or press Enter for current: {current_model}): "
+        ).strip()
 
         if model_choice == "1":
             model = "llama3.1:8b"
@@ -1081,7 +1183,9 @@ def setup(
         config_lines.append("")
 
         current_base_url = current_config.get("OLLAMA_BASE_URL") or "http://localhost:11434"
-        base_url = console.input(f"Ollama Base URL [{current_base_url}]: ").strip() or current_base_url
+        base_url = (
+            console.input(f"Ollama Base URL [{current_base_url}]: ").strip() or current_base_url
+        )
         config_lines.append(f"OLLAMA_BASE_URL={base_url}")
 
     elif provider_choice == "3":
@@ -1095,7 +1199,9 @@ def setup(
         console.print("5. [cyan]Custom model name[/cyan]")
 
         current_model = current_config.default_model or "gpt-4o"
-        model_choice = console.input(f"\nChoice (or press Enter for current: {current_model}): ").strip()
+        model_choice = console.input(
+            f"\nChoice (or press Enter for current: {current_model}): "
+        ).strip()
 
         if model_choice == "1":
             model = "gpt-4o"
@@ -1122,7 +1228,9 @@ def setup(
             masked = f"{current_api_key[:8]}...{current_api_key[-4:]}"
             console.print(f"[green]✓ OpenAI API Key already configured[/green] ({source})")
             console.print(f"[dim]  Current: {masked}[/dim]")
-            api_key = console.input(f"  New key (or press Enter to skip): ").strip() or current_api_key
+            api_key = (
+                console.input("  New key (or press Enter to skip): ").strip() or current_api_key
+            )
         else:
             api_key = console.input("OpenAI API Key: ").strip()
 
@@ -1162,44 +1270,51 @@ def serve(
     # Load config
     console.print("  [1/4] Loading configuration...")
     from testmcpy.config import get_config
+
     cfg = get_config()
     console.print("  [green]✓[/green] Configuration loaded")
 
     # Check MCP URL
-    console.print(f"\n  [2/4] Checking MCP service URL...")
+    console.print("\n  [2/4] Checking MCP service URL...")
     console.print(f"  [dim]    MCP URL: {cfg.mcp_url}[/dim]")
     console.print(f"  [dim]    Source: {cfg.get_source('MCP_URL')}[/dim]")
     console.print("  [green]✓[/green] MCP URL configured")
 
     # Check authentication method
-    console.print(f"\n  [3/4] Checking authentication method...")
-    has_dynamic_jwt = all([
-        cfg.get("MCP_AUTH_API_URL"),
-        cfg.get("MCP_AUTH_API_TOKEN"),
-        cfg.get("MCP_AUTH_API_SECRET")
-    ])
+    console.print("\n  [3/4] Checking authentication method...")
+    has_dynamic_jwt = all(
+        [cfg.get("MCP_AUTH_API_URL"), cfg.get("MCP_AUTH_API_TOKEN"), cfg.get("MCP_AUTH_API_SECRET")]
+    )
     has_static_token = cfg.get("MCP_AUTH_TOKEN") or cfg.get("SUPERSET_MCP_TOKEN")
 
     if has_dynamic_jwt:
         console.print("  [cyan]→[/cyan] Using dynamic JWT authentication")
         console.print(f"  [dim]    Auth API URL: {cfg.get('MCP_AUTH_API_URL')}[/dim]")
-        console.print(f"  [dim]    API Token: {cfg.get('MCP_AUTH_API_TOKEN')[:8]}...{cfg.get('MCP_AUTH_API_TOKEN')[-4:]}[/dim]")
+        console.print(
+            f"  [dim]    API Token: {cfg.get('MCP_AUTH_API_TOKEN')[:8]}...{cfg.get('MCP_AUTH_API_TOKEN')[-4:]}[/dim]"
+        )
         console.print("  [green]✓[/green] Dynamic JWT configured")
 
         # Try to fetch token
-        console.print(f"\n  [4/4] Fetching JWT token from API...")
+        console.print("\n  [4/4] Fetching JWT token from API...")
         try:
             import requests
+
             response = requests.post(
                 cfg.get("MCP_AUTH_API_URL"),
                 headers={"Content-Type": "application/json", "Accept": "application/json"},
-                json={"name": cfg.get("MCP_AUTH_API_TOKEN"), "secret": cfg.get("MCP_AUTH_API_SECRET")},
-                timeout=10
+                json={
+                    "name": cfg.get("MCP_AUTH_API_TOKEN"),
+                    "secret": cfg.get("MCP_AUTH_API_SECRET"),
+                },
+                timeout=10,
             )
             if response.status_code == 200:
                 console.print("  [green]✓[/green] JWT token fetched successfully")
             else:
-                console.print(f"  [yellow]⚠[/yellow] Failed to fetch JWT token (status: {response.status_code})")
+                console.print(
+                    f"  [yellow]⚠[/yellow] Failed to fetch JWT token (status: {response.status_code})"
+                )
                 console.print("  [yellow]  Server will attempt to fetch token when needed[/yellow]")
         except Exception as e:
             console.print(f"  [yellow]⚠[/yellow] Failed to fetch JWT token: {str(e)}")
@@ -1211,27 +1326,27 @@ def serve(
         source = cfg.get_source("MCP_AUTH_TOKEN") or cfg.get_source("SUPERSET_MCP_TOKEN")
         console.print(f"  [dim]    Source: {source}[/dim]")
         console.print("  [green]✓[/green] Static token configured")
-        console.print(f"\n  [4/4] Token validation skipped (static token)")
+        console.print("\n  [4/4] Token validation skipped (static token)")
     else:
         console.print("  [yellow]⚠[/yellow] No authentication configured")
         console.print("  [yellow]  MCP service may require authentication[/yellow]")
-        console.print(f"\n  [4/4] Authentication setup incomplete")
+        console.print("\n  [4/4] Authentication setup incomplete")
 
     console.print("[dim]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/dim]\n")
 
-    console.print(Panel.fit(
-        "[bold cyan]testmcpy Web Server[/bold cyan]\n"
-        f"Starting server at http://{host}:{port}",
-        border_style="cyan"
-    ))
+    console.print(
+        Panel.fit(
+            f"[bold cyan]testmcpy Web Server[/bold cyan]\nStarting server at http://{host}:{port}",
+            border_style="cyan",
+        )
+    )
 
     import subprocess
-    import sys
     import time
     from pathlib import Path
 
     # Get paths
-    server_dir = Path(__file__).parent / "server"
+    Path(__file__).parent / "server"
     ui_dir = Path(__file__).parent / "ui"
     ui_dist = ui_dir / "dist"
 
@@ -1258,24 +1373,14 @@ def serve(
 
         # Install dependencies
         console.print("Installing npm dependencies...")
-        result = subprocess.run(
-            ["npm", "install"],
-            cwd=ui_dir,
-            capture_output=True,
-            text=True
-        )
+        result = subprocess.run(["npm", "install"], cwd=ui_dir, capture_output=True, text=True)
         if result.returncode != 0:
             console.print(f"[red]Failed to install dependencies:[/red]\n{result.stderr}")
             return
 
         # Build
         console.print("Building frontend...")
-        result = subprocess.run(
-            ["npm", "run", "build"],
-            cwd=ui_dir,
-            capture_output=True,
-            text=True
-        )
+        result = subprocess.run(["npm", "run", "build"], cwd=ui_dir, capture_output=True, text=True)
         if result.returncode != 0:
             console.print(f"[red]Failed to build frontend:[/red]\n{result.stderr}")
             return
@@ -1283,16 +1388,20 @@ def serve(
         console.print("[green]Frontend built successfully![/green]\n")
 
     elif dev:
-        console.print("[yellow]Running in dev mode - make sure to start the frontend separately:[/yellow]")
+        console.print(
+            "[yellow]Running in dev mode - make sure to start the frontend separately:[/yellow]"
+        )
         console.print(f"  cd {ui_dir} && npm run dev\n")
 
     # Open browser
     if not no_browser:
-        import webbrowser
         import threading
+        import webbrowser
+
         def open_browser():
             time.sleep(1.5)  # Wait for server to start
             webbrowser.open(f"http://{host}:{port}")
+
         threading.Thread(target=open_browser, daemon=True).start()
 
     # Start server
@@ -1301,14 +1410,10 @@ def serve(
 
     try:
         import uvicorn
+
         from testmcpy.server.api import app as fastapi_app
 
-        uvicorn.run(
-            fastapi_app,
-            host=host,
-            port=port,
-            log_level="info"
-        )
+        uvicorn.run(fastapi_app, host=host, port=port, log_level="info")
     except KeyboardInterrupt:
         console.print("\n[yellow]Server stopped[/yellow]")
     except Exception as e:
@@ -1317,19 +1422,19 @@ def serve(
 
 @app.command()
 def config_cmd(
-    show_all: bool = typer.Option(False, "--all", "-a", help="Show all config values including unset ones"),
+    show_all: bool = typer.Option(
+        False, "--all", "-a", help="Show all config values including unset ones"
+    ),
 ):
     """
     Display current testmcpy configuration.
 
     Shows the configuration values and their sources (environment, config file, etc.).
     """
-    console.print(Panel.fit(
-        "[bold cyan]testmcpy Configuration[/bold cyan]",
-        border_style="cyan"
-    ))
+    console.print(Panel.fit("[bold cyan]testmcpy Configuration[/bold cyan]", border_style="cyan"))
 
     from testmcpy.config import get_config
+
     cfg = get_config()
 
     # Get all config values with sources
@@ -1341,7 +1446,7 @@ def config_cmd(
         header_style="bold cyan",
         border_style="blue",
         title="[bold]Configuration Values[/bold]",
-        title_style="bold magenta"
+        title_style="bold magenta",
     )
     table.add_column("Key", style="bold green", no_wrap=True)
     table.add_column("Value", style="white")
@@ -1393,10 +1498,18 @@ def config_cmd(
 
 @app.command()
 def config_mcp(
-    target: str = typer.Argument(..., help="Target application: claude-desktop, claude-code, or chatgpt-desktop"),
-    server_name: Optional[str] = typer.Option(None, "--name", "-n", help="Server name in config (default: preset-superset)"),
-    mcp_url: Optional[str] = typer.Option(None, "--mcp-url", help="MCP service URL (uses config default if not provided)"),
-    auth_token: Optional[str] = typer.Option(None, "--token", help="Bearer token (uses dynamic JWT if not provided)"),
+    target: str = typer.Argument(
+        ..., help="Target application: claude-desktop, claude-code, or chatgpt-desktop"
+    ),
+    server_name: str | None = typer.Option(
+        None, "--name", "-n", help="Server name in config (default: preset-superset)"
+    ),
+    mcp_url: str | None = typer.Option(
+        None, "--mcp-url", help="MCP service URL (uses config default if not provided)"
+    ),
+    auth_token: str | None = typer.Option(
+        None, "--token", help="Bearer token (uses dynamic JWT if not provided)"
+    ),
 ):
     """
     Configure MCP server for Claude Desktop, Claude Code, or ChatGPT Desktop.
@@ -1414,10 +1527,9 @@ def config_mcp(
     import platform
     from pathlib import Path
 
-    console.print(Panel.fit(
-        f"[bold cyan]Configure MCP for {target}[/bold cyan]",
-        border_style="cyan"
-    ))
+    console.print(
+        Panel.fit(f"[bold cyan]Configure MCP for {target}[/bold cyan]", border_style="cyan")
+    )
 
     # Determine target config file path
     system = platform.system()
@@ -1425,7 +1537,13 @@ def config_mcp(
 
     if target == "claude-desktop":
         if system == "Darwin":  # macOS
-            config_path = Path.home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
+            config_path = (
+                Path.home()
+                / "Library"
+                / "Application Support"
+                / "Claude"
+                / "claude_desktop_config.json"
+            )
         elif system == "Windows":
             config_path = Path(os.getenv("APPDATA")) / "Claude" / "claude_desktop_config.json"
         else:  # Linux
@@ -1434,15 +1552,23 @@ def config_mcp(
     elif target == "claude-code":
         # Prefer ~/.claude.json for reliability
         config_path = Path.home() / ".claude.json"
-        console.print("[dim]Note: Using ~/.claude.json (recommended). You can also use .mcp.json in project directory.[/dim]\n")
+        console.print(
+            "[dim]Note: Using ~/.claude.json (recommended). You can also use .mcp.json in project directory.[/dim]\n"
+        )
 
     elif target == "chatgpt-desktop":
         # ChatGPT Desktop uses similar format to Claude Desktop
         if system == "Darwin":  # macOS
-            config_path = Path.home() / "Library" / "Application Support" / "ChatGPT" / "config.json"
+            config_path = (
+                Path.home() / "Library" / "Application Support" / "ChatGPT" / "config.json"
+            )
         else:
-            console.print("[yellow]ChatGPT Desktop config location not well-documented for this OS.[/yellow]")
-            console.print("[yellow]Please check ChatGPT Desktop documentation for config file location.[/yellow]")
+            console.print(
+                "[yellow]ChatGPT Desktop config location not well-documented for this OS.[/yellow]"
+            )
+            console.print(
+                "[yellow]Please check ChatGPT Desktop documentation for config file location.[/yellow]"
+            )
             return
 
     else:
@@ -1463,10 +1589,15 @@ def config_mcp(
     # Get auth token
     if not auth_token:
         # ALWAYS fetch fresh token from dynamic JWT if configured
-        if cfg.get("MCP_AUTH_API_URL") and cfg.get("MCP_AUTH_API_TOKEN") and cfg.get("MCP_AUTH_API_SECRET"):
+        if (
+            cfg.get("MCP_AUTH_API_URL")
+            and cfg.get("MCP_AUTH_API_TOKEN")
+            and cfg.get("MCP_AUTH_API_SECRET")
+        ):
             console.print("[yellow]Fetching bearer token using dynamic JWT...[/yellow]")
             try:
                 import requests
+
                 auth_url = cfg.get("MCP_AUTH_API_URL")
                 api_token = cfg.get("MCP_AUTH_API_TOKEN")
                 api_secret = cfg.get("MCP_AUTH_API_SECRET")
@@ -1476,12 +1607,9 @@ def config_mcp(
 
                 response = requests.post(
                     auth_url,
-                    headers={
-                        "Content-Type": "application/json",
-                        "Accept": "application/json"
-                    },
+                    headers={"Content-Type": "application/json", "Accept": "application/json"},
                     json={"name": api_token, "secret": api_secret},
-                    timeout=10
+                    timeout=10,
                 )
 
                 console.print(f"[dim]Response status: {response.status_code}[/dim]")
@@ -1489,7 +1617,9 @@ def config_mcp(
                 if response.status_code != 200:
                     console.print(f"[red]Error: API returned {response.status_code}[/red]")
                     console.print(f"[red]Response: {response.text}[/red]")
-                    console.print("[yellow]Please provide --token with a long-lived bearer token[/yellow]")
+                    console.print(
+                        "[yellow]Please provide --token with a long-lived bearer token[/yellow]"
+                    )
                     return
 
                 auth_data = response.json()
@@ -1503,17 +1633,22 @@ def config_mcp(
                         auth_token = payload
 
                 if auth_token:
-                    console.print(f"[green]✓ Successfully fetched bearer token (length: {len(auth_token)})[/green]")
+                    console.print(
+                        f"[green]✓ Successfully fetched bearer token (length: {len(auth_token)})[/green]"
+                    )
                 else:
-                    console.print(f"[red]Error: No access_token or payload in response[/red]")
+                    console.print("[red]Error: No access_token or payload in response[/red]")
                     console.print(f"[red]Response keys: {list(auth_data.keys())}[/red]")
                     console.print(f"[red]Full response: {auth_data}[/red]")
                     return
             except Exception as e:
                 console.print(f"[red]Error fetching token: {e}[/red]")
                 import traceback
+
                 console.print(f"[red]{traceback.format_exc()}[/red]")
-                console.print("[yellow]Please provide --token with a long-lived bearer token[/yellow]")
+                console.print(
+                    "[yellow]Please provide --token with a long-lived bearer token[/yellow]"
+                )
                 return
         else:
             console.print("[red]Error: No authentication token available[/red]")
@@ -1528,11 +1663,9 @@ def config_mcp(
             "mcp-remote@latest",
             mcp_url,
             "--header",
-            f"Authorization: Bearer {auth_token}"
+            f"Authorization: Bearer {auth_token}",
         ],
-        "env": {
-            "NODE_OPTIONS": "--no-warnings"
-        }
+        "env": {"NODE_OPTIONS": "--no-warnings"},
     }
 
     # Read existing config if it exists
@@ -1556,10 +1689,10 @@ def config_mcp(
 
     # Write config
     try:
-        with open(config_path, 'w') as f:
+        with open(config_path, "w") as f:
             json.dump(existing_config, f, indent=2)
 
-        console.print(f"\n[green]✓ MCP server configured successfully![/green]")
+        console.print("\n[green]✓ MCP server configured successfully![/green]")
         console.print(f"[green]✓ Config file: {config_path}[/green]")
         console.print(f"[green]✓ Server name: {server_name}[/green]")
         console.print(f"[green]✓ MCP URL: {mcp_url}[/green]")
@@ -1574,11 +1707,9 @@ def config_mcp(
                     "mcp-remote@latest",
                     mcp_url,
                     "--header",
-                    f"Authorization: Bearer {auth_token[:20]}...{auth_token[-8:]}"
+                    f"Authorization: Bearer {auth_token[:20]}...{auth_token[-8:]}",
                 ],
-                "env": {
-                    "NODE_OPTIONS": "--no-warnings"
-                }
+                "env": {"NODE_OPTIONS": "--no-warnings"},
             }
         }
         console.print(Syntax(json.dumps(config_display, indent=2), "json", theme="monokai"))
@@ -1609,11 +1740,13 @@ def doctor():
     This command checks Python version, dependencies, configuration,
     and MCP connectivity to help identify and resolve issues.
     """
-    console.print(Panel.fit(
-        "[bold cyan]testmcpy Health Check[/bold cyan]\n"
-        "[dim]Diagnosing installation and configuration...[/dim]",
-        border_style="cyan"
-    ))
+    console.print(
+        Panel.fit(
+            "[bold cyan]testmcpy Health Check[/bold cyan]\n"
+            "[dim]Diagnosing installation and configuration...[/dim]",
+            border_style="cyan",
+        )
+    )
 
     issues_found = []
     warnings_found = []
@@ -1621,6 +1754,7 @@ def doctor():
     # 1. Check Python version
     console.print("\n[bold]1. Python Version[/bold]")
     import sys
+
     python_version = sys.version_info
     version_str = f"{python_version.major}.{python_version.minor}.{python_version.micro}"
 
@@ -1628,10 +1762,14 @@ def doctor():
         console.print(f"[green]✓[/green] Python {version_str} (compatible)")
     elif python_version < (3, 9):
         console.print(f"[red]✗[/red] Python {version_str} (too old, requires 3.9+)")
-        issues_found.append(f"Python version {version_str} is too old. Requires Python 3.9 or higher.")
+        issues_found.append(
+            f"Python version {version_str} is too old. Requires Python 3.9 or higher."
+        )
     else:
         console.print(f"[yellow]⚠[/yellow] Python {version_str} (not tested, may not work)")
-        warnings_found.append(f"Python {version_str} is newer than 3.12 and has not been tested with testmcpy.")
+        warnings_found.append(
+            f"Python {version_str} is newer than 3.12 and has not been tested with testmcpy."
+        )
 
     # 2. Check core dependencies
     console.print("\n[bold]2. Core Dependencies[/bold]")
@@ -1663,17 +1801,25 @@ def doctor():
     try:
         import fastapi
         import uvicorn
-        console.print(f"[green]✓[/green] fastapi, uvicorn - Web UI available")
+
+        console.print("[green]✓[/green] fastapi, uvicorn - Web UI available")
     except ImportError:
-        console.print("[dim]✗[/dim] fastapi, uvicorn - Install with: pip install 'testmcpy[server]'", markup=False)
+        console.print(
+            "[dim]✗[/dim] fastapi, uvicorn - Install with: pip install 'testmcpy[server]'",
+            markup=False,
+        )
 
     # SDK dependency
     console.print("[dim]Claude Agent SDK:[/dim]")
     try:
         import claude_agent_sdk
-        console.print(f"[green]✓[/green] claude-agent-sdk - SDK provider available")
+
+        console.print("[green]✓[/green] claude-agent-sdk - SDK provider available")
     except ImportError:
-        console.print("[dim]✗[/dim] claude-agent-sdk - Install with: pip install 'testmcpy[sdk]'", markup=False)
+        console.print(
+            "[dim]✗[/dim] claude-agent-sdk - Install with: pip install 'testmcpy[sdk]'",
+            markup=False,
+        )
 
     # 4. Check configuration
     console.print("\n[bold]4. Configuration[/bold]")
@@ -1685,23 +1831,21 @@ def doctor():
     if mcp_url and mcp_url != "http://localhost:5008/mcp/":
         console.print(f"[green]✓[/green] MCP URL configured: {mcp_url}")
     else:
-        console.print(f"[yellow]⚠[/yellow] MCP URL not configured (using default)")
+        console.print("[yellow]⚠[/yellow] MCP URL not configured (using default)")
         warnings_found.append("MCP URL not configured. Run: testmcpy setup")
 
     # Check authentication
-    has_dynamic_jwt = all([
-        cfg.get("MCP_AUTH_API_URL"),
-        cfg.get("MCP_AUTH_API_TOKEN"),
-        cfg.get("MCP_AUTH_API_SECRET")
-    ])
+    has_dynamic_jwt = all(
+        [cfg.get("MCP_AUTH_API_URL"), cfg.get("MCP_AUTH_API_TOKEN"), cfg.get("MCP_AUTH_API_SECRET")]
+    )
     has_static_token = cfg.get("MCP_AUTH_TOKEN") or cfg.get("SUPERSET_MCP_TOKEN")
 
     if has_dynamic_jwt:
-        console.print(f"[green]✓[/green] MCP Authentication: Dynamic JWT configured")
+        console.print("[green]✓[/green] MCP Authentication: Dynamic JWT configured")
     elif has_static_token:
-        console.print(f"[green]✓[/green] MCP Authentication: Static token configured")
+        console.print("[green]✓[/green] MCP Authentication: Static token configured")
     else:
-        console.print(f"[yellow]⚠[/yellow] MCP Authentication: Not configured")
+        console.print("[yellow]⚠[/yellow] MCP Authentication: Not configured")
         warnings_found.append("MCP authentication not configured. Run: testmcpy setup")
 
     # Check LLM provider
@@ -1715,22 +1859,26 @@ def doctor():
         if provider == "anthropic":
             api_key = cfg.get("ANTHROPIC_API_KEY")
             if api_key:
-                console.print(f"[green]✓[/green] Anthropic API key configured")
+                console.print("[green]✓[/green] Anthropic API key configured")
             else:
-                console.print(f"[red]✗[/red] Anthropic API key missing")
-                issues_found.append("Anthropic API key not configured. Set ANTHROPIC_API_KEY in ~/.testmcpy")
+                console.print("[red]✗[/red] Anthropic API key missing")
+                issues_found.append(
+                    "Anthropic API key not configured. Set ANTHROPIC_API_KEY in ~/.testmcpy"
+                )
         elif provider == "openai":
             api_key = cfg.get("OPENAI_API_KEY")
             if api_key:
-                console.print(f"[green]✓[/green] OpenAI API key configured")
+                console.print("[green]✓[/green] OpenAI API key configured")
             else:
-                console.print(f"[red]✗[/red] OpenAI API key missing")
-                issues_found.append("OpenAI API key not configured. Set OPENAI_API_KEY in ~/.testmcpy")
+                console.print("[red]✗[/red] OpenAI API key missing")
+                issues_found.append(
+                    "OpenAI API key not configured. Set OPENAI_API_KEY in ~/.testmcpy"
+                )
         elif provider == "ollama":
             base_url = cfg.get("OLLAMA_BASE_URL") or "http://localhost:11434"
             console.print(f"[dim]  Ollama URL: {base_url}[/dim]")
     else:
-        console.print(f"[yellow]⚠[/yellow] LLM Provider: Not configured")
+        console.print("[yellow]⚠[/yellow] LLM Provider: Not configured")
         warnings_found.append("LLM provider not configured. Run: testmcpy setup")
 
     # 5. Check MCP connectivity (if configured)
@@ -1740,13 +1888,14 @@ def doctor():
         async def check_mcp():
             try:
                 from testmcpy.src.mcp_client import MCPClient
+
                 with console.status("[dim]Connecting to MCP service...[/dim]"):
                     client = MCPClient(mcp_url)
                     await client.initialize()
                     tools = await client.list_tools()
                     await client.close()
 
-                console.print(f"[green]✓[/green] MCP service reachable")
+                console.print("[green]✓[/green] MCP service reachable")
                 console.print(f"[dim]  Found {len(tools)} tools[/dim]")
                 return True
             except Exception as e:
@@ -1765,12 +1914,16 @@ def doctor():
 
     # 6. Check virtual environment
     console.print("\n[bold]6. Environment[/bold]")
-    if hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix):
-        console.print(f"[green]✓[/green] Running in virtual environment")
+    if hasattr(sys, "real_prefix") or (
+        hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix
+    ):
+        console.print("[green]✓[/green] Running in virtual environment")
         console.print(f"[dim]  Location: {sys.prefix}[/dim]")
     else:
-        console.print(f"[yellow]⚠[/yellow] Not running in virtual environment")
-        warnings_found.append("Not using a virtual environment. Consider using: python3 -m venv venv")
+        console.print("[yellow]⚠[/yellow] Not running in virtual environment")
+        warnings_found.append(
+            "Not using a virtual environment. Consider using: python3 -m venv venv"
+        )
 
     # 7. Check config files
     console.print("\n[bold]7. Configuration Files[/bold]")
@@ -1794,7 +1947,7 @@ def doctor():
         warnings_found.append("No configuration files found. Run: testmcpy setup")
 
     # Summary
-    console.print("\n" + "="*50)
+    console.print("\n" + "=" * 50)
     if not issues_found and not warnings_found:
         console.print("\n[bold green]✓ All checks passed![/bold green]")
         console.print("[dim]Your testmcpy installation is healthy.[/dim]")
@@ -1819,7 +1972,9 @@ def doctor():
         if any("MCP" in str(warnings_found) or "MCP" in str(issues_found)):
             console.print("• Configure MCP service: testmcpy setup")
         if any("virtual environment" in warning for warning in warnings_found):
-            console.print("• Create virtual environment: python3 -m venv venv && source venv/bin/activate")
+            console.print(
+                "• Create virtual environment: python3 -m venv venv && source venv/bin/activate"
+            )
 
     console.print()
 

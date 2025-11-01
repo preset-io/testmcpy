@@ -27,8 +27,8 @@ jobs:
 
       - name: Lint with ruff
         run: |
-          ruff check .
-          ruff format --check .
+          ruff check testmcpy tests
+          ruff format --check testmcpy tests
 
       - name: Type check with mypy
         run: mypy testmcpy

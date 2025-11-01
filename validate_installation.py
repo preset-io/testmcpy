@@ -3,8 +3,9 @@
 Validation script to check if the MCP Testing Framework is properly installed.
 """
 
-import sys
 import asyncio
+import sys
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -14,10 +15,12 @@ console = Console()
 
 async def validate_installation():
     """Validate the MCP Testing Framework installation."""
-    console.print(Panel.fit(
-        "[bold cyan]MCP Testing Framework - Installation Validation[/bold cyan]",
-        border_style="cyan"
-    ))
+    console.print(
+        Panel.fit(
+            "[bold cyan]MCP Testing Framework - Installation Validation[/bold cyan]",
+            border_style="cyan",
+        )
+    )
 
     results = []
 
@@ -26,30 +29,35 @@ async def validate_installation():
 
     try:
         import typer
+
         results.append(("typer", "✓", "Installed"))
     except ImportError:
         results.append(("typer", "✗", "Not installed"))
 
     try:
         import rich
+
         results.append(("rich", "✓", "Installed"))
     except ImportError:
         results.append(("rich", "✗", "Not installed"))
 
     try:
         import httpx
+
         results.append(("httpx", "✓", "Installed"))
     except ImportError:
         results.append(("httpx", "✗", "Not installed"))
 
     try:
         import yaml
+
         results.append(("pyyaml", "✓", "Installed"))
     except ImportError:
         results.append(("pyyaml", "✗", "Not installed"))
 
     try:
         import ollama
+
         results.append(("ollama", "✓", "Installed"))
     except ImportError:
         results.append(("ollama", "✗", "Not installed - optional"))
@@ -59,24 +67,28 @@ async def validate_installation():
 
     try:
         from src.mcp_client import MCPClient
+
         results.append(("MCP Client", "✓", "Available"))
     except ImportError as e:
         results.append(("MCP Client", "✗", f"Import error: {e}"))
 
     try:
         from src.llm_integration import create_llm_provider
+
         results.append(("LLM Integration", "✓", "Available"))
     except ImportError as e:
         results.append(("LLM Integration", "✗", f"Import error: {e}"))
 
     try:
         from src.test_runner import TestRunner
+
         results.append(("Test Runner", "✓", "Available"))
     except ImportError as e:
         results.append(("Test Runner", "✗", f"Import error: {e}"))
 
     try:
         from evals.base_evaluators import create_evaluator
+
         results.append(("Evaluators", "✓", "Available"))
     except ImportError as e:
         results.append(("Evaluators", "✗", f"Import error: {e}"))
@@ -85,6 +97,7 @@ async def validate_installation():
     console.print("\n[bold]Checking Ollama service...[/bold]")
     try:
         import httpx
+
         async with httpx.AsyncClient() as client:
             response = await client.get("http://localhost:11434/api/tags", timeout=2.0)
             if response.status_code == 200:
@@ -101,25 +114,26 @@ async def validate_installation():
                     results.append(("Ollama Service", "⚠", "Running but no models"))
             else:
                 results.append(("Ollama Service", "✗", "Not responding correctly"))
-    except Exception as e:
+    except Exception:
         results.append(("Ollama Service", "✗", "Not running or not accessible"))
 
     # Check MCP service
     console.print("\n[bold]Checking MCP service...[/bold]")
     try:
         import httpx
+
         async with httpx.AsyncClient() as client:
             # Try a simple request to the MCP endpoint
             response = await client.post(
                 "http://localhost:5008/mcp/",
                 json={"jsonrpc": "2.0", "method": "initialize", "params": {}, "id": 1},
-                timeout=2.0
+                timeout=2.0,
             )
             if response.status_code in [200, 404]:
                 results.append(("MCP Service", "✓", "Responding"))
             else:
                 results.append(("MCP Service", "⚠", f"HTTP {response.status_code}"))
-    except Exception as e:
+    except Exception:
         results.append(("MCP Service", "✗", "Not accessible at localhost:5008"))
 
     # Display results
@@ -149,13 +163,17 @@ async def validate_installation():
     # Final status
     console.print("")
     if all_pass:
-        console.print("[bold green]✓ All checks passed! The framework is ready to use.[/bold green]")
+        console.print(
+            "[bold green]✓ All checks passed! The framework is ready to use.[/bold green]"
+        )
         console.print("\nTry running:")
         console.print("  python cli.py research")
         console.print("  python cli.py tools")
         console.print("  python cli.py run tests/basic_test.yaml")
     else:
-        console.print("[bold yellow]⚠ Some checks failed. Please review the issues above.[/bold yellow]")
+        console.print(
+            "[bold yellow]⚠ Some checks failed. Please review the issues above.[/bold yellow]"
+        )
         console.print("\nTo fix missing dependencies, run:")
         console.print("  pip install -r requirements.txt")
         console.print("\nFor Ollama models, run:")

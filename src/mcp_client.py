@@ -6,23 +6,24 @@ specifically designed for testing LLM tool calling capabilities.
 """
 
 import asyncio
-import os
 import logging
+import os
 import warnings
-from pathlib import Path
-from typing import Dict, List, Any, Optional, Union
 from dataclasses import dataclass
+from typing import Any
+
+import httpx
 from fastmcp import Client
 from mcp.types import Tool as MCPToolDef
-import httpx
 
 # Suppress MCP notification validation warnings
-logging.getLogger('root').setLevel(logging.ERROR)
-warnings.filterwarnings('ignore', message='Failed to validate notification')
+logging.getLogger("root").setLevel(logging.ERROR)
+warnings.filterwarnings("ignore", message="Failed to validate notification")
 
 
 class MCPError(Exception):
     """Base exception for MCP-related errors."""
+
     pass
 
 
@@ -40,59 +41,60 @@ class BearerAuth(httpx.Auth):
 @dataclass
 class MCPTool:
     """Represents an MCP tool definition."""
+
     name: str
     description: str
-    input_schema: Dict[str, Any]
+    input_schema: dict[str, Any]
 
     @classmethod
     def from_mcp_tool(cls, tool: MCPToolDef) -> "MCPTool":
         """Create MCPTool from MCP Tool definition."""
         return cls(
-            name=tool.name,
-            description=tool.description or "",
-            input_schema=tool.inputSchema or {}
+            name=tool.name, description=tool.description or "", input_schema=tool.inputSchema or {}
         )
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "MCPTool":
+    def from_dict(cls, data: dict[str, Any]) -> "MCPTool":
         """Create MCPTool from dictionary."""
         return cls(
             name=data["name"],
             description=data.get("description", ""),
-            input_schema=data.get("inputSchema", {})
+            input_schema=data.get("inputSchema", {}),
         )
 
 
 @dataclass
 class MCPToolCall:
     """Represents a tool call to be executed."""
+
     name: str
-    arguments: Dict[str, Any]
-    id: Optional[str] = None
+    arguments: dict[str, Any]
+    id: str | None = None
 
 
 @dataclass
 class MCPToolResult:
     """Result from executing an MCP tool."""
+
     tool_call_id: str
     content: Any
     is_error: bool = False
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
 
 class MCPClient:
     """Client for interacting with MCP services using FastMCP."""
 
-    def __init__(self, base_url: Optional[str] = None):
+    def __init__(self, base_url: str | None = None):
         # Use MCP_URL from environment if not provided
         if base_url is None:
             base_url = os.environ.get("MCP_URL", "http://localhost:5008/mcp")
         self.base_url = base_url
         self.client = None
-        self._tools_cache: Optional[List[MCPTool]] = None
+        self._tools_cache: list[MCPTool] | None = None
         self.auth = self._load_auth_token()
 
-    def _load_auth_token(self) -> Optional[BearerAuth]:
+    def _load_auth_token(self) -> BearerAuth | None:
         """Load bearer token from MCP_AUTH_TOKEN or SUPERSET_MCP_TOKEN environment variable."""
         # Try MCP_AUTH_TOKEN first (generic), then SUPERSET_MCP_TOKEN (legacy)
         token = os.getenv("MCP_AUTH_TOKEN") or os.getenv("SUPERSET_MCP_TOKEN")
@@ -100,7 +102,7 @@ class MCPClient:
             return BearerAuth(token=token)
         return None
 
-    async def initialize(self) -> Dict[str, Any]:
+    async def initialize(self) -> dict[str, Any]:
         """Initialize the MCP session using FastMCP client."""
         try:
             self.client = Client(self.base_url, auth=self.auth)
@@ -111,7 +113,7 @@ class MCPClient:
         except Exception as e:
             raise MCPError(f"Failed to initialize MCP client: {e}")
 
-    async def list_tools(self, force_refresh: bool = False) -> List[MCPTool]:
+    async def list_tools(self, force_refresh: bool = False) -> list[MCPTool]:
         """List available MCP tools."""
         if not force_refresh and self._tools_cache is not None:
             return self._tools_cache
@@ -124,7 +126,7 @@ class MCPClient:
             tools = []
 
             # Handle different response formats
-            if hasattr(tools_response, 'tools'):
+            if hasattr(tools_response, "tools"):
                 tool_list = tools_response.tools
             elif isinstance(tools_response, list):
                 tool_list = tools_response
@@ -132,7 +134,7 @@ class MCPClient:
                 tool_list = []
 
             for tool in tool_list:
-                if hasattr(tool, 'name'):
+                if hasattr(tool, "name"):
                     tools.append(MCPTool.from_mcp_tool(tool))
                 elif isinstance(tool, dict):
                     tools.append(MCPTool.from_dict(tool))
@@ -153,18 +155,18 @@ class MCPClient:
             return MCPToolResult(
                 tool_call_id=tool_call.id or "unknown",
                 content=result.content,
-                is_error=result.isError if hasattr(result, 'isError') else False,
-                error_message=None
+                is_error=result.isError if hasattr(result, "isError") else False,
+                error_message=None,
             )
         except Exception as e:
             return MCPToolResult(
                 tool_call_id=tool_call.id or "unknown",
                 content=None,
                 is_error=True,
-                error_message=str(e)
+                error_message=str(e),
             )
 
-    async def batch_call_tools(self, tool_calls: List[MCPToolCall]) -> List[MCPToolResult]:
+    async def batch_call_tools(self, tool_calls: list[MCPToolCall]) -> list[MCPToolResult]:
         """Execute multiple tool calls."""
         results = []
         for tool_call in tool_calls:
@@ -172,19 +174,21 @@ class MCPClient:
             results.append(result)
         return results
 
-    async def list_resources(self) -> List[Dict[str, Any]]:
+    async def list_resources(self) -> list[dict[str, Any]]:
         """List available MCP resources."""
         if not self.client:
             raise MCPError("MCP client not initialized. Call initialize() first.")
 
         try:
             resources_response = await self.client.list_resources()
-            return [{"name": r.name, "description": r.description, "uri": r.uri}
-                   for r in resources_response.resources]
+            return [
+                {"name": r.name, "description": r.description, "uri": r.uri}
+                for r in resources_response.resources
+            ]
         except Exception as e:
             raise MCPError(f"Failed to list resources: {e}")
 
-    async def read_resource(self, uri: str) -> Dict[str, Any]:
+    async def read_resource(self, uri: str) -> dict[str, Any]:
         """Read a specific MCP resource."""
         if not self.client:
             raise MCPError("MCP client not initialized. Call initialize() first.")
@@ -195,19 +199,20 @@ class MCPClient:
         except Exception as e:
             raise MCPError(f"Failed to read resource {uri}: {e}")
 
-    async def list_prompts(self) -> List[Dict[str, Any]]:
+    async def list_prompts(self) -> list[dict[str, Any]]:
         """List available MCP prompts."""
         if not self.client:
             raise MCPError("MCP client not initialized. Call initialize() first.")
 
         try:
             prompts_response = await self.client.list_prompts()
-            return [{"name": p.name, "description": p.description}
-                   for p in prompts_response.prompts]
+            return [
+                {"name": p.name, "description": p.description} for p in prompts_response.prompts
+            ]
         except Exception as e:
             raise MCPError(f"Failed to list prompts: {e}")
 
-    async def get_prompt(self, name: str, arguments: Optional[Dict[str, Any]] = None) -> str:
+    async def get_prompt(self, name: str, arguments: dict[str, Any] | None = None) -> str:
         """Get a specific prompt."""
         if not self.client:
             raise MCPError("MCP client not initialized. Call initialize() first.")
@@ -217,10 +222,10 @@ class MCPClient:
             # Extract text from prompt messages
             text_parts = []
             for message in result.messages:
-                if hasattr(message, 'content'):
+                if hasattr(message, "content"):
                     if isinstance(message.content, str):
                         text_parts.append(message.content)
-                    elif hasattr(message.content, 'text'):
+                    elif hasattr(message.content, "text"):
                         text_parts.append(message.content.text)
             return "\n".join(text_parts)
         except Exception as e:
@@ -251,7 +256,7 @@ class MCPTester:
     def __init__(self):
         pass
 
-    async def test_connection(self, base_url: str) -> Dict[str, Any]:
+    async def test_connection(self, base_url: str) -> dict[str, Any]:
         """Test MCP service connection."""
         try:
             async with MCPClient(base_url) as client:
@@ -259,13 +264,10 @@ class MCPTester:
                 return {
                     "connected": True,
                     "tools_count": len(tools),
-                    "tools": [{"name": t.name, "description": t.description} for t in tools]
+                    "tools": [{"name": t.name, "description": t.description} for t in tools],
                 }
         except Exception as e:
-            return {
-                "connected": False,
-                "error": str(e)
-            }
+            return {"connected": False, "error": str(e)}
 
 
 async def test_mcp_connection():

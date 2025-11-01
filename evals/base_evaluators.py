@@ -4,27 +4,27 @@ Base evaluation functions for MCP Testing Framework.
 These evaluators can be used to validate LLM responses and tool calling behavior.
 """
 
-import json
 import re
-from typing import Dict, Any, List, Optional, Union, Callable
-from dataclasses import dataclass
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass
 class EvalResult:
     """Result from an evaluation function."""
+
     passed: bool
     score: float  # 0.0 to 1.0
-    reason: Optional[str] = None
-    details: Optional[Dict[str, Any]] = None
+    reason: str | None = None
+    details: dict[str, Any] | None = None
 
 
 class BaseEvaluator(ABC):
     """Base class for all evaluators."""
 
     @abstractmethod
-    def evaluate(self, context: Dict[str, Any]) -> EvalResult:
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
         """
         Evaluate based on the provided context.
 
@@ -56,7 +56,7 @@ class BaseEvaluator(ABC):
 class WasMCPToolCalled(BaseEvaluator):
     """Check if an MCP tool was called."""
 
-    def __init__(self, tool_name: Optional[str] = None):
+    def __init__(self, tool_name: str | None = None):
         self.tool_name = tool_name
 
     @property
@@ -71,15 +71,11 @@ class WasMCPToolCalled(BaseEvaluator):
             return f"Checks if the '{self.tool_name}' tool was called"
         return "Checks if any MCP tool was called"
 
-    def evaluate(self, context: Dict[str, Any]) -> EvalResult:
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
         tool_calls = context.get("tool_calls", [])
 
         if not tool_calls:
-            return EvalResult(
-                passed=False,
-                score=0.0,
-                reason="No tool calls found in response"
-            )
+            return EvalResult(passed=False, score=0.0, reason="No tool calls found in response")
 
         if self.tool_name:
             # Check for specific tool
@@ -89,14 +85,14 @@ class WasMCPToolCalled(BaseEvaluator):
                         passed=True,
                         score=1.0,
                         reason=f"Tool '{self.tool_name}' was called",
-                        details={"tool_call": call}
+                        details={"tool_call": call},
                     )
 
             return EvalResult(
                 passed=False,
                 score=0.0,
                 reason=f"Tool '{self.tool_name}' was not called",
-                details={"tools_called": [c.get("name") for c in tool_calls]}
+                details={"tools_called": [c.get("name") for c in tool_calls]},
             )
 
         # Any tool call is acceptable
@@ -104,7 +100,7 @@ class WasMCPToolCalled(BaseEvaluator):
             passed=True,
             score=1.0,
             reason=f"{len(tool_calls)} tool(s) called",
-            details={"tool_calls": tool_calls}
+            details={"tool_calls": tool_calls},
         )
 
 
@@ -119,45 +115,42 @@ class ExecutionSuccessful(BaseEvaluator):
     def description(self) -> str:
         return "Checks if tool execution completed without errors"
 
-    def evaluate(self, context: Dict[str, Any]) -> EvalResult:
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
         tool_results = context.get("tool_results", [])
 
         if not tool_results:
-            return EvalResult(
-                passed=False,
-                score=0.0,
-                reason="No tool execution results found"
-            )
+            return EvalResult(passed=False, score=0.0, reason="No tool execution results found")
 
         errors = []
         for result in tool_results:
             if result.is_error:
-                errors.append({
-                    "tool": result.tool_call_id,
-                    "error": result.error_message or "Unknown error"
-                })
+                errors.append(
+                    {"tool": result.tool_call_id, "error": result.error_message or "Unknown error"}
+                )
 
         if errors:
             return EvalResult(
                 passed=False,
                 score=0.0,
                 reason=f"{len(errors)} tool execution error(s) occurred",
-                details={"errors": errors}
+                details={"errors": errors},
             )
 
         return EvalResult(
             passed=True,
             score=1.0,
             reason="All tool executions completed successfully",
-            details={"successful_executions": len(tool_results)}
+            details={"successful_executions": len(tool_results)},
         )
 
 
 class FinalAnswerContains(BaseEvaluator):
     """Check if the final answer contains expected content."""
 
-    def __init__(self, expected_content: Union[str, List[str]], case_sensitive: bool = False):
-        self.expected_content = expected_content if isinstance(expected_content, list) else [expected_content]
+    def __init__(self, expected_content: str | list[str], case_sensitive: bool = False):
+        self.expected_content = (
+            expected_content if isinstance(expected_content, list) else [expected_content]
+        )
         self.case_sensitive = case_sensitive
 
     @property
@@ -168,7 +161,7 @@ class FinalAnswerContains(BaseEvaluator):
     def description(self) -> str:
         return f"Checks if final answer contains: {', '.join(self.expected_content)}"
 
-    def evaluate(self, context: Dict[str, Any]) -> EvalResult:
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
         response = context.get("response", "")
 
         if not self.case_sensitive:
@@ -191,28 +184,28 @@ class FinalAnswerContains(BaseEvaluator):
                 passed=True,
                 score=score,
                 reason="All expected content found in response",
-                details={"found": found}
+                details={"found": found},
             )
         elif score > 0:
             return EvalResult(
                 passed=False,
                 score=score,
                 reason=f"Partial match: {len(found)}/{len(self.expected_content)} items found",
-                details={"found": found, "not_found": not_found}
+                details={"found": found, "not_found": not_found},
             )
         else:
             return EvalResult(
                 passed=False,
                 score=0.0,
                 reason="No expected content found in response",
-                details={"not_found": not_found}
+                details={"not_found": not_found},
             )
 
 
 class AnswerContainsLink(BaseEvaluator):
     """Check if the answer contains expected links."""
 
-    def __init__(self, expected_links: Optional[List[str]] = None):
+    def __init__(self, expected_links: list[str] | None = None):
         self.expected_links = expected_links
 
     @property
@@ -223,7 +216,7 @@ class AnswerContainsLink(BaseEvaluator):
     def description(self) -> str:
         return "Checks if answer contains expected links"
 
-    def evaluate(self, context: Dict[str, Any]) -> EvalResult:
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
         response = context.get("response", "")
 
         # Extract all URLs from response
@@ -237,14 +230,10 @@ class AnswerContainsLink(BaseEvaluator):
                     passed=True,
                     score=1.0,
                     reason=f"Found {len(found_links)} link(s) in response",
-                    details={"links": found_links}
+                    details={"links": found_links},
                 )
             else:
-                return EvalResult(
-                    passed=False,
-                    score=0.0,
-                    reason="No links found in response"
-                )
+                return EvalResult(passed=False, score=0.0, reason="No links found in response")
 
         # Check for specific links
         found_expected = []
@@ -263,14 +252,14 @@ class AnswerContainsLink(BaseEvaluator):
                 passed=True,
                 score=score,
                 reason="All expected links found",
-                details={"found": found_expected}
+                details={"found": found_expected},
             )
         else:
             return EvalResult(
                 passed=False,
                 score=score,
                 reason=f"Missing {len(missing)} expected link(s)",
-                details={"found": found_expected, "missing": missing, "all_links": found_links}
+                details={"found": found_expected, "missing": missing, "all_links": found_links},
             )
 
 
@@ -288,29 +277,26 @@ class WithinTimeLimit(BaseEvaluator):
     def description(self) -> str:
         return f"Checks if execution completed within {self.max_seconds} seconds"
 
-    def evaluate(self, context: Dict[str, Any]) -> EvalResult:
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
         duration = context.get("metadata", {}).get("duration_seconds", 0)
 
         if duration <= 0:
-            return EvalResult(
-                passed=False,
-                score=0.0,
-                reason="Duration information not available"
-            )
+            return EvalResult(passed=False, score=0.0, reason="Duration information not available")
 
         if duration <= self.max_seconds:
             return EvalResult(
                 passed=True,
-                score=1.0 - (duration / self.max_seconds) * 0.5,  # Higher score for faster execution
+                score=1.0
+                - (duration / self.max_seconds) * 0.5,  # Higher score for faster execution
                 reason=f"Completed in {duration:.2f}s (limit: {self.max_seconds}s)",
-                details={"duration": duration}
+                details={"duration": duration},
             )
         else:
             return EvalResult(
                 passed=False,
                 score=0.0,
                 reason=f"Exceeded time limit: {duration:.2f}s > {self.max_seconds}s",
-                details={"duration": duration, "limit": self.max_seconds}
+                details={"duration": duration, "limit": self.max_seconds},
             )
 
 
@@ -327,18 +313,18 @@ class TokenUsageReasonable(BaseEvaluator):
 
     @property
     def description(self) -> str:
-        return f"Checks if token usage is reasonable (max: {self.max_tokens} tokens, ${self.max_cost})"
+        return (
+            f"Checks if token usage is reasonable (max: {self.max_tokens} tokens, ${self.max_cost})"
+        )
 
-    def evaluate(self, context: Dict[str, Any]) -> EvalResult:
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
         metadata = context.get("metadata", {})
         tokens_used = metadata.get("total_tokens", 0)
         cost = metadata.get("cost", 0.0)
 
         if tokens_used <= 0:
             return EvalResult(
-                passed=False,
-                score=0.0,
-                reason="Token usage information not available"
+                passed=False, score=0.0, reason="Token usage information not available"
             )
 
         issues = []
@@ -353,18 +339,19 @@ class TokenUsageReasonable(BaseEvaluator):
                 passed=False,
                 score=max(0, 1.0 - (tokens_used / self.max_tokens - 1.0)),
                 reason="; ".join(issues),
-                details={"tokens_used": tokens_used, "cost": cost}
+                details={"tokens_used": tokens_used, "cost": cost},
             )
 
         return EvalResult(
             passed=True,
             score=1.0 - (tokens_used / self.max_tokens) * 0.5,  # Higher score for fewer tokens
             reason=f"Token usage reasonable: {tokens_used} tokens, ${cost:.4f}",
-            details={"tokens_used": tokens_used, "cost": cost}
+            details={"tokens_used": tokens_used, "cost": cost},
         )
 
 
 # Superset-specific evaluators
+
 
 class WasSupersetChartCreated(BaseEvaluator):
     """Check if a Superset chart was created."""
@@ -377,7 +364,7 @@ class WasSupersetChartCreated(BaseEvaluator):
     def description(self) -> str:
         return "Checks if a Superset chart was successfully created"
 
-    def evaluate(self, context: Dict[str, Any]) -> EvalResult:
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
         tool_calls = context.get("tool_calls", [])
         tool_results = context.get("tool_results", [])
 
@@ -397,7 +384,8 @@ class WasSupersetChartCreated(BaseEvaluator):
                         if isinstance(content, str):
                             # Look for chart ID pattern
                             import re
-                            match = re.search(r'chart[_\s]?id[:\s]+(\d+)', content, re.IGNORECASE)
+
+                            match = re.search(r"chart[_\s]?id[:\s]+(\d+)", content, re.IGNORECASE)
                             if match:
                                 chart_id = match.group(1)
 
@@ -406,14 +394,10 @@ class WasSupersetChartCreated(BaseEvaluator):
                 passed=True,
                 score=1.0,
                 reason="Chart was successfully created",
-                details={"chart_id": chart_id} if chart_id else None
+                details={"chart_id": chart_id} if chart_id else None,
             )
         else:
-            return EvalResult(
-                passed=False,
-                score=0.0,
-                reason="No chart creation detected"
-            )
+            return EvalResult(passed=False, score=0.0, reason="No chart creation detected")
 
 
 class SQLQueryValid(BaseEvaluator):
@@ -427,19 +411,15 @@ class SQLQueryValid(BaseEvaluator):
     def description(self) -> str:
         return "Checks if generated SQL query is syntactically valid"
 
-    def evaluate(self, context: Dict[str, Any]) -> EvalResult:
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
         response = context.get("response", "")
 
         # Extract SQL from response (look for code blocks or SQL patterns)
-        sql_pattern = r'```sql\n(.*?)\n```|SELECT\s+.*?FROM\s+.*?(?:;|\n|$)'
+        sql_pattern = r"```sql\n(.*?)\n```|SELECT\s+.*?FROM\s+.*?(?:;|\n|$)"
         sql_matches = re.findall(sql_pattern, response, re.DOTALL | re.IGNORECASE)
 
         if not sql_matches:
-            return EvalResult(
-                passed=False,
-                score=0.0,
-                reason="No SQL query found in response"
-            )
+            return EvalResult(passed=False, score=0.0, reason="No SQL query found in response")
 
         # Basic SQL validation
         sql_query = sql_matches[0] if isinstance(sql_matches[0], str) else sql_matches[0][0]
@@ -447,33 +427,31 @@ class SQLQueryValid(BaseEvaluator):
 
         # Check for basic SQL structure
         required_keywords = ["SELECT", "FROM"]
-        has_required = all(
-            keyword in sql_query.upper()
-            for keyword in required_keywords
-        )
+        has_required = all(keyword in sql_query.upper() for keyword in required_keywords)
 
         if has_required:
             return EvalResult(
                 passed=True,
                 score=1.0,
                 reason="SQL query appears syntactically valid",
-                details={"query": sql_query[:200]}  # First 200 chars
+                details={"query": sql_query[:200]},  # First 200 chars
             )
         else:
             return EvalResult(
                 passed=False,
                 score=0.5,
                 reason="SQL query may have syntax issues",
-                details={"query": sql_query[:200]}
+                details={"query": sql_query[:200]},
             )
 
 
 # Composite evaluator for running multiple evaluations
 
+
 class CompositeEvaluator(BaseEvaluator):
     """Run multiple evaluators and combine results."""
 
-    def __init__(self, evaluators: List[BaseEvaluator], require_all: bool = False):
+    def __init__(self, evaluators: list[BaseEvaluator], require_all: bool = False):
         self.evaluators = evaluators
         self.require_all = require_all
 
@@ -486,18 +464,20 @@ class CompositeEvaluator(BaseEvaluator):
         mode = "all" if self.require_all else "any"
         return f"Composite evaluator requiring {mode} to pass"
 
-    def evaluate(self, context: Dict[str, Any]) -> EvalResult:
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
         results = []
         total_score = 0.0
 
         for evaluator in self.evaluators:
             result = evaluator.evaluate(context)
-            results.append({
-                "evaluator": evaluator.name,
-                "passed": result.passed,
-                "score": result.score,
-                "reason": result.reason
-            })
+            results.append(
+                {
+                    "evaluator": evaluator.name,
+                    "passed": result.passed,
+                    "score": result.score,
+                    "reason": result.reason,
+                }
+            )
             total_score += result.score
 
         avg_score = total_score / len(self.evaluators) if self.evaluators else 0.0
@@ -505,20 +485,22 @@ class CompositeEvaluator(BaseEvaluator):
 
         if self.require_all:
             passed = passed_count == len(self.evaluators)
-            reason = f"All evaluators passed" if passed else f"{passed_count}/{len(self.evaluators)} evaluators passed"
+            reason = (
+                "All evaluators passed"
+                if passed
+                else f"{passed_count}/{len(self.evaluators)} evaluators passed"
+            )
         else:
             passed = passed_count > 0
             reason = f"{passed_count}/{len(self.evaluators)} evaluators passed"
 
         return EvalResult(
-            passed=passed,
-            score=avg_score,
-            reason=reason,
-            details={"results": results}
+            passed=passed, score=avg_score, reason=reason, details={"results": results}
         )
 
 
 # Factory function for creating evaluators
+
 
 def create_evaluator(name: str, **kwargs) -> BaseEvaluator:
     """Factory function to create evaluators by name."""

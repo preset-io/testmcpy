@@ -9,16 +9,17 @@ This script validates that we can:
 4. Connect to the MCP service at localhost:5008/mcp/
 """
 
-import json
 import asyncio
+import json
 import time
-from typing import Dict, List, Any, Optional
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
+from typing import Any
+
 import httpx
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.table import Table
 
 console = Console()
 
@@ -26,8 +27,9 @@ console = Console()
 @dataclass
 class ToolCall:
     """Represents a tool call from the LLM."""
+
     name: str
-    arguments: Dict[str, Any]
+    arguments: dict[str, Any]
 
     def to_dict(self):
         return asdict(self)
@@ -36,13 +38,14 @@ class ToolCall:
 @dataclass
 class TestResult:
     """Results from a test run."""
+
     model: str
     success: bool
     tool_called: bool
-    tool_name: Optional[str]
+    tool_name: str | None
     response_time: float
-    error: Optional[str]
-    raw_response: Optional[str]
+    error: str | None
+    raw_response: str | None
 
 
 class OllamaToolTester:
@@ -71,7 +74,7 @@ class OllamaToolTester:
             response = await self.client.post(
                 f"{self.base_url}/api/pull",
                 json={"name": model},
-                timeout=300.0  # 5 minutes for model download
+                timeout=300.0,  # 5 minutes for model download
             )
             if response.status_code == 200:
                 console.print(f"[green]Model {model} pulled successfully[/green]")
@@ -81,7 +84,7 @@ class OllamaToolTester:
             console.print(f"[red]Error pulling model: {e}[/red]")
             return False
 
-    async def test_tool_calling(self, model: str, prompt: str, tools: List[Dict]) -> TestResult:
+    async def test_tool_calling(self, model: str, prompt: str, tools: list[dict]) -> TestResult:
         """Test a model's tool calling capability."""
         start_time = time.time()
 
@@ -95,15 +98,12 @@ class OllamaToolTester:
                 "stream": False,
                 "options": {
                     "temperature": 0.1,  # Low temperature for consistent tool calling
-                    "num_predict": 512
-                }
+                    "num_predict": 512,
+                },
             }
 
             # Make the request
-            response = await self.client.post(
-                f"{self.base_url}/api/generate",
-                json=request_data
-            )
+            response = await self.client.post(f"{self.base_url}/api/generate", json=request_data)
 
             response_time = time.time() - start_time
 
@@ -115,7 +115,7 @@ class OllamaToolTester:
                     tool_name=None,
                     response_time=response_time,
                     error=f"HTTP {response.status_code}: {response.text}",
-                    raw_response=None
+                    raw_response=None,
                 )
 
             result = response.json()
@@ -131,7 +131,7 @@ class OllamaToolTester:
                 tool_name=tool_call.name if tool_call else None,
                 response_time=response_time,
                 error=None,
-                raw_response=response_text
+                raw_response=response_text,
             )
 
         except Exception as e:
@@ -142,10 +142,10 @@ class OllamaToolTester:
                 tool_name=None,
                 response_time=time.time() - start_time,
                 error=str(e),
-                raw_response=None
+                raw_response=None,
             )
 
-    def _parse_tool_call(self, response: str) -> Optional[ToolCall]:
+    def _parse_tool_call(self, response: str) -> ToolCall | None:
         """Parse tool call from model response."""
         try:
             # Try to parse as JSON
@@ -159,22 +159,19 @@ class OllamaToolTester:
             elif "tool_call" in data:
                 tc = data["tool_call"]
                 if isinstance(tc, dict) and "name" in tc:
-                    return ToolCall(
-                        name=tc["name"],
-                        arguments=tc.get("arguments", {})
-                    )
+                    return ToolCall(name=tc["name"], arguments=tc.get("arguments", {}))
 
             # Check if the entire response is a tool call
             if "name" in data and ("arguments" in data or "parameters" in data):
                 return ToolCall(
-                    name=data["name"],
-                    arguments=data.get("arguments", data.get("parameters", {}))
+                    name=data["name"], arguments=data.get("arguments", data.get("parameters", {}))
                 )
 
         except json.JSONDecodeError:
             # Try to find JSON in the response
             import re
-            json_pattern = r'\{[^{}]*\}'
+
+            json_pattern = r"\{[^{}]*\}"
             matches = re.findall(json_pattern, response)
             for match in matches:
                 try:
@@ -207,17 +204,12 @@ class MCPServiceTester:
             console.print(f"[red]MCP service not reachable: {e}[/red]")
             return False
 
-    async def list_tools(self) -> Optional[List[Dict]]:
+    async def list_tools(self) -> list[dict] | None:
         """List available MCP tools."""
         try:
             response = await self.client.post(
                 self.base_url,
-                json={
-                    "jsonrpc": "2.0",
-                    "method": "tools/list",
-                    "params": {},
-                    "id": 1
-                }
+                json={"jsonrpc": "2.0", "method": "tools/list", "params": {}, "id": 1},
             )
             if response.status_code == 200:
                 result = response.json()
@@ -235,11 +227,13 @@ class MCPServiceTester:
 
 async def main():
     """Main test runner."""
-    console.print(Panel.fit(
-        "[bold cyan]MCP Testing Framework - Phase 0 Research[/bold cyan]\n"
-        "Testing Ollama models for tool calling capabilities",
-        border_style="cyan"
-    ))
+    console.print(
+        Panel.fit(
+            "[bold cyan]MCP Testing Framework - Phase 0 Research[/bold cyan]\n"
+            "Testing Ollama models for tool calling capabilities",
+            border_style="cyan",
+        )
+    )
 
     # Test models
     models_to_test = [
@@ -249,23 +243,22 @@ async def main():
     ]
 
     # Sample tool definition
-    test_tools = [{
-        "type": "function",
-        "function": {
-            "name": "get_chart_data",
-            "description": "Get data for a specific chart from Superset",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "chart_id": {
-                        "type": "integer",
-                        "description": "The ID of the chart"
-                    }
+    test_tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "get_chart_data",
+                "description": "Get data for a specific chart from Superset",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "chart_id": {"type": "integer", "description": "The ID of the chart"}
+                    },
+                    "required": ["chart_id"],
                 },
-                "required": ["chart_id"]
-            }
+            },
         }
-    }]
+    ]
 
     # Test prompt that should trigger tool use
     test_prompt = "Get the data for chart ID 42"
@@ -301,7 +294,6 @@ async def main():
         TextColumn("[progress.description]{task.description}"),
         console=console,
     ) as progress:
-
         for model in models_to_test:
             task = progress.add_task(f"Testing {model}...", total=None)
 
@@ -324,9 +316,13 @@ async def main():
             # Display result
             if result.success:
                 if result.tool_called:
-                    console.print(f"[green]✓ {model}: Tool calling successful ({result.tool_name})[/green]")
+                    console.print(
+                        f"[green]✓ {model}: Tool calling successful ({result.tool_name})[/green]"
+                    )
                 else:
-                    console.print(f"[yellow]⚠ {model}: Response received but no tool call detected[/yellow]")
+                    console.print(
+                        f"[yellow]⚠ {model}: Response received but no tool call detected[/yellow]"
+                    )
             else:
                 console.print(f"[red]✗ {model}: Failed - {result.error}[/red]")
 
@@ -346,7 +342,7 @@ async def main():
             "✓" if result.success else "✗",
             "✓" if result.tool_called else "✗",
             f"{result.response_time:.2f}s",
-            result.tool_name or "-"
+            result.tool_name or "-",
         )
 
     console.print(table)

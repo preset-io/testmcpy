@@ -2,22 +2,20 @@
 WebSocket support for streaming chat responses.
 """
 
-import json
 import asyncio
-from typing import Dict, List, Any, Optional
 
 from fastapi import WebSocket, WebSocketDisconnect
 
-from testmcpy.src.mcp_client import MCPClient, MCPToolCall
-from testmcpy.src.llm_integration import create_llm_provider
 from testmcpy.config import get_config
+from testmcpy.src.llm_integration import create_llm_provider
+from testmcpy.src.mcp_client import MCPClient, MCPToolCall
 
 
 class ConnectionManager:
     """Manage WebSocket connections."""
 
     def __init__(self):
-        self.active_connections: List[WebSocket] = []
+        self.active_connections: list[WebSocket] = []
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
@@ -76,8 +74,7 @@ async def handle_chat_websocket(websocket: WebSocket, mcp_client: MCPClient):
 
                 # Send start message
                 await manager.send_message(
-                    {"type": "start", "content": "Processing your request..."},
-                    websocket
+                    {"type": "start", "content": "Processing your request..."}, websocket
                 )
 
                 try:
@@ -89,8 +86,8 @@ async def handle_chat_websocket(websocket: WebSocket, mcp_client: MCPClient):
                             "function": {
                                 "name": tool.name,
                                 "description": tool.description,
-                                "parameters": tool.input_schema
-                            }
+                                "parameters": tool.input_schema,
+                            },
                         }
                         for tool in tools
                     ]
@@ -101,20 +98,15 @@ async def handle_chat_websocket(websocket: WebSocket, mcp_client: MCPClient):
 
                     # Generate response
                     result = await llm_provider.generate_with_tools(
-                        prompt=message,
-                        tools=formatted_tools,
-                        timeout=30.0
+                        prompt=message, tools=formatted_tools, timeout=30.0
                     )
 
                     # Stream the response text token by token for better UX
                     response_text = result.response
                     chunk_size = 50  # Characters per chunk
                     for i in range(0, len(response_text), chunk_size):
-                        chunk = response_text[i:i + chunk_size]
-                        await manager.send_message(
-                            {"type": "token", "content": chunk},
-                            websocket
-                        )
+                        chunk = response_text[i : i + chunk_size]
+                        await manager.send_message({"type": "token", "content": chunk}, websocket)
                         await asyncio.sleep(0.05)  # Small delay for streaming effect
 
                     # Execute tool calls if any
@@ -125,16 +117,16 @@ async def handle_chat_websocket(websocket: WebSocket, mcp_client: MCPClient):
                                 {
                                     "type": "tool_call",
                                     "tool_name": tool_call["name"],
-                                    "tool_args": tool_call.get("arguments", {})
+                                    "tool_args": tool_call.get("arguments", {}),
                                 },
-                                websocket
+                                websocket,
                             )
 
                             # Execute tool
                             mcp_tool_call = MCPToolCall(
                                 name=tool_call["name"],
                                 arguments=tool_call.get("arguments", {}),
-                                id=tool_call.get("id", "unknown")
+                                id=tool_call.get("id", "unknown"),
                             )
                             tool_result = await mcp_client.call_tool(mcp_tool_call)
 
@@ -146,10 +138,10 @@ async def handle_chat_websocket(websocket: WebSocket, mcp_client: MCPClient):
                                     "tool_result": {
                                         "content": tool_result.content,
                                         "is_error": tool_result.is_error,
-                                        "error_message": tool_result.error_message
-                                    }
+                                        "error_message": tool_result.error_message,
+                                    },
                                 },
-                                websocket
+                                websocket,
                             )
 
                     # Send completion message
@@ -158,18 +150,15 @@ async def handle_chat_websocket(websocket: WebSocket, mcp_client: MCPClient):
                             "type": "complete",
                             "token_usage": result.token_usage,
                             "cost": result.cost,
-                            "duration": result.duration
+                            "duration": result.duration,
                         },
-                        websocket
+                        websocket,
                     )
 
                     await llm_provider.close()
 
                 except Exception as e:
-                    await manager.send_message(
-                        {"type": "error", "content": str(e)},
-                        websocket
-                    )
+                    await manager.send_message({"type": "error", "content": str(e)}, websocket)
 
     except WebSocketDisconnect:
         manager.disconnect(websocket)

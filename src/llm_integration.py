@@ -2,25 +2,26 @@
 LLM integration module for supporting multiple model providers.
 """
 
-import json
 import asyncio
-import time
-import re
+import json
 import os
+import re
 import subprocess
-from typing import Dict, List, Any, Optional, Union
-from dataclasses import dataclass, field
+import time
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from typing import Any
+
 import httpx
-from urllib.parse import urlparse
 
 # Import MCP components (we'll handle the import error gracefully)
 try:
     from .mcp_client import MCPClient, MCPTool, MCPToolCall, MCPToolResult
 except ImportError:
     # Fallback for when running as script
-    import sys
     import os
+    import sys
+
     sys.path.append(os.path.dirname(os.path.abspath(__file__)))
     from mcp_client import MCPClient, MCPTool, MCPToolCall, MCPToolResult
 
@@ -28,29 +29,27 @@ except ImportError:
 @dataclass
 class LLMResult:
     """Result from LLM generation."""
+
     response: str
-    tool_calls: List[Dict[str, Any]] = field(default_factory=list)
-    token_usage: Optional[Dict[str, int]] = None
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    token_usage: dict[str, int] | None = None
     cost: float = 0.0
     duration: float = 0.0
-    raw_response: Optional[Any] = None
+    raw_response: Any | None = None
 
 
 @dataclass
 class ToolSchema:
     """Sanitized tool schema without internal URLs."""
+
     name: str
     description: str
-    parameters: Dict[str, Any]
+    parameters: dict[str, Any]
 
     @classmethod
     def from_mcp_tool(cls, tool: MCPTool) -> "ToolSchema":
         """Create sanitized tool schema from MCP tool."""
-        return cls(
-            name=tool.name,
-            description=tool.description,
-            parameters=tool.input_schema
-        )
+        return cls(name=tool.name, description=tool.description, parameters=tool.input_schema)
 
 
 class LLMProvider(ABC):
@@ -63,10 +62,7 @@ class LLMProvider(ABC):
 
     @abstractmethod
     async def generate_with_tools(
-        self,
-        prompt: str,
-        tools: List[Dict[str, Any]],
-        timeout: float = 30.0
+        self, prompt: str, tools: list[dict[str, Any]], timeout: float = 30.0
     ) -> LLMResult:
         """Generate response with tool calling capability."""
         pass
@@ -107,7 +103,7 @@ class OllamaProvider(LLMProvider):
             response = await self.client.post(
                 f"{self.base_url}/api/pull",
                 json={"name": self.model},
-                timeout=600.0  # 10 minutes for large models
+                timeout=600.0,  # 10 minutes for large models
             )
             if response.status_code != 200:
                 raise Exception(f"Failed to pull model: {response.text}")
@@ -115,10 +111,7 @@ class OllamaProvider(LLMProvider):
             raise Exception(f"Failed to pull model {self.model}: {e}")
 
     async def generate_with_tools(
-        self,
-        prompt: str,
-        tools: List[Dict[str, Any]],
-        timeout: float = 30.0
+        self, prompt: str, tools: list[dict[str, Any]], timeout: float = 30.0
     ) -> LLMResult:
         """Generate with Ollama's tool calling support."""
         start_time = time.time()
@@ -136,13 +129,11 @@ class OllamaProvider(LLMProvider):
                 "options": {
                     "temperature": 0.1,  # Low temperature for consistent tool calling
                     "num_predict": 1024,
-                }
+                },
             }
 
             response = await self.client.post(
-                f"{self.base_url}/api/generate",
-                json=request_data,
-                timeout=timeout
+                f"{self.base_url}/api/generate", json=request_data, timeout=timeout
             )
 
             if response.status_code != 200:
@@ -158,7 +149,7 @@ class OllamaProvider(LLMProvider):
             token_usage = {
                 "prompt": result.get("prompt_eval_count", 0),
                 "completion": result.get("eval_count", 0),
-                "total": result.get("prompt_eval_count", 0) + result.get("eval_count", 0)
+                "total": result.get("prompt_eval_count", 0) + result.get("eval_count", 0),
             }
 
             return LLMResult(
@@ -167,17 +158,15 @@ class OllamaProvider(LLMProvider):
                 token_usage=token_usage,
                 cost=0.0,  # Local models have no API cost
                 duration=time.time() - start_time,
-                raw_response=result
+                raw_response=result,
             )
 
         except Exception as e:
             return LLMResult(
-                response=f"Error: {str(e)}",
-                tool_calls=[],
-                duration=time.time() - start_time
+                response=f"Error: {str(e)}", tool_calls=[], duration=time.time() - start_time
             )
 
-    def _format_prompt_with_tools(self, prompt: str, tools: List[Dict[str, Any]]) -> str:
+    def _format_prompt_with_tools(self, prompt: str, tools: list[dict[str, Any]]) -> str:
         """Format prompt with tool descriptions for Ollama."""
         tool_descriptions = []
 
@@ -206,7 +195,7 @@ Response (use JSON format if calling a tool):"""
 
         return formatted
 
-    def _parse_tool_calls(self, response: str, tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _parse_tool_calls(self, response: str, tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Parse tool calls from Ollama response."""
         tool_calls = []
 
@@ -216,25 +205,22 @@ Response (use JSON format if calling a tool):"""
 
             # Check common patterns
             if "tool" in data and "arguments" in data:
-                tool_calls.append({
-                    "name": data["tool"],
-                    "arguments": data["arguments"]
-                })
+                tool_calls.append({"name": data["tool"], "arguments": data["arguments"]})
             elif "function" in data and "arguments" in data:
-                tool_calls.append({
-                    "name": data["function"],
-                    "arguments": data["arguments"]
-                })
+                tool_calls.append({"name": data["function"], "arguments": data["arguments"]})
             elif "name" in data and ("arguments" in data or "parameters" in data):
-                tool_calls.append({
-                    "name": data["name"],
-                    "arguments": data.get("arguments", data.get("parameters", {}))
-                })
+                tool_calls.append(
+                    {
+                        "name": data["name"],
+                        "arguments": data.get("arguments", data.get("parameters", {})),
+                    }
+                )
 
         except json.JSONDecodeError:
             # Try to extract JSON from the response
             import re
-            json_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
+
+            json_pattern = r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}"
             matches = re.findall(json_pattern, response)
 
             for match in matches:
@@ -258,10 +244,7 @@ class OpenAIProvider(LLMProvider):
     """OpenAI API provider (also works with OpenAI-compatible APIs)."""
 
     def __init__(
-        self,
-        model: str,
-        api_key: Optional[str] = None,
-        base_url: str = "https://api.openai.com/v1"
+        self, model: str, api_key: str | None = None, base_url: str = "https://api.openai.com/v1"
     ):
         self.model = model
         self.api_key = api_key or ""
@@ -272,15 +255,13 @@ class OpenAIProvider(LLMProvider):
         """Initialize OpenAI provider."""
         if not self.api_key and self.base_url == "https://api.openai.com/v1":
             import os
+
             self.api_key = os.environ.get("OPENAI_API_KEY", "")
             if not self.api_key:
                 raise ValueError("OpenAI API key not provided")
 
     async def generate_with_tools(
-        self,
-        prompt: str,
-        tools: List[Dict[str, Any]],
-        timeout: float = 30.0
+        self, prompt: str, tools: list[dict[str, Any]], timeout: float = 30.0
     ) -> LLMResult:
         """Generate with OpenAI's function calling."""
         start_time = time.time()
@@ -293,9 +274,7 @@ class OpenAIProvider(LLMProvider):
                 headers["Authorization"] = f"Bearer {self.api_key}"
 
             # Format for OpenAI API
-            messages = [
-                {"role": "user", "content": prompt}
-            ]
+            messages = [{"role": "user", "content": prompt}]
 
             request_data = {
                 "model": self.model,
@@ -303,14 +282,14 @@ class OpenAIProvider(LLMProvider):
                 "tools": tools,
                 "tool_choice": "auto",
                 "temperature": 0.1,
-                "max_tokens": 1000
+                "max_tokens": 1000,
             }
 
             response = await self.client.post(
                 f"{self.base_url}/chat/completions",
                 json=request_data,
                 headers=headers,
-                timeout=timeout
+                timeout=timeout,
             )
 
             if response.status_code != 200:
@@ -324,17 +303,19 @@ class OpenAIProvider(LLMProvider):
             tool_calls = []
             if "tool_calls" in message:
                 for tc in message["tool_calls"]:
-                    tool_calls.append({
-                        "name": tc["function"]["name"],
-                        "arguments": json.loads(tc["function"]["arguments"])
-                    })
+                    tool_calls.append(
+                        {
+                            "name": tc["function"]["name"],
+                            "arguments": json.loads(tc["function"]["arguments"]),
+                        }
+                    )
 
             # Token usage
             usage = result.get("usage", {})
             token_usage = {
                 "prompt": usage.get("prompt_tokens", 0),
                 "completion": usage.get("completion_tokens", 0),
-                "total": usage.get("total_tokens", 0)
+                "total": usage.get("total_tokens", 0),
             }
 
             # Estimate cost (GPT-4 pricing as example)
@@ -346,14 +327,12 @@ class OpenAIProvider(LLMProvider):
                 token_usage=token_usage,
                 cost=cost,
                 duration=time.time() - start_time,
-                raw_response=result
+                raw_response=result,
             )
 
         except Exception as e:
             return LLMResult(
-                response=f"Error: {str(e)}",
-                tool_calls=[],
-                duration=time.time() - start_time
+                response=f"Error: {str(e)}", tool_calls=[], duration=time.time() - start_time
             )
 
     async def close(self):
@@ -373,12 +352,10 @@ class LocalModelProvider(LLMProvider):
         """Load the local model."""
         try:
             from transformers import pipeline
+
             # Load model pipeline
             self.pipeline = pipeline(
-                "text-generation",
-                model=self.model,
-                device=self.device,
-                max_new_tokens=1000
+                "text-generation", model=self.model, device=self.device, max_new_tokens=1000
             )
         except ImportError:
             raise ImportError("transformers library required for local models")
@@ -386,10 +363,7 @@ class LocalModelProvider(LLMProvider):
             raise Exception(f"Failed to load local model {self.model}: {e}")
 
     async def generate_with_tools(
-        self,
-        prompt: str,
-        tools: List[Dict[str, Any]],
-        timeout: float = 30.0
+        self, prompt: str, tools: list[dict[str, Any]], timeout: float = 30.0
     ) -> LLMResult:
         """Generate with local model."""
         start_time = time.time()
@@ -400,34 +374,26 @@ class LocalModelProvider(LLMProvider):
         try:
             # Run generation in executor to avoid blocking
             loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(
-                None,
-                self.pipeline,
-                formatted_prompt
-            )
+            result = await loop.run_in_executor(None, self.pipeline, formatted_prompt)
 
             response_text = result[0]["generated_text"]
             # Remove the prompt from response
             if response_text.startswith(formatted_prompt):
-                response_text = response_text[len(formatted_prompt):].strip()
+                response_text = response_text[len(formatted_prompt) :].strip()
 
             # Parse tool calls
             tool_calls = self._parse_tool_calls(response_text)
 
             return LLMResult(
-                response=response_text,
-                tool_calls=tool_calls,
-                duration=time.time() - start_time
+                response=response_text, tool_calls=tool_calls, duration=time.time() - start_time
             )
 
         except Exception as e:
             return LLMResult(
-                response=f"Error: {str(e)}",
-                tool_calls=[],
-                duration=time.time() - start_time
+                response=f"Error: {str(e)}", tool_calls=[], duration=time.time() - start_time
             )
 
-    def _format_prompt_with_tools(self, prompt: str, tools: List[Dict[str, Any]]) -> str:
+    def _format_prompt_with_tools(self, prompt: str, tools: list[dict[str, Any]]) -> str:
         """Format prompt for local model."""
         # Similar to Ollama formatting
         tool_descriptions = []
@@ -445,20 +411,20 @@ Respond with JSON if using a tool: {{"tool": "name", "arguments": {{}}}}
 User: {prompt}
 Assistant:"""
 
-    def _parse_tool_calls(self, response: str) -> List[Dict[str, Any]]:
+    def _parse_tool_calls(self, response: str) -> list[dict[str, Any]]:
         """Parse tool calls from response."""
         tool_calls = []
         try:
             import re
-            json_pattern = r'\{[^{}]*\}'
+
+            json_pattern = r"\{[^{}]*\}"
             matches = re.findall(json_pattern, response)
             for match in matches:
                 data = json.loads(match)
                 if "tool" in data:
-                    tool_calls.append({
-                        "name": data["tool"],
-                        "arguments": data.get("arguments", {})
-                    })
+                    tool_calls.append(
+                        {"name": data["tool"], "arguments": data.get("arguments", {})}
+                    )
         except:
             pass
         return tool_calls
@@ -472,16 +438,16 @@ class MCPURLFilter:
     """Security class to prevent MCP URLs from reaching external APIs."""
 
     MCP_URL_PATTERNS = [
-        r'http://localhost:\d+/mcp',
-        r'https://localhost:\d+/mcp',
-        r'http://127\.0\.0\.1:\d+/mcp',
-        r'https://127\.0\.0\.1:\d+/mcp',
-        r'http://0\.0\.0\.0:\d+/mcp',
-        r'https://0\.0\.0\.0:\d+/mcp',
-        r'mcp://',
-        r'localhost:\d+/mcp',
-        r'127\.0\.0\.1:\d+/mcp',
-        r'0\.0\.0\.0:\d+/mcp'
+        r"http://localhost:\d+/mcp",
+        r"https://localhost:\d+/mcp",
+        r"http://127\.0\.0\.1:\d+/mcp",
+        r"https://127\.0\.0\.1:\d+/mcp",
+        r"http://0\.0\.0\.0:\d+/mcp",
+        r"https://0\.0\.0\.0:\d+/mcp",
+        r"mcp://",
+        r"localhost:\d+/mcp",
+        r"127\.0\.0\.1:\d+/mcp",
+        r"0\.0\.0\.0:\d+/mcp",
     ]
 
     @classmethod
@@ -498,6 +464,7 @@ class MCPURLFilter:
     @classmethod
     def validate_request_data(cls, data: Any) -> bool:
         """Validate that request data contains no MCP URLs."""
+
         def _check_recursive(obj):
             if isinstance(obj, str):
                 return cls.contains_mcp_url(obj)
@@ -510,17 +477,21 @@ class MCPURLFilter:
         return not _check_recursive(data)
 
     @classmethod
-    def sanitize_tool_schema(cls, tool_schema: Dict[str, Any]) -> Dict[str, Any]:
+    def sanitize_tool_schema(cls, tool_schema: dict[str, Any]) -> dict[str, Any]:
         """Remove any URLs from tool schema."""
+
         def _sanitize_recursive(obj):
             if isinstance(obj, str):
                 # Remove URLs but keep the rest of the text
                 for pattern in cls.MCP_URL_PATTERNS:
-                    obj = re.sub(pattern, '[REDACTED]', obj, flags=re.IGNORECASE)
+                    obj = re.sub(pattern, "[REDACTED]", obj, flags=re.IGNORECASE)
                 return obj
             elif isinstance(obj, dict):
-                return {k: _sanitize_recursive(v) for k, v in obj.items()
-                       if k not in ['url', 'endpoint', 'base_url']}
+                return {
+                    k: _sanitize_recursive(v)
+                    for k, v in obj.items()
+                    if k not in ["url", "endpoint", "base_url"]
+                }
             elif isinstance(obj, list):
                 return [_sanitize_recursive(item) for item in obj]
             return obj
@@ -533,10 +504,10 @@ class ToolDiscoveryService:
 
     def __init__(self, mcp_url: str):
         self.mcp_url = mcp_url
-        self._tools_cache: Optional[List[ToolSchema]] = None
-        self._mcp_client: Optional[MCPClient] = None
+        self._tools_cache: list[ToolSchema] | None = None
+        self._mcp_client: MCPClient | None = None
 
-    async def discover_tools(self, force_refresh: bool = False) -> List[ToolSchema]:
+    async def discover_tools(self, force_refresh: bool = False) -> list[ToolSchema]:
         """Connect to MCP service and extract tool schemas only."""
         if not force_refresh and self._tools_cache is not None:
             return self._tools_cache
@@ -562,7 +533,7 @@ class ToolDiscoveryService:
         except Exception as e:
             raise Exception(f"Failed to discover MCP tools: {e}")
 
-    async def execute_tool_call(self, tool_call: Dict[str, Any]) -> MCPToolResult:
+    async def execute_tool_call(self, tool_call: dict[str, Any]) -> MCPToolResult:
         """Execute tool call via local MCP client."""
         if not self._mcp_client:
             raise Exception("MCP client not initialized")
@@ -570,7 +541,7 @@ class ToolDiscoveryService:
         mcp_call = MCPToolCall(
             name=tool_call["name"],
             arguments=tool_call.get("arguments", {}),
-            id=tool_call.get("id", "unknown")
+            id=tool_call.get("id", "unknown"),
         )
 
         return await self._mcp_client.call_tool(mcp_call)
@@ -588,9 +559,9 @@ class AnthropicProvider(LLMProvider):
     def __init__(
         self,
         model: str,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         base_url: str = "https://api.anthropic.com",
-        mcp_url: Optional[str] = None
+        mcp_url: str | None = None,
     ):
         self.model = model
         self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
@@ -604,7 +575,9 @@ class AnthropicProvider(LLMProvider):
     async def initialize(self):
         """Initialize Anthropic provider."""
         if not self.api_key:
-            raise ValueError("Anthropic API key not provided. Set ANTHROPIC_API_KEY environment variable.")
+            raise ValueError(
+                "Anthropic API key not provided. Set ANTHROPIC_API_KEY environment variable."
+            )
 
         # Try to pre-discover tools, but don't fail if MCP service is unavailable
         try:
@@ -613,24 +586,18 @@ class AnthropicProvider(LLMProvider):
         except Exception as e:
             print(f"⚠️  Warning: Failed to initialize MCP tools: {e}")
             print(f"   MCP URL: {self.tool_discovery.mcp_url}")
-            print(f"   The provider will work without MCP tools (direct API calls only)")
+            print("   The provider will work without MCP tools (direct API calls only)")
             # Continue without tools - the provider can still work for non-tool interactions
 
     async def generate_with_tools(
-        self,
-        prompt: str,
-        tools: List[Dict[str, Any]],
-        timeout: float = 30.0
+        self, prompt: str, tools: list[dict[str, Any]], timeout: float = 30.0
     ) -> LLMResult:
         """Generate response with tool calling capability."""
         start_time = time.time()
 
         try:
             # CRITICAL: Validate NO MCP URLs in request
-            request_data = {
-                "prompt": prompt,
-                "tools": tools
-            }
+            request_data = {"prompt": prompt, "tools": tools}
 
             if not MCPURLFilter.validate_request_data(request_data):
                 raise Exception("SECURITY VIOLATION: MCP URLs detected in request data")
@@ -644,7 +611,7 @@ class AnthropicProvider(LLMProvider):
                     tool_dict = {
                         "name": func.get("name", ""),
                         "description": func.get("description", ""),
-                        "parameters": func.get("parameters", {})
+                        "parameters": func.get("parameters", {}),
                     }
                 else:
                     # Direct tool schema format
@@ -653,33 +620,33 @@ class AnthropicProvider(LLMProvider):
                 # Sanitize tool schema
                 sanitized_tool = MCPURLFilter.sanitize_tool_schema(tool_dict)
 
-                input_schema = sanitized_tool.get("inputSchema", sanitized_tool.get("parameters", {}))
+                input_schema = sanitized_tool.get(
+                    "inputSchema", sanitized_tool.get("parameters", {})
+                )
                 # Ensure input_schema has required type field
                 if "type" not in input_schema:
                     input_schema["type"] = "object"
 
-                anthropic_tools.append({
-                    "name": sanitized_tool.get("name", ""),
-                    "description": sanitized_tool.get("description", ""),
-                    "input_schema": input_schema
-                })
+                anthropic_tools.append(
+                    {
+                        "name": sanitized_tool.get("name", ""),
+                        "description": sanitized_tool.get("description", ""),
+                        "input_schema": input_schema,
+                    }
+                )
 
             # Prepare Anthropic API request with caching
             headers = {
                 "Content-Type": "application/json",
                 "x-api-key": self.api_key,
                 "anthropic-version": "2023-06-01",
-                "anthropic-beta": "prompt-caching-2024-07-31"
+                "anthropic-beta": "prompt-caching-2024-07-31",
             }
 
             # Create system message with cached tools - use top-level system parameter
             messages = [{"role": "user", "content": prompt}]
 
-            api_request = {
-                "model": self.model,
-                "max_tokens": 1000,
-                "messages": messages
-            }
+            api_request = {"model": self.model, "max_tokens": 1000, "messages": messages}
 
             # Add system parameter if we have tools (not in messages array)
             if anthropic_tools:
@@ -688,7 +655,7 @@ class AnthropicProvider(LLMProvider):
                     {
                         "type": "text",
                         "text": tools_description,
-                        "cache_control": {"type": "ephemeral"}
+                        "cache_control": {"type": "ephemeral"},
                     }
                 ]
 
@@ -702,10 +669,7 @@ class AnthropicProvider(LLMProvider):
 
             # Make API call
             response = await self.client.post(
-                f"{self.base_url}/v1/messages",
-                json=api_request,
-                headers=headers,
-                timeout=timeout
+                f"{self.base_url}/v1/messages", json=api_request, headers=headers, timeout=timeout
             )
 
             if response.status_code != 200:
@@ -722,11 +686,13 @@ class AnthropicProvider(LLMProvider):
                 if item.get("type") == "text":
                     response_text += item.get("text", "")
                 elif item.get("type") == "tool_use":
-                    tool_calls.append({
-                        "id": item.get("id", ""),
-                        "name": item.get("name", ""),
-                        "arguments": item.get("input", {})
-                    })
+                    tool_calls.append(
+                        {
+                            "id": item.get("id", ""),
+                            "name": item.get("name", ""),
+                            "arguments": item.get("input", {}),
+                        }
+                    )
 
             # Execute tool calls locally
             for tool_call in tool_calls:
@@ -735,7 +701,9 @@ class AnthropicProvider(LLMProvider):
                     if not tool_result.is_error:
                         response_text += f"\n\nTool {tool_call['name']} executed successfully: {tool_result.content}"
                     else:
-                        response_text += f"\n\nTool {tool_call['name']} failed: {tool_result.error_message}"
+                        response_text += (
+                            f"\n\nTool {tool_call['name']} failed: {tool_result.error_message}"
+                        )
                 except Exception as e:
                     response_text += f"\n\nTool {tool_call['name']} execution error: {e}"
 
@@ -746,7 +714,7 @@ class AnthropicProvider(LLMProvider):
                 "completion": usage.get("output_tokens", 0),
                 "total": usage.get("input_tokens", 0) + usage.get("output_tokens", 0),
                 "cache_creation": usage.get("cache_creation_input_tokens", 0),
-                "cache_read": usage.get("cache_read_input_tokens", 0)
+                "cache_read": usage.get("cache_read_input_tokens", 0),
             }
 
             # Estimate cost (Claude pricing)
@@ -758,7 +726,7 @@ class AnthropicProvider(LLMProvider):
                 token_usage=token_usage,
                 cost=cost,
                 duration=time.time() - start_time,
-                raw_response=result
+                raw_response=result,
             )
 
         except Exception as e:
@@ -770,7 +738,7 @@ class AnthropicProvider(LLMProvider):
             error_details = f"Error Type: {error_type}\nError Message: {error_msg}"
 
             # If it's an HTTP error, try to get more details
-            if hasattr(e, 'response'):
+            if hasattr(e, "response"):
                 try:
                     error_details += f"\nHTTP Status: {e.response.status_code}"
                     error_details += f"\nHTTP Response: {e.response.text}"
@@ -779,16 +747,14 @@ class AnthropicProvider(LLMProvider):
 
             # Check if it's a timeout
             if "timeout" in error_msg.lower():
-                error_details += f"\nThis appears to be a timeout error. Consider increasing the timeout parameter."
+                error_details += "\nThis appears to be a timeout error. Consider increasing the timeout parameter."
 
             # Check if it's a rate limit
             if "rate" in error_msg.lower() or "429" in error_msg:
-                error_details += f"\nThis appears to be a rate limiting error. The system should have handled this automatically."
+                error_details += "\nThis appears to be a rate limiting error. The system should have handled this automatically."
 
             return LLMResult(
-                response=f"Error: {error_details}",
-                tool_calls=[],
-                duration=time.time() - start_time
+                response=f"Error: {error_details}", tool_calls=[], duration=time.time() - start_time
             )
 
     async def close(self):
@@ -800,12 +766,7 @@ class AnthropicProvider(LLMProvider):
 class ClaudeSDKProvider(LLMProvider):
     """Claude Agent SDK provider with MCP integration."""
 
-    def __init__(
-        self,
-        model: str,
-        api_key: Optional[str] = None,
-        mcp_url: Optional[str] = None
-    ):
+    def __init__(self, model: str, api_key: str | None = None, mcp_url: str | None = None):
         self.model = model
         self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
         # Use MCP_URL from environment if not provided
@@ -813,13 +774,15 @@ class ClaudeSDKProvider(LLMProvider):
             mcp_url = os.environ.get("MCP_URL", "http://localhost:5008/mcp")
         self.mcp_url = mcp_url
         self.tool_discovery = ToolDiscoveryService(mcp_url)
-        self._sdk_tools: List[Any] = []
-        self._mcp_server_config: Optional[Dict[str, Any]] = None
+        self._sdk_tools: list[Any] = []
+        self._mcp_server_config: dict[str, Any] | None = None
 
     async def initialize(self):
         """Initialize Claude SDK provider."""
         if not self.api_key:
-            raise ValueError("Anthropic API key not provided. Set ANTHROPIC_API_KEY environment variable.")
+            raise ValueError(
+                "Anthropic API key not provided. Set ANTHROPIC_API_KEY environment variable."
+            )
 
         # IMPORTANT: Claude Agent SDK is designed for stdio-based MCP servers (command-line tools),
         # not HTTP-based MCP services. For HTTP MCP services, use the 'anthropic' provider instead.
@@ -858,18 +821,15 @@ class ClaudeSDKProvider(LLMProvider):
                 tool_call = {
                     "name": tool_name,
                     "arguments": args,
-                    "id": f"tool_{tool_name}_{time.time()}"
+                    "id": f"tool_{tool_name}_{time.time()}",
                 }
 
                 result = await self.tool_discovery.execute_tool_call(tool_call)
 
                 if result.is_error:
                     return {
-                        "content": [{
-                            "type": "text",
-                            "text": f"Error: {result.error_message}"
-                        }],
-                        "is_error": True
+                        "content": [{"type": "text", "text": f"Error: {result.error_message}"}],
+                        "is_error": True,
                     }
                 else:
                     # Format result content
@@ -885,11 +845,8 @@ class ClaudeSDKProvider(LLMProvider):
 
             except Exception as e:
                 return {
-                    "content": [{
-                        "type": "text",
-                        "text": f"Tool execution error: {str(e)}"
-                    }],
-                    "is_error": True
+                    "content": [{"type": "text", "text": f"Tool execution error: {str(e)}"}],
+                    "is_error": True,
                 }
 
         # Apply the tool decorator
@@ -897,28 +854,27 @@ class ClaudeSDKProvider(LLMProvider):
         return sdk_tool
 
     async def generate_with_tools(
-        self,
-        prompt: str,
-        tools: List[Dict[str, Any]],
-        timeout: float = 30.0
+        self, prompt: str, tools: list[dict[str, Any]], timeout: float = 30.0
     ) -> LLMResult:
         """Generate response using Claude Agent SDK."""
         start_time = time.time()
 
         try:
-            from claude_agent_sdk import query, ClaudeAgentOptions
+            from claude_agent_sdk import ClaudeAgentOptions, query
 
             # Create options for the SDK
             options = ClaudeAgentOptions(
                 model=self.model,
                 permission_mode="bypassPermissions",  # Skip permission prompts for automation
-                mcp_servers={}
+                mcp_servers={},
             )
 
             # Add our MCP server if we have config
             if self._mcp_server_config:
                 options.mcp_servers["superset-mcp"] = self._mcp_server_config
-                print(f"[DEBUG] Added MCP server 'superset-mcp' with config: {self._mcp_server_config}")
+                print(
+                    f"[DEBUG] Added MCP server 'superset-mcp' with config: {self._mcp_server_config}"
+                )
             else:
                 print("[DEBUG] Warning: No MCP server config available")
 
@@ -943,29 +899,31 @@ class ClaudeSDKProvider(LLMProvider):
                     print(f"[DEBUG] Received message #{message_count}: {type(message).__name__}")
 
                     # Extract text from AssistantMessage
-                    if hasattr(message, 'content'):
+                    if hasattr(message, "content"):
                         for block in message.content:
-                            if hasattr(block, 'text'):
+                            if hasattr(block, "text"):
                                 response_text += block.text
                                 print(f"[DEBUG] Added text: {block.text[:50]}...")
 
                     # Extract usage from ResultMessage
-                    if hasattr(message, 'usage'):
+                    if hasattr(message, "usage"):
                         usage = message.usage
                         token_usage = {
-                            "prompt": usage.get("input_tokens", 0) +
-                                     usage.get("cache_read_input_tokens", 0) +
-                                     usage.get("cache_creation_input_tokens", 0),
+                            "prompt": usage.get("input_tokens", 0)
+                            + usage.get("cache_read_input_tokens", 0)
+                            + usage.get("cache_creation_input_tokens", 0),
                             "completion": usage.get("output_tokens", 0),
-                            "total": (usage.get("input_tokens", 0) +
-                                     usage.get("cache_read_input_tokens", 0) +
-                                     usage.get("cache_creation_input_tokens", 0) +
-                                     usage.get("output_tokens", 0))
+                            "total": (
+                                usage.get("input_tokens", 0)
+                                + usage.get("cache_read_input_tokens", 0)
+                                + usage.get("cache_creation_input_tokens", 0)
+                                + usage.get("output_tokens", 0)
+                            ),
                         }
                         print(f"[DEBUG] Token usage: {token_usage}")
 
                         # Get cost from SDK result
-                        if hasattr(message, 'total_cost_usd'):
+                        if hasattr(message, "total_cost_usd"):
                             cost = message.total_cost_usd
                             print(f"[DEBUG] Cost: ${cost}")
 
@@ -985,18 +943,17 @@ class ClaudeSDKProvider(LLMProvider):
                 token_usage=token_usage,
                 cost=cost,
                 duration=time.time() - start_time,
-                raw_response=None
+                raw_response=None,
             )
 
         except Exception as e:
             print(f"[DEBUG] Error in generate_with_tools: {type(e).__name__}: {e}")
             import traceback
+
             traceback.print_exc()
             error_details = f"Error: {str(e)}"
             return LLMResult(
-                response=error_details,
-                tool_calls=[],
-                duration=time.time() - start_time
+                response=error_details, tool_calls=[], duration=time.time() - start_time
             )
 
     async def close(self):
@@ -1007,12 +964,7 @@ class ClaudeSDKProvider(LLMProvider):
 class ClaudeCodeProvider(LLMProvider):
     """Claude Code CLI provider via subprocess."""
 
-    def __init__(
-        self,
-        model: str,
-        claude_cli_path: Optional[str] = None,
-        mcp_url: Optional[str] = None
-    ):
+    def __init__(self, model: str, claude_cli_path: str | None = None, mcp_url: str | None = None):
         self.model = model
         self.claude_cli_path = claude_cli_path or self._find_claude_cli()
         # Use MCP_URL from environment if not provided
@@ -1032,7 +984,7 @@ class ClaudeCodeProvider(LLMProvider):
             "/usr/local/bin/claude",
             "/opt/homebrew/bin/claude",
             os.path.expanduser("~/.local/bin/claude"),
-            "claude"  # In PATH
+            "claude",  # In PATH
         ]
 
         for path in common_paths:
@@ -1050,10 +1002,7 @@ class ClaudeCodeProvider(LLMProvider):
         # Verify Claude CLI is working
         try:
             result = subprocess.run(
-                [self.claude_cli_path, "--version"],
-                capture_output=True,
-                timeout=10,
-                text=True
+                [self.claude_cli_path, "--version"], capture_output=True, timeout=10, text=True
             )
             if result.returncode != 0:
                 raise Exception(f"Claude CLI error: {result.stderr}")
@@ -1067,13 +1016,10 @@ class ClaudeCodeProvider(LLMProvider):
         except Exception as e:
             print(f"⚠️  Warning: Failed to initialize MCP tools: {e}")
             print(f"   MCP URL: {self.tool_discovery.mcp_url}")
-            print(f"   The provider will work without MCP tools (direct API calls only)")
+            print("   The provider will work without MCP tools (direct API calls only)")
 
     async def generate_with_tools(
-        self,
-        prompt: str,
-        tools: List[Dict[str, Any]],
-        timeout: float = 30.0
+        self, prompt: str, tools: list[dict[str, Any]], timeout: float = 30.0
     ) -> LLMResult:
         """Generate response using Claude Code CLI."""
         start_time = time.time()
@@ -1085,16 +1031,14 @@ class ClaudeCodeProvider(LLMProvider):
             # Execute Claude CLI
             process = await asyncio.create_subprocess_exec(
                 self.claude_cli_path,
-                "-p", enhanced_prompt,
+                "-p",
+                enhanced_prompt,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
             )
 
             try:
-                stdout, stderr = await asyncio.wait_for(
-                    process.communicate(),
-                    timeout=timeout
-                )
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
             except asyncio.TimeoutError:
                 process.kill()
                 await process.wait()
@@ -1115,7 +1059,9 @@ class ClaudeCodeProvider(LLMProvider):
                     if not result.is_error:
                         response_text += f"\n\nTool {tool_call['name']} executed: {result.content}"
                     else:
-                        response_text += f"\n\nTool {tool_call['name']} failed: {result.error_message}"
+                        response_text += (
+                            f"\n\nTool {tool_call['name']} failed: {result.error_message}"
+                        )
                 except Exception as e:
                     response_text += f"\n\nTool execution error: {e}"
 
@@ -1125,17 +1071,15 @@ class ClaudeCodeProvider(LLMProvider):
                 token_usage=None,  # CLI doesn't provide token counts
                 cost=0.0,  # CLI usage varies by subscription
                 duration=time.time() - start_time,
-                raw_response={"stdout": response_text}
+                raw_response={"stdout": response_text},
             )
 
         except Exception as e:
             return LLMResult(
-                response=f"Error: {str(e)}",
-                tool_calls=[],
-                duration=time.time() - start_time
+                response=f"Error: {str(e)}", tool_calls=[], duration=time.time() - start_time
             )
 
-    def _create_tool_prompt(self, prompt: str, tools: List[Dict[str, Any]]) -> str:
+    def _create_tool_prompt(self, prompt: str, tools: list[dict[str, Any]]) -> str:
         """Create enhanced prompt with tool descriptions."""
         if not tools:
             return prompt
@@ -1162,22 +1106,21 @@ TOOL_CALL: {{"name": "tool_name", "arguments": {{"param": "value"}}}}
 
 User request: {prompt}"""
 
-    def _parse_tool_calls(self, response: str) -> List[Dict[str, Any]]:
+    def _parse_tool_calls(self, response: str) -> list[dict[str, Any]]:
         """Parse tool calls from Claude CLI response."""
         tool_calls = []
 
         # Look for TOOL_CALL: patterns
-        tool_call_pattern = r'TOOL_CALL:\s*(\{[^}]+\}|\{[^}]*\{[^}]*\}[^}]*\})'
+        tool_call_pattern = r"TOOL_CALL:\s*(\{[^}]+\}|\{[^}]*\{[^}]*\}[^}]*\})"
         matches = re.findall(tool_call_pattern, response)
 
         for match in matches:
             try:
                 call_data = json.loads(match)
                 if "name" in call_data:
-                    tool_calls.append({
-                        "name": call_data["name"],
-                        "arguments": call_data.get("arguments", {})
-                    })
+                    tool_calls.append(
+                        {"name": call_data["name"], "arguments": call_data.get("arguments", {})}
+                    )
             except json.JSONDecodeError:
                 continue
 
@@ -1190,11 +1133,8 @@ User request: {prompt}"""
 
 # Factory function to create providers
 
-def create_llm_provider(
-    provider: str,
-    model: str,
-    **kwargs
-) -> LLMProvider:
+
+def create_llm_provider(provider: str, model: str, **kwargs) -> LLMProvider:
     """
     Create an LLM provider instance.
 
