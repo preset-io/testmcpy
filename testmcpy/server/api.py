@@ -2592,19 +2592,37 @@ COMMON ISSUES TO DETECT:
 
 YOUR TASK:
 ==========
-Call the 'submit_analysis' tool with your detailed analysis. Provide:
+You MUST call the 'submit_analysis' tool with ALL required fields. Do not omit any fields.
 
-1. clarity_score: Overall quality score (0-100)
-2. issues: Array of specific problems found (be thorough - find at least 2-3 issues)
-3. improved_description: Complete rewrite that includes:
-   - Clear statement of what tool does (1 sentence)
+REQUIRED FIELDS (all must be provided):
+
+1. clarity_score (number): Overall quality score 0-100
+
+2. issues (array): List of specific problems - MUST include at least 2-3 issues even if docs seem good
+   Each issue MUST have: category, severity, issue, current, suggestion
+   Example issues to always look for:
+   - Missing concrete parameter examples
+   - Unclear when to use this vs alternatives
+   - Technical jargon without explanation
+   - Missing error conditions or constraints
+   - Vague verbs like "manages", "handles", "processes"
+
+3. improved_description (string): Complete 3-5 sentence rewrite that includes:
+   - Clear statement of what tool does (1 sentence, use specific verbs not "manages/handles")
    - When to use it and key scenarios (1-2 sentences)
-   - Brief parameter overview (1 sentence)
+   - Brief parameter overview mentioning key parameters by name (1 sentence)
    - Key constraints or limitations (1 sentence)
-   Total: 3-5 sentences, written for LLM consumption
-4. improvements: Specific before/after examples showing how to fix each issue
 
-Be specific and actionable. Focus on making documentation crystal clear for LLMs."""
+4. improvements (array): At least 2-3 specific before/after examples
+   Each improvement MUST have: issue, before, after, explanation
+
+CRITICAL INSTRUCTIONS:
+- You MUST provide ALL four fields with complete data
+- Do NOT provide only clarity_score - this will fail validation
+- Even if documentation seems good, find at least 2-3 ways to improve it for LLM consumption
+- Be critical and thorough - no documentation is perfect
+
+Call the submit_analysis tool NOW with complete data."""
 
         result = await llm_provider.generate_with_tools(
             prompt=analysis_prompt,
@@ -2634,8 +2652,25 @@ Be specific and actionable. Focus on making documentation crystal clear for LLMs
                     # Anthropic uses "arguments" key, some providers use "input"
                     analysis_data = tool_call.get("arguments") or tool_call.get("input", {})
                     print(f"✓ LLM used tool call for structured output")
+                    print(f"  Arguments keys: {list(analysis_data.keys())}")
                     print(f"  Score: {analysis_data.get('clarity_score')}")
                     print(f"  Issues found: {len(analysis_data.get('issues', []))}")
+
+                    # Validate that LLM provided all required fields
+                    missing_fields = []
+                    if not analysis_data.get('clarity_score'):
+                        missing_fields.append('clarity_score')
+                    if not analysis_data.get('issues') or len(analysis_data.get('issues', [])) == 0:
+                        missing_fields.append('issues (must have at least 1 issue)')
+                    if not analysis_data.get('improved_description'):
+                        missing_fields.append('improved_description')
+                    if not analysis_data.get('improvements') or len(analysis_data.get('improvements', [])) == 0:
+                        missing_fields.append('improvements (must have at least 1 improvement)')
+
+                    if missing_fields:
+                        error_msg = f"LLM provided incomplete data. Missing required fields: {', '.join(missing_fields)}"
+                        print(f"✗ {error_msg}")
+                        raise ValueError(error_msg)
                 else:
                     print(f"✗ Unexpected tool call: {tool_call.get('name')}")
 
