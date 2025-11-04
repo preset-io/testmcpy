@@ -71,9 +71,16 @@ class LLMProvider(ABC):
 
     @abstractmethod
     async def generate_with_tools(
-        self, prompt: str, tools: list[dict[str, Any]], timeout: float = 30.0
+        self, prompt: str, tools: list[dict[str, Any]], timeout: float = 30.0, messages: list[dict[str, Any]] | None = None
     ) -> LLMResult:
-        """Generate response with tool calling capability."""
+        """Generate response with tool calling capability.
+
+        Args:
+            prompt: The user's message
+            tools: List of tool schemas
+            timeout: Request timeout
+            messages: Optional chat history (list of {role: str, content: str})
+        """
         pass
 
     @abstractmethod
@@ -120,7 +127,7 @@ class OllamaProvider(LLMProvider):
             raise Exception(f"Failed to pull model {self.model}: {e}")
 
     async def generate_with_tools(
-        self, prompt: str, tools: list[dict[str, Any]], timeout: float = 30.0
+        self, prompt: str, tools: list[dict[str, Any]], timeout: float = 30.0, messages: list[dict[str, Any]] | None = None
     ) -> LLMResult:
         """Generate with Ollama's tool calling support."""
         start_time = time.time()
@@ -271,7 +278,7 @@ class OpenAIProvider(LLMProvider):
                 )
 
     async def generate_with_tools(
-        self, prompt: str, tools: list[dict[str, Any]], timeout: float = 30.0
+        self, prompt: str, tools: list[dict[str, Any]], timeout: float = 30.0, messages: list[dict[str, Any]] | None = None
     ) -> LLMResult:
         """Generate with OpenAI's function calling."""
         start_time = time.time()
@@ -373,7 +380,7 @@ class LocalModelProvider(LLMProvider):
             raise Exception(f"Failed to load local model {self.model}: {e}")
 
     async def generate_with_tools(
-        self, prompt: str, tools: list[dict[str, Any]], timeout: float = 30.0
+        self, prompt: str, tools: list[dict[str, Any]], timeout: float = 30.0, messages: list[dict[str, Any]] | None = None
     ) -> LLMResult:
         """Generate with local model."""
         start_time = time.time()
@@ -602,7 +609,7 @@ class AnthropicProvider(LLMProvider):
             # Continue without tools - the provider can still work for non-tool interactions
 
     async def generate_with_tools(
-        self, prompt: str, tools: list[dict[str, Any]], timeout: float = 30.0
+        self, prompt: str, tools: list[dict[str, Any]], timeout: float = 30.0, messages: list[dict[str, Any]] | None = None
     ) -> LLMResult:
         """Generate response with tool calling capability."""
         start_time = time.time()
@@ -655,10 +662,22 @@ class AnthropicProvider(LLMProvider):
                 "anthropic-beta": "prompt-caching-2024-07-31",
             }
 
-            # Create system message with cached tools - use top-level system parameter
-            messages = [{"role": "user", "content": prompt}]
+            # Build messages list - include history if provided, otherwise just current prompt
+            if messages:
+                # Use provided message history, but filter out messages with empty content
+                # Anthropic API requires all messages to have non-empty content
+                api_messages = [
+                    msg for msg in messages
+                    if msg.get("content") and str(msg.get("content")).strip()
+                ]
+                # Only add new message if it's not already the last message
+                if not api_messages or api_messages[-1].get("content") != prompt:
+                    api_messages.append({"role": "user", "content": prompt})
+            else:
+                # No history, just the current prompt
+                api_messages = [{"role": "user", "content": prompt}]
 
-            api_request = {"model": self.model, "max_tokens": 1000, "messages": messages}
+            api_request = {"model": self.model, "max_tokens": 1000, "messages": api_messages}
 
             # Add system parameter if we have tools (not in messages array)
             if anthropic_tools:
@@ -876,7 +895,7 @@ class ClaudeSDKProvider(LLMProvider):
         return sdk_tool
 
     async def generate_with_tools(
-        self, prompt: str, tools: list[dict[str, Any]], timeout: float = 30.0
+        self, prompt: str, tools: list[dict[str, Any]], timeout: float = 30.0, messages: list[dict[str, Any]] | None = None
     ) -> LLMResult:
         """Generate response using Claude Agent SDK."""
         start_time = time.time()
@@ -1066,7 +1085,7 @@ class ClaudeCodeProvider(LLMProvider):
             print("   The provider will work without MCP tools (direct API calls only)")
 
     async def generate_with_tools(
-        self, prompt: str, tools: list[dict[str, Any]], timeout: float = 30.0
+        self, prompt: str, tools: list[dict[str, Any]], timeout: float = 30.0, messages: list[dict[str, Any]] | None = None
     ) -> LLMResult:
         """Generate response using Claude Code CLI."""
         start_time = time.time()

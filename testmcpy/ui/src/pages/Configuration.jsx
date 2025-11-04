@@ -116,7 +116,8 @@ function Configuration() {
                 Configuration Sources
               </p>
               <p className="text-text-secondary leading-relaxed">
-                Settings are loaded from: Command-line options, .env file in current directory, ~/.testmcpy, environment variables, and built-in defaults (in priority order).
+                MCP servers are configured via <code className="bg-background-subtle px-2 py-0.5 rounded font-mono text-xs">.mcp_services.yaml</code>.
+                LLM provider settings (API keys, models) are loaded from environment variables and command-line options.
               </p>
             </div>
           </div>
@@ -348,23 +349,15 @@ function Configuration() {
             <ul className="space-y-2.5 text-sm text-text-secondary">
               <li className="flex items-start gap-3">
                 <span className="text-primary mt-0.5">•</span>
-                <span>Run <code className="bg-background-subtle px-2 py-0.5 rounded font-mono text-xs text-primary-light">testmcpy setup</code> for interactive configuration</span>
+                <span><strong>MCP Servers:</strong> Configure via the Profiles selector in the sidebar or edit <code className="bg-background-subtle px-2 py-0.5 rounded font-mono text-xs text-primary-light">.mcp_services.yaml</code></span>
               </li>
               <li className="flex items-start gap-3">
                 <span className="text-primary mt-0.5">•</span>
-                <span>Edit <code className="bg-background-subtle px-2 py-0.5 rounded font-mono text-xs text-primary-light">~/.testmcpy</code> for user-wide settings</span>
+                <span><strong>LLM API Keys:</strong> Set environment variables (e.g., <code className="bg-background-subtle px-2 py-0.5 rounded font-mono text-xs text-primary-light">ANTHROPIC_API_KEY</code>)</span>
               </li>
               <li className="flex items-start gap-3">
                 <span className="text-primary mt-0.5">•</span>
-                <span>Edit <code className="bg-background-subtle px-2 py-0.5 rounded font-mono text-xs text-primary-light">.env</code> in your project directory</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="text-primary mt-0.5">•</span>
-                <span>Set environment variables</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="text-primary mt-0.5">•</span>
-                <span>Use command-line flags when running testmcpy</span>
+                <span><strong>Model Selection:</strong> Use command-line flags like <code className="bg-background-subtle px-2 py-0.5 rounded font-mono text-xs text-primary-light">--model</code> or set <code className="bg-background-subtle px-2 py-0.5 rounded font-mono text-xs text-primary-light">DEFAULT_MODEL</code> env var</span>
               </li>
             </ul>
           </div>

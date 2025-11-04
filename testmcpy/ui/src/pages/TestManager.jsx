@@ -9,13 +9,17 @@ import {
   FileText,
   CheckCircle,
   XCircle,
+  Folder,
+  ChevronRight,
+  ChevronDown,
 } from 'lucide-react'
 import Editor from '@monaco-editor/react'
 import TestStatusIndicator from '../components/TestStatusIndicator'
 import TestResultPanel from '../components/TestResultPanel'
 
-function TestManager() {
-  const [testFiles, setTestFiles] = useState([])
+function TestManager({ selectedProfiles = [] }) {
+  const [testData, setTestData] = useState({ folders: {}, files: [] })
+  const [expandedFolders, setExpandedFolders] = useState(new Set())
   const [selectedFile, setSelectedFile] = useState(null)
   const [fileContent, setFileContent] = useState('')
   const [editMode, setEditMode] = useState(false)
@@ -38,6 +42,16 @@ function TestManager() {
     loadModels()
   }, [])
 
+  // Load previously selected test file after test data is loaded
+  useEffect(() => {
+    if (testData.files || testData.folders) {
+      const savedPath = localStorage.getItem('selectedTestFile')
+      if (savedPath) {
+        loadTestFile(savedPath)
+      }
+    }
+  }, [testData])
+
   const loadModels = async () => {
     try {
       const res = await fetch('/api/models')
@@ -52,22 +66,42 @@ function TestManager() {
     try {
       const res = await fetch('/api/tests')
       const data = await res.json()
-      setTestFiles(data)
+      setTestData(data)
+      // Auto-expand all folders
+      if (data.folders) {
+        setExpandedFolders(new Set(Object.keys(data.folders)))
+      }
     } catch (error) {
       console.error('Failed to load test files:', error)
     }
   }
 
-  const loadTestFile = async (filename) => {
+  const toggleFolder = (folderName) => {
+    setExpandedFolders(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(folderName)) {
+        newSet.delete(folderName)
+      } else {
+        newSet.add(folderName)
+      }
+      return newSet
+    })
+  }
+
+  const loadTestFile = async (relativePath) => {
     try {
-      const res = await fetch(`/api/tests/${filename}`)
+      const res = await fetch(`/api/tests/${relativePath}`)
       const data = await res.json()
-      setSelectedFile(data)
+      setSelectedFile({...data, relative_path: relativePath})
       setFileContent(data.content)
       setEditMode(false)
       setTestResults(null)
+      // Save to localStorage so it persists on reload
+      localStorage.setItem('selectedTestFile', relativePath)
     } catch (error) {
       console.error('Failed to load test file:', error)
+      // Clear saved selection if file no longer exists
+      localStorage.removeItem('selectedTestFile')
     }
   }
 
@@ -75,7 +109,8 @@ function TestManager() {
     if (!selectedFile) return
 
     try {
-      await fetch(`/api/tests/${selectedFile.filename}`, {
+      const pathToUse = selectedFile.relative_path || selectedFile.filename
+      await fetch(`/api/tests/${pathToUse}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: fileContent }),
@@ -123,14 +158,17 @@ tests:
     }
   }
 
-  const deleteTestFile = async (filename) => {
-    if (!confirm(`Delete ${filename}?`)) return
+  const deleteTestFile = async (relativePath) => {
+    if (!confirm(`Delete ${relativePath}?`)) return
 
     try {
-      await fetch(`/api/tests/${filename}`, { method: 'DELETE' })
-      if (selectedFile?.filename === filename) {
+      await fetch(`/api/tests/${relativePath}`, { method: 'DELETE' })
+      const currentPath = selectedFile?.relative_path || selectedFile?.filename
+      if (currentPath === relativePath) {
         setSelectedFile(null)
         setFileContent('')
+        // Clear saved selection if deleting the selected file
+        localStorage.removeItem('selectedTestFile')
       }
       loadTestFiles()
     } catch (error) {
@@ -246,25 +284,26 @@ tests:
         </div>
 
         <div className="flex-1 overflow-auto">
-          {testFiles.map((file) => (
+          {/* Root files */}
+          {testData.files && testData.files.map((file) => (
             <div
-              key={file.filename}
+              key={file.relative_path}
               className={`p-4 border-b border-border cursor-pointer transition-all duration-200 group ${
-                selectedFile?.filename === file.filename
+                (selectedFile?.relative_path || selectedFile?.filename) === file.relative_path
                   ? 'bg-surface border-l-2 border-l-primary'
                   : 'hover:bg-surface border-l-2 border-l-transparent'
               }`}
-              onClick={() => loadTestFile(file.filename)}
+              onClick={() => loadTestFile(file.relative_path)}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3 flex-1 min-w-0">
                   <FileText size={18} className={`flex-shrink-0 ${
-                    selectedFile?.filename === file.filename
+                    (selectedFile?.relative_path || selectedFile?.filename) === file.relative_path
                       ? 'text-primary'
                       : 'text-text-tertiary group-hover:text-text-secondary'
                   }`} />
                   <span className={`font-medium truncate ${
-                    selectedFile?.filename === file.filename
+                    (selectedFile?.relative_path || selectedFile?.filename) === file.relative_path
                       ? 'text-text-primary'
                       : 'text-text-secondary'
                   }`}>
@@ -274,7 +313,7 @@ tests:
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
-                    deleteTestFile(file.filename)
+                    deleteTestFile(file.relative_path)
                   }}
                   className="p-1.5 hover:bg-error/20 rounded transition-all duration-200 opacity-0 group-hover:opacity-100"
                   title="Delete file"
@@ -287,7 +326,72 @@ tests:
               </div>
             </div>
           ))}
-          {testFiles.length === 0 && (
+
+          {/* Folders */}
+          {testData.folders && Object.entries(testData.folders).sort().map(([folderName, files]) => (
+            <div key={folderName} className="border-b border-border">
+              {/* Folder Header */}
+              <div
+                className="p-4 cursor-pointer hover:bg-surface-hover transition-all duration-200 flex items-center gap-2"
+                onClick={() => toggleFolder(folderName)}
+              >
+                {expandedFolders.has(folderName) ? (
+                  <ChevronDown size={16} className="text-text-tertiary" />
+                ) : (
+                  <ChevronRight size={16} className="text-text-tertiary" />
+                )}
+                <Folder size={18} className="text-primary" />
+                <span className="font-medium text-text-primary">{folderName}</span>
+                <span className="text-xs text-text-tertiary ml-auto">{files.length} file{files.length !== 1 ? 's' : ''}</span>
+              </div>
+
+              {/* Folder Files */}
+              {expandedFolders.has(folderName) && files.map((file) => (
+                <div
+                  key={file.relative_path}
+                  className={`pl-12 pr-4 py-3 border-t border-border cursor-pointer transition-all duration-200 group ${
+                    (selectedFile?.relative_path || selectedFile?.filename) === file.relative_path
+                      ? 'bg-surface border-l-2 border-l-primary'
+                      : 'hover:bg-surface border-l-2 border-l-transparent'
+                  }`}
+                  onClick={() => loadTestFile(file.relative_path)}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <FileText size={16} className={`flex-shrink-0 ${
+                        (selectedFile?.relative_path || selectedFile?.filename) === file.relative_path
+                          ? 'text-primary'
+                          : 'text-text-tertiary group-hover:text-text-secondary'
+                      }`} />
+                      <span className={`text-sm truncate ${
+                        (selectedFile?.relative_path || selectedFile?.filename) === file.relative_path
+                          ? 'text-text-primary font-medium'
+                          : 'text-text-secondary'
+                      }`}>
+                        {file.filename}
+                      </span>
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        deleteTestFile(file.relative_path)
+                      }}
+                      className="p-1.5 hover:bg-error/20 rounded transition-all duration-200 opacity-0 group-hover:opacity-100"
+                      title="Delete file"
+                    >
+                      <Trash2 size={12} className="text-error" />
+                    </button>
+                  </div>
+                  <div className="text-xs text-text-tertiary mt-1 ml-5">
+                    {file.test_count} test{file.test_count !== 1 ? 's' : ''}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+
+          {/* Empty State */}
+          {(!testData.files || testData.files.length === 0) && (!testData.folders || Object.keys(testData.folders).length === 0) && (
             <div className="p-8 text-center">
               <FileText size={40} className="mx-auto mb-3 text-text-disabled opacity-50" />
               <p className="text-text-tertiary">No test files found</p>
@@ -335,7 +439,7 @@ tests:
                 )}
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 mt-3">
                 <select
                   value={selectedProvider}
                   onChange={(e) => {

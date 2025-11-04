@@ -1,0 +1,12 @@
+version: "1.0"
+tests:
+  - name: test_1762223833445
+    prompt: "test"
+    evaluators:
+      - name: execution_successful
+      - name: was_mcp_tool_called
+        args:
+          tool_name: "health_check"
+      - name: final_answer_contains
+        args:
+          expected_content: "I'll run a quick health check to verify the servic"

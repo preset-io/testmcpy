@@ -1,0 +1,96 @@
+# MCP Service Configuration Profiles
+# Each profile can contain MULTIPLE MCP servers
+
+# Default profile (used when no --profile specified)
+default: sandbox
+
+# Profile definitions
+profiles:
+  # Profile for local development with multiple MCPs (EXAMPLE)
+  local-dev:
+    name: "Local Development"
+    description: "Local MCP servers for development"
+    mcps:
+      - name: "Superset MCP"
+        mcp_url: "http://localhost:5008/mcp/"
+        auth:
+          type: "bearer"
+          token: "${SUPERSET_MCP_TOKEN}"
+
+      - name: "Database MCP"
+        mcp_url: "http://localhost:5009/mcp/"
+        auth:
+          type: "none"
+
+      - name: "AI Assistant MCP"
+        mcp_url: "http://localhost:5010/mcp/"
+        auth:
+          type: "bearer"
+          token: "${AI_MCP_TOKEN}"
+
+  # Single MCP profile (backward compatible)
+  local-simple:
+    name: "Local Simple"
+    description: "Single MCP server for testing"
+    mcps:
+      - name: "Superset Local"
+        mcp_url: "http://localhost:5008/mcp/"
+        auth:
+          type: "none"
+
+  # Staging environment
+  staging:
+    name: "Staging Environment"
+    description: "Staging servers for integration testing"
+    mcps:
+      - name: "Superset Staging"
+        mcp_url: "https://staging.example.com/mcp/"
+        auth:
+          type: "jwt"
+          api_url: "https://staging.example.com/v1/auth/"
+          api_token: "${STAGING_API_TOKEN}"
+          api_secret: "${STAGING_API_SECRET}"
+
+      - name: "Analytics MCP"
+        mcp_url: "https://analytics-staging.example.com/mcp/"
+        auth:
+          type: "bearer"
+          token: "${ANALYTICS_STAGING_TOKEN}"
+
+  # Staging environment
+  sandbox:
+    name: "Sandbox Environment"
+    description: "Sandbox servers for integration testing"
+    mcps:
+      - name: "Preset Sandbox MCP"
+        mcp_url: "https://66d22a6f.us1a.app-sdx.preset.io/mcp"
+        auth:
+          type: "jwt"
+          api_url: "https://api.app-sdx.preset.io/v1/auth/"
+          api_token: "9033ca4b-e086-4d3a-8cdc-b81f29fbb513"
+          api_secret: "9ac699763814aae240fded87ff7dd079a481e65956d00e1081a9155435451ba1"
+
+      - name: "Analytics MCP"
+        mcp_url: "https://analytics-staging.example.com/mcp/"
+        auth:
+          type: "bearer"
+          token: "${ANALYTICS_STAGING_TOKEN}"
+
+  # Production
+  prod:
+    name: "Production"
+    description: "Production MCP servers"
+    mcps:
+      - name: "Superset Production"
+        mcp_url: "https://api.example.com/mcp/"
+        auth:
+          type: "jwt"
+          api_url: "https://api.example.com/v1/auth/"
+          api_token: "${PROD_API_TOKEN}"
+          api_secret: "${PROD_API_SECRET}"
+
+# Optional: Global settings
+global:
+  timeout: 30
+  rate_limit:
+    requests_per_minute: 60

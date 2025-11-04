@@ -86,20 +86,180 @@ class MCPToolResult:
 class MCPClient:
     """Client for interacting with MCP services using FastMCP."""
 
-    def __init__(self, base_url: str | None = None):
+    def __init__(self, base_url: str | None = None, auth: dict[str, Any] | None = None):
         # Use MCP_URL from config if not provided
         if base_url is None:
             config = get_config()
             base_url = config.mcp_url
         self.base_url = base_url
+        self.auth_config = auth  # Store the auth config
         self.client = None
         self._tools_cache: list[MCPTool] | None = None
-        self.auth = self._load_auth_token()
+        self.auth: BearerAuth | None = None  # Will be set in initialize()
 
-    def _load_auth_token(self) -> BearerAuth | None:
-        """Load bearer token from config."""
+    async def _fetch_jwt_token(self, api_url: str, api_token: str, api_secret: str) -> str:
+        """Fetch JWT token from API.
+
+        Args:
+            api_url: JWT API endpoint URL
+            api_token: API token for authentication
+            api_secret: API secret for authentication
+
+        Returns:
+            JWT access token
+
+        Raises:
+            MCPError: If token fetch fails
+        """
         import sys
 
+        try:
+            print(f"  [Auth] Fetching JWT token from: {api_url}", file=sys.stderr)
+
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    api_url,
+                    headers={"Content-Type": "application/json", "Accept": "application/json"},
+                    json={"name": api_token, "secret": api_secret},
+                    timeout=10.0,
+                )
+                response.raise_for_status()
+                data = response.json()
+
+                # Extract access token from response
+                # Supports both {"payload": {"access_token": "..."}} and {"access_token": "..."}
+                if "payload" in data and "access_token" in data["payload"]:
+                    token = data["payload"]["access_token"]
+                elif "access_token" in data:
+                    token = data["access_token"]
+                else:
+                    raise MCPError("No access_token found in JWT response")
+
+                print(f"  [Auth] JWT token fetched successfully (length: {len(token)})", file=sys.stderr)
+                return token
+
+        except httpx.HTTPError as e:
+            raise MCPError(f"Failed to fetch JWT token: {e}")
+        except Exception as e:
+            raise MCPError(f"JWT token fetch error: {e}")
+
+    async def _fetch_oauth_token(
+        self,
+        client_id: str,
+        client_secret: str,
+        token_url: str,
+        scopes: list[str] | None = None
+    ) -> str:
+        """Fetch OAuth access token using client credentials flow.
+
+        Args:
+            client_id: OAuth client ID
+            client_secret: OAuth client secret
+            token_url: OAuth token endpoint URL
+            scopes: Optional list of OAuth scopes
+
+        Returns:
+            OAuth access token
+
+        Raises:
+            MCPError: If token fetch fails
+        """
+        import sys
+
+        try:
+            print(f"  [Auth] Fetching OAuth token from: {token_url}", file=sys.stderr)
+
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    token_url,
+                    data={
+                        "grant_type": "client_credentials",
+                        "client_id": client_id,
+                        "client_secret": client_secret,
+                        "scope": " ".join(scopes) if scopes else "",
+                    },
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                    timeout=10.0,
+                )
+                response.raise_for_status()
+                data = response.json()
+
+                if "access_token" not in data:
+                    raise MCPError("No access_token found in OAuth response")
+
+                token = data["access_token"]
+                print(f"  [Auth] OAuth token fetched successfully (length: {len(token)})", file=sys.stderr)
+                return token
+
+        except httpx.HTTPError as e:
+            raise MCPError(f"Failed to fetch OAuth token: {e}")
+        except Exception as e:
+            raise MCPError(f"OAuth token fetch error: {e}")
+
+    async def _setup_auth(self) -> BearerAuth | None:
+        """Set up authentication based on config or provided auth dict.
+
+        This method supports multiple authentication types:
+        - bearer: Direct bearer token
+        - jwt: Dynamic JWT token fetched from API
+        - oauth: OAuth client credentials flow
+        - none: No authentication
+
+        If auth_config was provided in __init__, it takes priority.
+        Otherwise, falls back to config-based authentication.
+
+        Returns:
+            BearerAuth instance if authentication is configured, None otherwise
+        """
+        import sys
+
+        # If auth was provided in __init__, use it
+        if self.auth_config:
+            auth_type = self.auth_config.get("type", "none")
+
+            if auth_type == "bearer":
+                token = self.auth_config.get("token")
+                if not token:
+                    raise MCPError("Bearer auth requires 'token' field")
+
+                print("  [Auth] Using bearer token from parameter", file=sys.stderr)
+                token_preview = token[:20] + "..." + token[-8:] if len(token) > 28 else token
+                print(f"  [Auth] Token: {token_preview}", file=sys.stderr)
+                return BearerAuth(token=token)
+
+            elif auth_type == "jwt":
+                api_url = self.auth_config.get("api_url")
+                api_token = self.auth_config.get("api_token")
+                api_secret = self.auth_config.get("api_secret")
+
+                if not all([api_url, api_token, api_secret]):
+                    raise MCPError("JWT auth requires 'api_url', 'api_token', and 'api_secret' fields")
+
+                print("  [Auth] Using dynamic JWT authentication from parameter", file=sys.stderr)
+                token = await self._fetch_jwt_token(api_url, api_token, api_secret)
+                return BearerAuth(token=token)
+
+            elif auth_type == "oauth":
+                client_id = self.auth_config.get("client_id")
+                client_secret = self.auth_config.get("client_secret")
+                token_url = self.auth_config.get("token_url")
+                scopes = self.auth_config.get("scopes", [])
+
+                if not all([client_id, client_secret, token_url]):
+                    raise MCPError("OAuth auth requires 'client_id', 'client_secret', and 'token_url' fields")
+
+                print("  [Auth] Using OAuth authentication from parameter", file=sys.stderr)
+                token = await self._fetch_oauth_token(client_id, client_secret, token_url, scopes)
+                return BearerAuth(token=token)
+
+            elif auth_type == "none":
+                print("  [Auth] No authentication (explicit)", file=sys.stderr)
+                return None
+
+            else:
+                raise MCPError(f"Unknown auth type: {auth_type}")
+
+        # Otherwise, fall back to config (existing behavior)
         config = get_config()
 
         # Check for dynamic JWT configuration
@@ -116,25 +276,22 @@ class MCPClient:
 
         # Log auth method being used
         if has_dynamic_jwt:
-            print("  [Auth] Using dynamic JWT authentication", file=sys.stderr)
-            print(
-                f"  [Auth] Fetching token from: {config.get('MCP_AUTH_API_URL')}", file=sys.stderr
-            )
+            print("  [Auth] Using dynamic JWT authentication from config", file=sys.stderr)
+            api_url = config.get("MCP_AUTH_API_URL")
+            api_token = config.get("MCP_AUTH_API_TOKEN")
+            api_secret = config.get("MCP_AUTH_API_SECRET")
+            token = await self._fetch_jwt_token(api_url, api_token, api_secret)
+            return BearerAuth(token=token)
         elif has_static_token:
-            print("  [Auth] Using static bearer token", file=sys.stderr)
-            token_preview = has_static_token[:20] + "..." + has_static_token[-8:]
-            print(f"  [Auth] Token: {token_preview}", file=sys.stderr)
+            print("  [Auth] Using static bearer token from config", file=sys.stderr)
+            token = config.mcp_auth_token
+            if token:
+                token_preview = token[:20] + "..." + token[-8:] if len(token) > 28 else token
+                print(f"  [Auth] Token: {token_preview}", file=sys.stderr)
+                return BearerAuth(token=token)
         else:
             print("  [Auth] No authentication configured", file=sys.stderr)
 
-        token = config.mcp_auth_token
-        if token:
-            if has_dynamic_jwt:
-                print(
-                    f"  [Auth] JWT token fetched successfully (length: {len(token)})",
-                    file=sys.stderr,
-                )
-            return BearerAuth(token=token)
         return None
 
     async def initialize(self) -> dict[str, Any]:
@@ -142,6 +299,9 @@ class MCPClient:
         import sys
 
         try:
+            # Set up authentication first
+            self.auth = await self._setup_auth()
+
             print(f"  [MCP] Connecting to MCP service at {self.base_url}", file=sys.stderr)
             self.client = Client(self.base_url, auth=self.auth)
             await self.client.__aenter__()

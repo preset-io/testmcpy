@@ -1,9 +1,0 @@
-version: "1.0"
-tests:
-  - name: test_simple_question
-    prompt: "What is 2 + 2? Just give me the number."
-    evaluators:
-      - name: execution_successful
-      - name: within_time_limit
-        args:
-          max_seconds: 30

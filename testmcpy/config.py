@@ -102,7 +102,11 @@ class Config:
                 self._sources[key] = "Default"
 
     def _load_profile(self, profile_id: str | None = None):
-        """Load configuration from MCP profile."""
+        """Load configuration from MCP profile.
+
+        For backward compatibility with single-MCP configs, if a profile has only one MCP,
+        we'll use that MCP's URL and auth as the default MCP_URL and auth settings.
+        """
         try:
             profile = load_profile(profile_id)
             if not profile:
@@ -110,30 +114,37 @@ class Config:
 
             self._profile = profile
 
-            # Set MCP URL
-            self._config["MCP_URL"] = profile.mcp_url
-            self._sources["MCP_URL"] = f"Profile ({profile.profile_id})"
+            # For backward compatibility: if profile has exactly one MCP, use it as default
+            if profile.mcps and len(profile.mcps) == 1:
+                first_mcp = profile.mcps[0]
 
-            # Set auth configuration based on auth type
-            if profile.auth.auth_type == "bearer" and profile.auth.token:
-                self._config["MCP_AUTH_TOKEN"] = profile.auth.token
-                self._sources["MCP_AUTH_TOKEN"] = f"Profile ({profile.profile_id})"
+                # Set MCP URL
+                self._config["MCP_URL"] = first_mcp.mcp_url
+                self._sources["MCP_URL"] = f"Profile ({profile.profile_id})"
 
-            elif profile.auth.auth_type == "jwt":
-                if profile.auth.api_url:
-                    self._config["MCP_AUTH_API_URL"] = profile.auth.api_url
-                    self._sources["MCP_AUTH_API_URL"] = f"Profile ({profile.profile_id})"
-                if profile.auth.api_token:
-                    self._config["MCP_AUTH_API_TOKEN"] = profile.auth.api_token
-                    self._sources["MCP_AUTH_API_TOKEN"] = f"Profile ({profile.profile_id})"
-                if profile.auth.api_secret:
-                    self._config["MCP_AUTH_API_SECRET"] = profile.auth.api_secret
-                    self._sources["MCP_AUTH_API_SECRET"] = f"Profile ({profile.profile_id})"
+                # Set auth configuration based on auth type
+                if first_mcp.auth.auth_type == "bearer" and first_mcp.auth.token:
+                    self._config["MCP_AUTH_TOKEN"] = first_mcp.auth.token
+                    self._sources["MCP_AUTH_TOKEN"] = f"Profile ({profile.profile_id})"
 
-            # OAuth not yet implemented in auth flow, but store for future use
-            elif profile.auth.auth_type == "oauth":
-                # Store OAuth config for future use
-                pass
+                elif first_mcp.auth.auth_type == "jwt":
+                    if first_mcp.auth.api_url:
+                        self._config["MCP_AUTH_API_URL"] = first_mcp.auth.api_url
+                        self._sources["MCP_AUTH_API_URL"] = f"Profile ({profile.profile_id})"
+                    if first_mcp.auth.api_token:
+                        self._config["MCP_AUTH_API_TOKEN"] = first_mcp.auth.api_token
+                        self._sources["MCP_AUTH_API_TOKEN"] = f"Profile ({profile.profile_id})"
+                    if first_mcp.auth.api_secret:
+                        self._config["MCP_AUTH_API_SECRET"] = first_mcp.auth.api_secret
+                        self._sources["MCP_AUTH_API_SECRET"] = f"Profile ({profile.profile_id})"
+
+                # OAuth not yet implemented in auth flow, but store for future use
+                elif first_mcp.auth.auth_type == "oauth":
+                    # Store OAuth config for future use
+                    pass
+
+            # If profile has multiple MCPs, don't set default MCP_URL/auth
+            # The API will handle loading all MCPs from the profile
 
         except Exception as e:
             import warnings

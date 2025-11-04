@@ -1,0 +1,92 @@
+version: "1.0"
+tests:
+  - name: test_basic_xy_chart_creation
+    prompt: "Create a line chart showing sales over time. Use dataset 42, with month on the x-axis and total_revenue on the y-axis."
+    evaluators:
+      - name: execution_successful
+      - name: was_mcp_tool_called
+        args:
+          tool_name: "generate_chart"
+      - name: tool_called_with_parameters
+        args:
+          tool_name: "generate_chart"
+          parameters:
+            dataset_id: 42
+            config:
+              chart_type: "xy"
+              kind: "line"
+          partial_match: true
+      - name: response_contains
+        args:
+          text: "preview_url"
+
+  - name: test_table_chart_with_filters
+    prompt: "Generate a data table from dataset sales_data showing customer_id, order_date, and amount columns, but only for orders over $1000."
+    evaluators:
+      - name: execution_successful
+      - name: was_mcp_tool_called
+        args:
+          tool_name: "generate_chart"
+      - name: tool_called_with_parameters
+        args:
+          tool_name: "generate_chart"
+          parameters:
+            config:
+              chart_type: "table"
+              filters:
+                - column: "amount"
+                  op: ">"
+                  value: 1000
+          partial_match: true
+
+  - name: test_aggregation_with_group_by
+    prompt: "Create a bar chart showing average salary by department. Use dataset employees_db with department as group-by and salary with AVG aggregation."
+    evaluators:
+      - name: execution_successful
+      - name: was_mcp_tool_called
+        args:
+          tool_name: "generate_chart"
+      - name: tool_called_with_parameters
+        args:
+          tool_name: "generate_chart"
+          parameters:
+            config:
+              chart_type: "xy"
+              kind: "bar"
+              y:
+                - aggregate: "AVG"
+          partial_match: true
+      - name: response_contains
+        args:
+          text: "chart_id"
+
+  - name: test_temporary_preview_no_save
+    prompt: "Show me a preview of a scatter plot with height vs weight from the measurements dataset without saving it."
+    evaluators:
+      - name: execution_successful
+      - name: was_mcp_tool_called
+        args:
+          tool_name: "generate_chart"
+      - name: tool_called_with_parameters
+        args:
+          tool_name: "generate_chart"
+          parameters:
+            save_chart: false
+            config:
+              chart_type: "xy"
+              kind: "scatter"
+          partial_match: true
+      - name: response_does_not_contain
+        args:
+          text: "chart_id"
+
+  - name: test_invalid_column_with_suggestions
+    prompt: "Create a chart with dataset 15 showing total_sales on x-axis and profit_margin on y-axis as a line chart."
+    evaluators:
+      - name: execution_successful
+      - name: was_mcp_tool_called
+        args:
+          tool_name: "generate_chart"
+      - name: response_contains
+        args:
+          text: "validation"
