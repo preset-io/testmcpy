@@ -9,15 +9,37 @@ function OptimizeDocsModal({ tool, onClose }) {
   const [cost, setCost] = useState(0)
   const [duration, setDuration] = useState(0)
   const [copiedSection, setCopiedSection] = useState(null)
+  const [config, setConfig] = useState(null)
 
   useEffect(() => {
-    analyzeDocumentation()
+    loadConfig()
   }, [])
+
+  useEffect(() => {
+    if (config) {
+      analyzeDocumentation()
+    }
+  }, [config])
+
+  const loadConfig = async () => {
+    try {
+      const res = await fetch('/api/config')
+      const data = await res.json()
+      setConfig(data)
+    } catch (error) {
+      console.error('Failed to load config:', error)
+      setError('Failed to load configuration')
+      setStep('error')
+    }
+  }
 
   const analyzeDocumentation = async () => {
     try {
       setStep('analyzing')
       setError(null)
+
+      const provider = config?.DEFAULT_PROVIDER?.value || 'anthropic'
+      const model = config?.DEFAULT_MODEL?.value || 'claude-haiku-4-5'
 
       const response = await fetch('/api/mcp/optimize-docs', {
         method: 'POST',
@@ -26,6 +48,8 @@ function OptimizeDocsModal({ tool, onClose }) {
           tool_name: tool.name,
           description: tool.description,
           input_schema: tool.input_schema,
+          provider: provider,
+          model: model,
         }),
       })
 
