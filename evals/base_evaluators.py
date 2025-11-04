@@ -350,56 +350,6 @@ class TokenUsageReasonable(BaseEvaluator):
         )
 
 
-# Superset-specific evaluators
-
-
-class WasSupersetChartCreated(BaseEvaluator):
-    """Check if a Superset chart was created."""
-
-    @property
-    def name(self) -> str:
-        return "was_superset_chart_created"
-
-    @property
-    def description(self) -> str:
-        return "Checks if a Superset chart was successfully created"
-
-    def evaluate(self, context: dict[str, Any]) -> EvalResult:
-        tool_calls = context.get("tool_calls", [])
-        tool_results = context.get("tool_results", [])
-
-        # Look for chart creation tool calls
-        chart_tools = ["create_chart", "add_chart", "new_chart"]
-        chart_created = False
-        chart_id = None
-
-        for i, call in enumerate(tool_calls):
-            if any(tool in call.get("name", "") for tool in chart_tools):
-                if i < len(tool_results):
-                    result = tool_results[i]
-                    if not result.is_error:
-                        chart_created = True
-                        # Try to extract chart ID from result
-                        content = result.content or ""
-                        if isinstance(content, str):
-                            # Look for chart ID pattern
-                            import re
-
-                            match = re.search(r"chart[_\s]?id[:\s]+(\d+)", content, re.IGNORECASE)
-                            if match:
-                                chart_id = match.group(1)
-
-        if chart_created:
-            return EvalResult(
-                passed=True,
-                score=1.0,
-                reason="Chart was successfully created",
-                details={"chart_id": chart_id} if chart_id else None,
-            )
-        else:
-            return EvalResult(passed=False, score=0.0, reason="No chart creation detected")
-
-
 class SQLQueryValid(BaseEvaluator):
     """Check if generated SQL query is syntactically valid."""
 
@@ -511,7 +461,6 @@ def create_evaluator(name: str, **kwargs) -> BaseEvaluator:
         "answer_contains_link": AnswerContainsLink,
         "within_time_limit": WithinTimeLimit,
         "token_usage_reasonable": TokenUsageReasonable,
-        "was_superset_chart_created": WasSupersetChartCreated,
         "sql_query_valid": SQLQueryValid,
     }
 

@@ -10,7 +10,6 @@ tests:
   name: test_get_chart_data
   prompt: Get the data for chart with ID 123
 - evaluators:
-  - name: was_superset_chart_created
   - name: execution_successful
   - args:
       max_seconds: 30
