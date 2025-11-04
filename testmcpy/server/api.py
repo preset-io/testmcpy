@@ -2456,56 +2456,218 @@ Provide a detailed analysis in valid JSON format. Return ONLY the JSON object, n
 
 IMPORTANT: Return ONLY valid JSON. Do not wrap in markdown code blocks. Start with {{ and end with }}."""
 
-        # Generate analysis
+        # Generate analysis - use a mock "tool" to get structured JSON output
+        # This works better than asking for raw JSON in many LLMs
+        analysis_tool = {
+            "name": "submit_analysis",
+            "description": "Submit the documentation analysis results",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "clarity_score": {
+                        "type": "number",
+                        "description": "Overall documentation quality score from 0-100"
+                    },
+                    "issues": {
+                        "type": "array",
+                        "description": "List of issues found in the documentation",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "category": {
+                                    "type": "string",
+                                    "enum": ["clarity", "completeness", "actionability", "examples", "constraints"],
+                                    "description": "Issue category"
+                                },
+                                "severity": {
+                                    "type": "string",
+                                    "enum": ["high", "medium", "low"],
+                                    "description": "Issue severity"
+                                },
+                                "issue": {
+                                    "type": "string",
+                                    "description": "Description of the issue"
+                                },
+                                "current": {
+                                    "type": "string",
+                                    "description": "The problematic text from current docs"
+                                },
+                                "suggestion": {
+                                    "type": "string",
+                                    "description": "How to fix this issue"
+                                }
+                            },
+                            "required": ["category", "severity", "issue", "suggestion"]
+                        }
+                    },
+                    "improved_description": {
+                        "type": "string",
+                        "description": "Complete rewritten description that addresses all issues"
+                    },
+                    "improvements": {
+                        "type": "array",
+                        "description": "Specific before/after improvements",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "issue": {
+                                    "type": "string",
+                                    "description": "Brief issue name"
+                                },
+                                "before": {
+                                    "type": "string",
+                                    "description": "Current problematic text"
+                                },
+                                "after": {
+                                    "type": "string",
+                                    "description": "Improved replacement text"
+                                },
+                                "explanation": {
+                                    "type": "string",
+                                    "description": "Why this improvement helps LLMs"
+                                }
+                            },
+                            "required": ["issue", "before", "after", "explanation"]
+                        }
+                    }
+                },
+                "required": ["clarity_score", "issues", "improved_description", "improvements"]
+            }
+        }
+
+        # Update prompt to request tool use
+        analysis_prompt = f"""You are an expert at writing tool documentation for LLMs (Large Language Models) that use function/tool calling.
+
+Your task: Analyze this MCP (Model Context Protocol) tool and suggest improvements to help LLMs call it correctly.
+
+TOOL INFORMATION:
+==================
+Tool Name: {request.tool_name}
+
+Current Description:
+{request.description}
+
+Input Schema:
+{schema_str}
+
+ANALYSIS FRAMEWORK:
+===================
+Evaluate the documentation against these criteria:
+
+1. CLARITY (0-100): Is it immediately obvious what this tool does?
+   - Does the first sentence clearly state the tool's purpose?
+   - Would an LLM understand the exact action this tool performs?
+   - Are technical terms explained or self-evident?
+
+2. COMPLETENESS (0-100): Are all parameters well-documented?
+   - Is each parameter's purpose clear from the schema?
+   - Are types, constraints, and valid values specified?
+   - Are required vs optional parameters obvious?
+
+3. ACTIONABILITY (0-100): Would an LLM know when to use this?
+   - Is it clear what scenarios this tool is appropriate for?
+   - Are there indicators of when NOT to use this tool?
+   - Are related/alternative tools mentioned?
+
+4. EXAMPLES (0-100): Are there concrete usage examples?
+   - Are there example parameter values?
+   - Are there example use cases or scenarios?
+   - Would an LLM be able to construct a valid call from the docs?
+
+5. CONSTRAINTS (0-100): Are limitations clearly stated?
+   - Are there any prerequisites mentioned?
+   - Are error conditions described?
+   - Are rate limits, size limits, or other constraints noted?
+
+COMMON ISSUES TO DETECT:
+========================
+- Vague verbs: "manages", "handles", "processes" → be specific: "creates", "updates", "deletes"
+- Missing context: no explanation of when to use vs alternatives
+- Parameter confusion: unclear names without descriptions
+- Type ambiguity: parameters without clear type/format info
+- No examples: abstract descriptions without concrete usage
+- Jargon overload: technical terms without explanation
+- Ambiguous language: multiple possible interpretations
+- Hidden constraints: undocumented limitations or requirements
+
+YOUR TASK:
+==========
+Call the 'submit_analysis' tool with your detailed analysis. Provide:
+
+1. clarity_score: Overall quality score (0-100)
+2. issues: Array of specific problems found (be thorough - find at least 2-3 issues)
+3. improved_description: Complete rewrite that includes:
+   - Clear statement of what tool does (1 sentence)
+   - When to use it and key scenarios (1-2 sentences)
+   - Brief parameter overview (1 sentence)
+   - Key constraints or limitations (1 sentence)
+   Total: 3-5 sentences, written for LLM consumption
+4. improvements: Specific before/after examples showing how to fix each issue
+
+Be specific and actionable. Focus on making documentation crystal clear for LLMs."""
+
         result = await llm_provider.generate_with_tools(
             prompt=analysis_prompt,
-            tools=[],
-            timeout=45.0
+            tools=[analysis_tool],
+            timeout=60.0
         )
 
-        # Parse the JSON response
+        # Parse the response - check if LLM used the tool
         try:
-            # Extract JSON from response
-            response_text = result.response.strip()
+            analysis_data = None
 
-            # Remove any markdown code blocks
-            response_text = re.sub(r'```(?:json)?\s*', '', response_text)
-            response_text = re.sub(r'```\s*$', '', response_text)
+            # First, check if the LLM made a tool call
+            if result.tool_calls and len(result.tool_calls) > 0:
+                # LLM used the submit_analysis tool - perfect!
+                tool_call = result.tool_calls[0]
+                if tool_call.get("name") == "submit_analysis":
+                    analysis_data = tool_call.get("input", {})
+                    print(f"✓ LLM used tool call for structured output")
 
-            # Try to find JSON object (handle nested braces properly)
-            # Find outermost { } pair
-            start_idx = response_text.find('{')
-            if start_idx == -1:
-                raise ValueError("No JSON object found in response")
+            # If no tool call, try to parse JSON from response text
+            if not analysis_data:
+                print("No tool call found, attempting to parse JSON from response text")
+                response_text = result.response.strip()
 
-            # Count braces to find matching closing brace
-            brace_count = 0
-            end_idx = -1
-            for i in range(start_idx, len(response_text)):
-                if response_text[i] == '{':
-                    brace_count += 1
-                elif response_text[i] == '}':
-                    brace_count -= 1
-                    if brace_count == 0:
-                        end_idx = i + 1
-                        break
+                # Remove any markdown code blocks
+                response_text = re.sub(r'```(?:json)?\s*', '', response_text)
+                response_text = re.sub(r'```\s*$', '', response_text)
 
-            if end_idx == -1:
-                raise ValueError("Unmatched braces in JSON response")
+                # Try to find JSON object (handle nested braces properly)
+                start_idx = response_text.find('{')
+                if start_idx == -1:
+                    raise ValueError("No JSON object found in response")
 
-            json_str = response_text[start_idx:end_idx]
+                # Count braces to find matching closing brace
+                brace_count = 0
+                end_idx = -1
+                for i in range(start_idx, len(response_text)):
+                    if response_text[i] == '{':
+                        brace_count += 1
+                    elif response_text[i] == '}':
+                        brace_count -= 1
+                        if brace_count == 0:
+                            end_idx = i + 1
+                            break
 
-            # Parse JSON
-            analysis_data = json.loads(json_str)
+                if end_idx == -1:
+                    raise ValueError("Unmatched braces in JSON response")
+
+                json_str = response_text[start_idx:end_idx]
+                analysis_data = json.loads(json_str)
 
             # Validate and fix required fields
             if "clarity_score" not in analysis_data or not isinstance(analysis_data["clarity_score"], (int, float)):
+                print("Warning: Missing or invalid clarity_score, using default 50")
                 analysis_data["clarity_score"] = 50
             if "issues" not in analysis_data or not isinstance(analysis_data["issues"], list):
+                print("Warning: Missing or invalid issues array")
                 analysis_data["issues"] = []
             if "improved_description" not in analysis_data or not analysis_data["improved_description"]:
+                print("Warning: Missing improved_description, using original")
                 analysis_data["improved_description"] = request.description
             if "improvements" not in analysis_data or not isinstance(analysis_data["improvements"], list):
+                print("Warning: Missing improvements array")
                 analysis_data["improvements"] = []
 
             # Ensure each issue has required fields
@@ -2523,14 +2685,15 @@ IMPORTANT: Return ONLY valid JSON. Do not wrap in markdown code blocks. Start wi
 
         except Exception as e:
             # Fallback to basic response if parsing fails
-            print(f"Failed to parse LLM response as JSON: {e}")
-            print(f"Raw response: {result.response[:500]}")  # Print first 500 chars for debugging
+            print(f"✗ Failed to parse LLM response: {e}")
+            print(f"Response text (first 500 chars): {result.response[:500]}")
+            print(f"Tool calls: {result.tool_calls}")
             analysis_data = {
                 "clarity_score": 50,
                 "issues": [{
                     "category": "clarity",
                     "severity": "high",
-                    "issue": "LLM response parsing failed - please check server logs",
+                    "issue": "LLM response parsing failed - check server logs for details",
                     "current": request.description,
                     "suggestion": f"Error: {str(e)}"
                 }],
