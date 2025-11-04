@@ -2373,54 +2373,88 @@ async def optimize_tool_docs(request: OptimizeDocsRequest) -> OptimizeDocsRespon
         # Format the input schema for better readability
         schema_str = json.dumps(request.input_schema, indent=2)
 
-        # Build the analysis prompt
-        analysis_prompt = f"""You are an expert at writing tool documentation for LLMs (Large Language Models).
-Your task is to analyze MCP (Model Context Protocol) tool documentation and suggest improvements.
+        # Build the analysis prompt with structured output
+        analysis_prompt = f"""You are an expert at writing tool documentation for LLMs (Large Language Models) that use function/tool calling.
 
+Your task: Analyze this MCP (Model Context Protocol) tool and suggest improvements to help LLMs call it correctly.
+
+TOOL INFORMATION:
+==================
 Tool Name: {request.tool_name}
-Current Description: {request.description}
-Parameters Schema: {schema_str}
 
-Analyze the documentation for:
-1. **Clarity**: Is the purpose immediately clear? Would an LLM understand exactly what this tool does?
-2. **Completeness**: Are all parameters well-explained with clear types and constraints?
-3. **Actionability**: Would an LLM know exactly when to use this tool vs alternatives?
-4. **Examples**: Are there concrete usage examples or scenarios?
-5. **Constraints**: Are limitations, prerequisites, and error conditions clearly stated?
+Current Description:
+{request.description}
 
-Common issues to look for:
-- Vague descriptions (e.g., "manages data" instead of "creates a new dataset with specified columns")
-- Missing context (when to use this tool vs alternatives)
-- Unclear parameter purposes or types
-- No concrete examples
-- Technical jargon without explanation
-- Ambiguous language with multiple interpretations
-- Missing information about error conditions or constraints
+Input Schema:
+{schema_str}
 
-Provide your analysis in the following JSON format:
+ANALYSIS FRAMEWORK:
+===================
+Evaluate the documentation against these criteria:
+
+1. CLARITY (0-100): Is it immediately obvious what this tool does?
+   - Does the first sentence clearly state the tool's purpose?
+   - Would an LLM understand the exact action this tool performs?
+   - Are technical terms explained or self-evident?
+
+2. COMPLETENESS (0-100): Are all parameters well-documented?
+   - Is each parameter's purpose clear from the schema?
+   - Are types, constraints, and valid values specified?
+   - Are required vs optional parameters obvious?
+
+3. ACTIONABILITY (0-100): Would an LLM know when to use this?
+   - Is it clear what scenarios this tool is appropriate for?
+   - Are there indicators of when NOT to use this tool?
+   - Are related/alternative tools mentioned?
+
+4. EXAMPLES (0-100): Are there concrete usage examples?
+   - Are there example parameter values?
+   - Are there example use cases or scenarios?
+   - Would an LLM be able to construct a valid call from the docs?
+
+5. CONSTRAINTS (0-100): Are limitations clearly stated?
+   - Are there any prerequisites mentioned?
+   - Are error conditions described?
+   - Are rate limits, size limits, or other constraints noted?
+
+COMMON ISSUES TO DETECT:
+========================
+- Vague verbs: "manages", "handles", "processes" → be specific: "creates", "updates", "deletes"
+- Missing context: no explanation of when to use vs alternatives
+- Parameter confusion: unclear names without descriptions
+- Type ambiguity: parameters without clear type/format info
+- No examples: abstract descriptions without concrete usage
+- Jargon overload: technical terms without explanation
+- Ambiguous language: multiple possible interpretations
+- Hidden constraints: undocumented limitations or requirements
+
+YOUR TASK:
+==========
+Provide a detailed analysis in valid JSON format. Return ONLY the JSON object, no markdown formatting, no code blocks.
+
 {{
-  "clarity_score": <number 0-100>,
+  "clarity_score": <number 0-100 representing overall quality>,
   "issues": [
     {{
-      "category": "clarity" | "completeness" | "actionability" | "examples" | "constraints",
-      "severity": "high" | "medium" | "low",
-      "issue": "Brief description of the issue",
-      "current": "The problematic part of current documentation",
-      "suggestion": "How to fix it"
+      "category": "<one of: clarity, completeness, actionability, examples, constraints>",
+      "severity": "<one of: high, medium, low>",
+      "issue": "<specific description of what's wrong>",
+      "current": "<the problematic text from current docs>",
+      "suggestion": "<actionable advice on how to fix>"
     }}
   ],
-  "improved_description": "A complete rewrite of the tool description that addresses all issues. Should be 2-4 sentences that clearly explain: (1) what the tool does, (2) when to use it, (3) key parameters, and (4) any important constraints.",
+  "improved_description": "<Complete rewritten description that includes: (1) Clear statement of what tool does, (2) When to use it, (3) Brief parameter overview, (4) Key constraints. Should be 3-5 sentences, written specifically for LLM consumption.>",
   "improvements": [
     {{
-      "issue": "Brief issue description",
-      "before": "Current problematic text",
-      "after": "Improved version",
-      "explanation": "Why this is better"
+      "issue": "<brief issue name>",
+      "before": "<current problematic text>",
+      "after": "<improved replacement text>",
+      "explanation": "<why this improvement helps LLMs>"
     }}
   ]
 }}
 
-Be specific and actionable in your suggestions. Focus on making the documentation clear for an LLM that needs to decide when and how to call this tool."""
+IMPORTANT: Return ONLY valid JSON. Do not wrap in markdown code blocks. Start with {{ and end with }}."""
 
         # Generate analysis
         result = await llm_provider.generate_with_tools(
@@ -2431,45 +2465,74 @@ Be specific and actionable in your suggestions. Focus on making the documentatio
 
         # Parse the JSON response
         try:
-            # Extract JSON from response (handle markdown code blocks)
+            # Extract JSON from response
             response_text = result.response.strip()
 
-            # Try to find JSON in code blocks first
-            json_match = re.search(r"```(?:json)?\s*(\{[\s\S]*?\})\s*```", response_text)
-            if json_match:
-                json_str = json_match.group(1)
-            else:
-                # Try to find raw JSON
-                json_match = re.search(r"\{[\s\S]*\}", response_text)
-                if json_match:
-                    json_str = json_match.group(0)
-                else:
-                    raise ValueError("No JSON found in response")
+            # Remove any markdown code blocks
+            response_text = re.sub(r'```(?:json)?\s*', '', response_text)
+            response_text = re.sub(r'```\s*$', '', response_text)
 
+            # Try to find JSON object (handle nested braces properly)
+            # Find outermost { } pair
+            start_idx = response_text.find('{')
+            if start_idx == -1:
+                raise ValueError("No JSON object found in response")
+
+            # Count braces to find matching closing brace
+            brace_count = 0
+            end_idx = -1
+            for i in range(start_idx, len(response_text)):
+                if response_text[i] == '{':
+                    brace_count += 1
+                elif response_text[i] == '}':
+                    brace_count -= 1
+                    if brace_count == 0:
+                        end_idx = i + 1
+                        break
+
+            if end_idx == -1:
+                raise ValueError("Unmatched braces in JSON response")
+
+            json_str = response_text[start_idx:end_idx]
+
+            # Parse JSON
             analysis_data = json.loads(json_str)
 
-            # Validate required fields
-            if "clarity_score" not in analysis_data:
+            # Validate and fix required fields
+            if "clarity_score" not in analysis_data or not isinstance(analysis_data["clarity_score"], (int, float)):
                 analysis_data["clarity_score"] = 50
-            if "issues" not in analysis_data:
+            if "issues" not in analysis_data or not isinstance(analysis_data["issues"], list):
                 analysis_data["issues"] = []
-            if "improved_description" not in analysis_data:
+            if "improved_description" not in analysis_data or not analysis_data["improved_description"]:
                 analysis_data["improved_description"] = request.description
-            if "improvements" not in analysis_data:
+            if "improvements" not in analysis_data or not isinstance(analysis_data["improvements"], list):
                 analysis_data["improvements"] = []
+
+            # Ensure each issue has required fields
+            for issue in analysis_data["issues"]:
+                if "category" not in issue:
+                    issue["category"] = "clarity"
+                if "severity" not in issue:
+                    issue["severity"] = "medium"
+                if "issue" not in issue:
+                    issue["issue"] = "Documentation issue"
+                if "current" not in issue:
+                    issue["current"] = ""
+                if "suggestion" not in issue:
+                    issue["suggestion"] = ""
 
         except Exception as e:
             # Fallback to basic response if parsing fails
             print(f"Failed to parse LLM response as JSON: {e}")
-            print(f"Raw response: {result.response}")
+            print(f"Raw response: {result.response[:500]}")  # Print first 500 chars for debugging
             analysis_data = {
                 "clarity_score": 50,
                 "issues": [{
                     "category": "clarity",
-                    "severity": "medium",
-                    "issue": "Unable to perform detailed analysis",
+                    "severity": "high",
+                    "issue": "LLM response parsing failed - please check server logs",
                     "current": request.description,
-                    "suggestion": "Consider making the description more specific and actionable"
+                    "suggestion": f"Error: {str(e)}"
                 }],
                 "improved_description": request.description,
                 "improvements": []
