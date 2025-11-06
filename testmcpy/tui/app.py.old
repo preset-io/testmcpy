@@ -1,0 +1,140 @@
+"""Main TUI application for testmcpy."""
+
+from pathlib import Path
+
+from textual.app import App
+from textual.css.query import NoMatches
+
+from testmcpy.tui.screens.chat import ChatScreen
+from testmcpy.tui.screens.tests import TestManagerScreen
+
+
+class TestMCPyApp(App):
+    """Main TUI application for testmcpy."""
+
+    CSS = """
+    Screen {
+        background: $surface;
+    }
+
+    #main-container {
+        height: 100%;
+        layout: vertical;
+    }
+
+    #content-area {
+        height: 1fr;
+        layout: horizontal;
+    }
+
+    #left-panel {
+        width: 50%;
+        height: 100%;
+        border-right: solid $primary;
+        padding: 1;
+    }
+
+    #left-title {
+        height: auto;
+        margin-bottom: 1;
+        color: $accent;
+        text-style: bold;
+    }
+
+    #test-list {
+        height: 1fr;
+        overflow-y: auto;
+    }
+
+    #right-panel {
+        width: 50%;
+        height: 100%;
+        padding: 1;
+    }
+
+    #test-details {
+        height: 1fr;
+        overflow-y: auto;
+    }
+
+    #recent-activity {
+        height: 8;
+        border-top: solid $primary;
+        padding: 1;
+    }
+
+    Footer {
+        background: $primary-darken-2;
+    }
+
+    Header {
+        background: $primary-darken-2;
+    }
+    """
+
+    BINDINGS = [
+        ("q", "quit", "Quit"),
+    ]
+
+    def __init__(self, tests_dir: Path = Path("tests")):
+        """Initialize the TUI app."""
+        super().__init__()
+        self.tests_dir = tests_dir
+        self.title = "testmcpy - Test Manager"
+        self.sub_title = "MCP Testing Framework"
+
+    def on_mount(self) -> None:
+        """Handle mount event."""
+        # Push the Test Manager screen
+        self.push_screen(TestManagerScreen(tests_dir=self.tests_dir))
+
+
+def run_tui(tests_dir: Path = Path("tests")):
+    """Run the TUI application."""
+    app = TestMCPyApp(tests_dir=tests_dir)
+    app.run()
+
+
+def launch_chat(
+    profile: str | None = None,
+    provider: str | None = None,
+    model: str | None = None,
+    mcp_url: str | None = None,
+):
+    """
+    Launch the chat interface.
+
+    Args:
+        profile: MCP profile ID
+        provider: LLM provider
+        model: Model name
+        mcp_url: MCP service URL
+    """
+    from textual.app import App
+
+    class ChatApp(App):
+        """Simple app wrapper for chat screen."""
+
+        TITLE = "testmcpy - Chat Interface"
+        SUB_TITLE = "MCP Testing Framework"
+
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.profile = profile
+            self.provider = provider
+            self.model = model
+            self.mcp_url = mcp_url
+
+        def on_mount(self) -> None:
+            """Initialize the app."""
+            self.push_screen(
+                ChatScreen(
+                    profile=self.profile,
+                    provider=self.provider,
+                    model=self.model,
+                    mcp_url=self.mcp_url,
+                )
+            )
+
+    app = ChatApp()
+    app.run()

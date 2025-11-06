@@ -11,7 +11,7 @@ from typing import Any
 
 from evals.base_evaluators import BaseEvaluator, create_evaluator
 from src.llm_integration import LLMProvider, create_llm_provider
-from src.mcp_client import MCPClient, MCPToolCall
+from testmcpy.src.mcp_client import MCPClient, MCPToolCall
 
 
 class RateLimitTracker:

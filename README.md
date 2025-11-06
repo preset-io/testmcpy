@@ -54,6 +54,33 @@ That's it! No complex configuration needed to get started.
 
 ## Key Features
 
+### Interactive TUI Dashboard (NEW!)
+Beautiful terminal interface for MCP testing - no browser required:
+
+```bash
+testmcpy dash                    # Launch interactive dashboard
+testmcpy dash --auto-refresh     # Live connection monitoring
+testmcpy dash --profile prod     # Use specific MCP profile
+```
+
+**TUI Features:**
+- Real-time MCP connection status
+- Interactive tool exploration
+- Live test execution with progress
+- Configuration editor
+- Global search across tools, tests, and settings
+- Help system with keyboard shortcuts (press `?`)
+- Multiple themes (default, light, high contrast)
+
+**Quick CLI Commands (no TUI):**
+```bash
+testmcpy profiles                # List MCP profiles (table)
+testmcpy status                  # Connection status check
+testmcpy explore-cli             # Browse tools (non-interactive)
+```
+
+[Screenshot: TUI dashboard showing profiles, quick actions, and keyboard shortcuts]
+
 ### Multi-Provider Support
 Test with **Claude**, **GPT-4**, **Llama**, and other models. Works with both paid APIs and free local models via Ollama.
 
@@ -264,7 +291,12 @@ testmcpy run tests/ --model claude-haiku-4-5
 
 | Command | Description |
 |---------|-------------|
+| `testmcpy dash` | **Launch interactive TUI dashboard** |
 | `testmcpy setup` | Interactive configuration wizard |
+| `testmcpy profiles` | List MCP profiles (table) |
+| `testmcpy status` | Show MCP connection status |
+| `testmcpy explore-cli` | Browse tools (non-interactive) |
+| `testmcpy explorer` | Launch TUI tool explorer |
 | `testmcpy tools` | List available MCP tools |
 | `testmcpy research` | Test LLM tool-calling capabilities |
 | `testmcpy run <path>` | Execute test suite |
@@ -273,6 +305,33 @@ testmcpy run tests/ --model claude-haiku-4-5
 | `testmcpy report` | Compare test results across models |
 | `testmcpy config-cmd` | View current configuration |
 | `testmcpy doctor` | Diagnose installation issues |
+
+### TUI Keyboard Shortcuts
+
+**Global Navigation:**
+- `h` - Home screen
+- `e` - Explorer (MCP tools)
+- `5` - Configuration
+- `?` - Help modal
+- `/` - Global search
+- `q` - Quit (with confirmation)
+- `F5` - Refresh
+
+**Home Screen:**
+- `1-5` - Quick actions (Tests, Explorer, Chat, Optimize, Config)
+- `p` - Switch profile
+- `Space` - Connect/disconnect
+
+**Explorer:**
+- `↑↓` or `j/k` - Navigate
+- `Enter` - View details
+- `t` - Create test
+- `o` - Optimize docs
+
+**Configuration:**
+- `Tab` - Next field
+- `s` - Save changes
+- `q` - Quit without saving
 
 ## LLM Providers
 

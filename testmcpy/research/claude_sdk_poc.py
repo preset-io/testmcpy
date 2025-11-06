@@ -120,7 +120,7 @@ class ClaudeSDKPOC:
             import sys
 
             sys.path.append("/Users/amin/github/preset-io/testmcpy")
-            from src.mcp_client import MCPClient
+            from testmcpy.src.mcp_client import MCPClient
 
             mcp_client = MCPClient(self.mcp_url)
             await mcp_client.initialize()

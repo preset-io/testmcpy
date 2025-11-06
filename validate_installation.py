@@ -66,7 +66,7 @@ async def validate_installation():
     console.print("\n[bold]Checking framework modules...[/bold]")
 
     try:
-        from src.mcp_client import MCPClient
+        from testmcpy.src.mcp_client import MCPClient
 
         results.append(("MCP Client", "✓", "Available"))
     except ImportError as e:

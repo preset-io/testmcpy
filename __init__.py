@@ -16,7 +16,7 @@ from evals.base_evaluators import (
     create_evaluator,
 )
 from src.llm_integration import LLMProvider, create_llm_provider
-from src.mcp_client import MCPClient, MCPTool, MCPToolCall, MCPToolResult
+from testmcpy.src.mcp_client import MCPClient, MCPTool, MCPToolCall, MCPToolResult
 from src.test_runner import TestCase, TestResult, TestRunner
 
 __all__ = [

@@ -1927,6 +1927,428 @@ def export(
 
 
 @app.command()
+def dash(
+    profile: str = typer.Option(None, "--profile", "-p", help="MCP profile to use"),
+    auto_refresh: bool = typer.Option(False, "--auto-refresh", help="Auto-refresh status"),
+):
+    """
+    Launch interactive TUI dashboard.
+
+    Beautiful terminal-based dashboard for MCP testing and exploration.
+    Navigate with keyboard shortcuts, manage profiles, explore tools, and more.
+    """
+    try:
+        from testmcpy.tui.app import TestMCPyApp
+    except ImportError:
+        console.print("[red]Error: Textual is required for the TUI dashboard[/red]")
+        console.print("Install with: pip install 'testmcpy' (textual is now included)")
+        console.print("Or upgrade: pip install --upgrade testmcpy")
+        return
+
+    # Create and run the app
+    app = TestMCPyApp(profile=profile, enable_auto_refresh=auto_refresh)
+    app.run()
+
+
+@app.command()
+def explore(
+    profile: str | None = typer.Option(
+        None, "--profile", "-p", help="MCP service profile from .mcp_services.yaml"
+    ),
+):
+    """
+    Launch interactive MCP explorer TUI.
+
+    This command starts an interactive terminal interface for browsing and
+    exploring MCP tools, resources, and prompts. Features include:
+
+    - Browse tools organized by categories
+    - View detailed tool documentation and schemas
+    - Search and filter tools
+    - Generate test files from tools
+    - AI-powered documentation optimization
+
+    Navigation:
+    - Arrow keys / hjkl: Navigate tree
+    - Enter: Expand/collapse or show details
+    - /: Search tools
+    - t: Generate test for selected tool
+    - o: Optimize docs for selected tool
+    - h / Esc: Return to home
+    - q: Quit
+    """
+    console.print(
+        Panel.fit(
+            "[bold cyan]MCP Explorer - Interactive TUI[/bold cyan]\n"
+            f"Profile: {profile or 'default'}",
+            border_style="cyan",
+        )
+    )
+
+    try:
+        # Import here to avoid dependency issues if textual not installed
+        from testmcpy.tui.app import run_tui
+
+        run_tui(profile=profile)
+    except ImportError:
+        console.print(
+            "[red]Error: Textual is required for the TUI explorer[/red]\n"
+            "Install with: pip install 'testmcpy[tui]' or pip install textual",
+            markup=False,
+        )
+    except Exception as e:
+        console.print(f"[red]Error launching explorer:[/red] {e}")
+
+
+@app.command()
+def profiles(
+    show_details: bool = typer.Option(
+        False,
+        "--details",
+        "-d",
+        help="Show detailed profile information",
+    ),
+):
+    """
+    List all available MCP profiles (CLI parity command).
+
+    Quick command to view configured MCP profiles without launching the TUI.
+    For interactive profile management, use: testmcpy dash
+    """
+    from testmcpy.mcp_profiles import list_available_profiles
+
+    console.print("\n[bold cyan]MCP Profiles[/bold cyan]\n")
+
+    profiles_list = list_available_profiles()
+
+    if not profiles_list:
+        console.print("[dim]No profiles configured.[/dim]")
+        console.print("\nTo configure profiles, create [cyan].mcp_services.yaml[/cyan]")
+        console.print("See: [blue]https://github.com/preset-io/testmcpy/blob/main/docs/MCP_PROFILES.md[/blue]")
+        return
+
+    table = Table(show_header=True, header_style="bold cyan")
+    table.add_column("Status", style="dim", width=6)
+    table.add_column("Profile ID", style="cyan")
+    table.add_column("MCP Services", justify="right")
+    if show_details:
+        table.add_column("First MCP URL")
+        table.add_column("Auth Type")
+
+    for profile in profiles_list:
+        status_icon = "● " if profile.is_default else "○"
+        mcp_count = len(profile.mcps) if profile.mcps else 0
+
+        row = [
+            status_icon,
+            profile.profile_id,
+            str(mcp_count),
+        ]
+
+        if show_details and profile.mcps:
+            first_mcp = profile.mcps[0]
+            row.extend([
+                first_mcp.mcp_url,
+                first_mcp.auth.auth_type,
+            ])
+
+        table.add_row(*row)
+
+    console.print(table)
+    console.print(f"\n[dim]Total: {len(profiles_list)} profile(s)[/dim]")
+    console.print("\nTo manage profiles interactively: [cyan]testmcpy dash[/cyan]")
+
+
+@app.command()
+def status(
+    profile: str = typer.Option(
+        None,
+        "--profile",
+        "-p",
+        help="MCP profile to check",
+    ),
+):
+    """
+    Show MCP connection status (CLI parity command).
+
+    Quick command to check MCP service connectivity without launching the TUI.
+    For real-time status monitoring, use: testmcpy dash --auto-refresh
+    """
+    from testmcpy.mcp_profiles import get_profile_config, list_available_profiles
+
+    console.print("\n[bold cyan]MCP Connection Status[/bold cyan]\n")
+
+    # Get profile configuration
+    profile_config = get_profile_config()
+
+    if not profile_config.has_profiles():
+        console.print("[red]No MCP profiles configured.[/red]")
+        console.print("\nRun: [cyan]testmcpy setup[/cyan]")
+        return
+
+    # Determine which profiles to check
+    if profile:
+        profiles_to_check = [profile_config.get_profile(profile)]
+        if not profiles_to_check[0]:
+            console.print(f"[red]Profile '{profile}' not found.[/red]")
+            return
+    else:
+        profiles_to_check = list_available_profiles()
+
+    table = Table(show_header=True, header_style="bold cyan")
+    table.add_column("Profile", style="cyan")
+    table.add_column("MCP Service")
+    table.add_column("Status", justify="center")
+    table.add_column("Tools", justify="right")
+
+    async def check_profile_status(prof):
+        """Check status of a single profile."""
+        if not prof.mcps:
+            return [(prof.profile_id, "N/A", "[red]No MCPs configured[/red]", "0")]
+
+        results = []
+        for mcp in prof.mcps:
+            try:
+                from testmcpy.src.mcp_client import MCPClient
+
+                client = MCPClient(mcp.mcp_url)
+                await client.initialize()
+                tools = await client.list_tools()
+                await client.close()
+
+                status = "[green]🟢 Connected[/green]"
+                tool_count = str(len(tools))
+            except Exception as e:
+                status = f"[red]🔴 Error[/red]"
+                tool_count = "0"
+
+            results.append((
+                prof.profile_id,
+                mcp.name,
+                status,
+                tool_count,
+            ))
+
+        return results
+
+    # Check all profiles
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+    ) as progress:
+        task = progress.add_task("[cyan]Checking connections...", total=len(profiles_to_check))
+
+        for prof in profiles_to_check:
+            try:
+                results = asyncio.run(check_profile_status(prof))
+                for row in results:
+                    table.add_row(*row)
+            except Exception as e:
+                table.add_row(
+                    prof.profile_id,
+                    "Error",
+                    f"[red]Failed: {str(e)[:30]}[/red]",
+                    "0",
+                )
+            progress.advance(task)
+
+    console.print(table)
+    console.print("\nFor live monitoring: [cyan]testmcpy dash --auto-refresh[/cyan]")
+
+
+@app.command(name="explore-cli")
+def explore_cli(
+    profile: str = typer.Option(
+        None,
+        "--profile",
+        "-p",
+        help="MCP profile to use",
+    ),
+    output: OutputFormat = typer.Option(
+        OutputFormat.table,
+        "--output",
+        "-o",
+        help="Output format",
+    ),
+):
+    """
+    List available MCP tools (CLI parity command).
+
+    Quick command to browse MCP tools without launching the TUI.
+    For interactive exploration, use: testmcpy explorer (or testmcpy dash)
+    """
+    from testmcpy.mcp_profiles import get_profile_config
+
+    console.print("\n[bold cyan]MCP Tools Explorer[/bold cyan]\n")
+
+    # Get profile configuration
+    profile_config = get_profile_config()
+
+    if not profile_config.has_profiles():
+        console.print("[red]No MCP profiles configured.[/red]")
+        console.print("\nRun: [cyan]testmcpy setup[/cyan]")
+        return
+
+    # Get profile
+    prof = profile_config.get_profile(profile)
+    if not prof:
+        console.print(f"[red]Profile '{profile}' not found.[/red]")
+        return
+
+    if not prof.mcps:
+        console.print("[red]No MCP services configured in profile.[/red]")
+        return
+
+    async def fetch_tools():
+        """Fetch tools from MCP service."""
+        mcp = prof.mcps[0]
+        try:
+            from testmcpy.src.mcp_client import MCPClient
+
+            with console.status(f"[dim]Connecting to {mcp.name}...[/dim]"):
+                client = MCPClient(mcp.mcp_url)
+                await client.initialize()
+                tools = await client.list_tools()
+                await client.close()
+
+            return tools
+        except Exception as e:
+            console.print(f"[red]Error connecting to MCP:[/red] {e}")
+            return []
+
+    tools = asyncio.run(fetch_tools())
+
+    if not tools:
+        console.print("[yellow]No tools found.[/yellow]")
+        return
+
+    # Output based on format
+    if output == OutputFormat.table:
+        table = Table(show_header=True, header_style="bold cyan")
+        table.add_column("#", style="dim", width=4)
+        table.add_column("Tool Name", style="cyan")
+        table.add_column("Description")
+
+        for i, tool in enumerate(tools, 1):
+            table.add_row(
+                str(i),
+                tool.get("name", "unknown"),
+                tool.get("description", "")[:80] + ("..." if len(tool.get("description", "")) > 80 else ""),
+            )
+
+        console.print(table)
+        console.print(f"\n[dim]Total: {len(tools)} tool(s)[/dim]")
+
+    elif output == OutputFormat.json:
+        import json
+
+        console.print(json.dumps(tools, indent=2))
+
+    elif output == OutputFormat.yaml:
+        import yaml
+
+        console.print(yaml.dump(tools, default_flow_style=False))
+
+    console.print("\nFor interactive exploration: [cyan]testmcpy explorer[/cyan]")
+
+
+@app.command()
+def chat(
+    profile: str | None = typer.Option(None, "--profile", "-p", help="MCP profile to use"),
+    provider: str | None = typer.Option(None, "--provider", help="LLM provider (anthropic, openai, ollama, etc.)"),
+    model: str | None = typer.Option(None, "--model", "-m", help="Model name"),
+    mcp_url: str | None = typer.Option(None, "--mcp-url", help="MCP service URL"),
+):
+    """
+    Launch interactive chat interface with tool calling visualization.
+
+    This opens a beautiful terminal UI for chatting with an LLM that has
+    access to MCP tools. All tool calls are visualized in real-time, and
+    you can save conversations as tests or evaluate them with evaluators.
+
+    Key bindings:
+    - Enter: Send message
+    - Ctrl+E: Evaluate conversation
+    - Ctrl+S: Save as test
+    - Ctrl+C: Cancel/Exit
+
+    Examples:
+        testmcpy chat                          # Use default config
+        testmcpy chat --profile prod           # Use specific MCP profile
+        testmcpy chat --model claude-opus-4    # Use specific model
+    """
+    try:
+        # Check if textual is installed
+        try:
+            from testmcpy.tui.app import launch_chat
+        except ImportError:
+            console.print(
+                Panel(
+                    "[red]Error:[/red] Textual not installed\n\n"
+                    "The chat interface requires Textual. Install it with:\n"
+                    "[cyan]pip install textual textual-dev[/cyan]",
+                    title="[red]Missing Dependency[/red]",
+                    border_style="red",
+                )
+            )
+            raise typer.Exit(1)
+
+        # Launch the chat interface
+        launch_chat(
+            profile=profile,
+            provider=provider,
+            model=model,
+            mcp_url=mcp_url,
+        )
+
+    except KeyboardInterrupt:
+        console.print("\n[dim]Chat session ended.[/dim]")
+    except Exception as e:
+        console.print(
+            Panel(
+                f"[red]Error launching chat:[/red]\n{str(e)}",
+                title="[red]Error[/red]",
+                border_style="red",
+            )
+        )
+        raise typer.Exit(1)
+
+
+@app.command()
+def dash(
+    tests_dir: Path = typer.Option(
+        Path("tests"), "--tests-dir", "-t", help="Directory containing test files"
+    ),
+):
+    """
+    Launch interactive TUI dashboard for test management.
+
+    This command starts a beautiful terminal UI for managing and running tests,
+    similar to k9s for Kubernetes or lazygit for Git.
+    """
+    # Check if textual is installed
+    try:
+        from testmcpy.tui.app import run_tui
+    except ImportError:
+        console.print("[red]Error: Textual is required for the TUI dashboard[/red]")
+        console.print("Install with: pip install textual textual-dev")
+        return
+
+    # Ensure tests directory exists
+    if not tests_dir.exists():
+        console.print(f"[yellow]Warning: Tests directory not found: {tests_dir}[/yellow]")
+        console.print("[yellow]Creating tests directory...[/yellow]")
+        tests_dir.mkdir(parents=True, exist_ok=True)
+
+    # Run the TUI
+    try:
+        run_tui(tests_dir=tests_dir)
+    except Exception as e:
+        console.print(f"[red]Error running TUI:[/red] {e}")
+
+
+@app.command()
 def doctor():
     """
     Run health checks to diagnose installation issues.
