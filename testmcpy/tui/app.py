@@ -166,3 +166,15 @@ def launch_chat(
 
     app = ChatApp()
     app.run()
+
+
+def run_tui(profile: str | None = None, enable_auto_refresh: bool = False):
+    """
+    Launch the main TUI dashboard.
+
+    Args:
+        profile: MCP profile to use
+        enable_auto_refresh: Enable auto-refresh of status
+    """
+    app = TestMCPyApp(profile=profile, enable_auto_refresh=enable_auto_refresh)
+    app.run()
