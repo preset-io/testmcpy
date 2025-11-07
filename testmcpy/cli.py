@@ -1987,7 +1987,7 @@ def explore(
 
     try:
         # Import here to avoid dependency issues if textual not installed
-        from testmcpy.tui.app import run_tui
+        from testmcpy.tui.simple_app import run_tui
 
         run_tui(profile=profile)
     except ImportError:
