@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react'
-import { ChevronDown, ChevronRight, Copy, Check, EyeOff, Sparkles, Code2, Search, Command, HelpCircle, CheckSquare, Square, MessageSquare, Wand2, TestTube2, Play, Clock } from 'lucide-react'
+import { ChevronDown, ChevronRight, Copy, Check, EyeOff, Sparkles, Code2, Search, Command, HelpCircle, CheckSquare, Square, MessageSquare, Wand2, TestTube2, Play, Clock, Bug, AlertCircle, GitCompare } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import ParameterCard from '../components/ParameterCard'
 import TestGenerationModal from '../components/TestGenerationModal'
 import SchemaCodeViewer from '../components/SchemaCodeViewer'
 import OptimizeDocsModal from '../components/OptimizeDocsModal'
+import ToolDebugModal from '../components/ToolDebugModal'
+import { ToolCardSkeleton } from '../components/SkeletonLoader'
+import { LoadingSpinner } from '../components/LoadingSpinner'
 
 function MCPExplorer({ selectedProfiles = [] }) {
   const navigate = useNavigate()
@@ -12,18 +15,34 @@ function MCPExplorer({ selectedProfiles = [] }) {
   const [resources, setResources] = useState([])
   const [prompts, setPrompts] = useState([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const [expandedTools, setExpandedTools] = useState(new Set())
   const [copiedId, setCopiedId] = useState(null)
   const [activeTab, setActiveTab] = useState('tools')
   const [showCodeViewer, setShowCodeViewer] = useState(new Set())
   const [selectedToolForGeneration, setSelectedToolForGeneration] = useState(null)
   const [selectedToolForOptimization, setSelectedToolForOptimization] = useState(null)
+  const [selectedToolForDebug, setSelectedToolForDebug] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [selectedTools, setSelectedTools] = useState(new Set())
   const [batchMode, setBatchMode] = useState(false)
   const [toolTests, setToolTests] = useState({}) // Map of tool name -> test info
   const [runningTests, setRunningTests] = useState(new Set()) // Set of tool names currently running tests
+
+  // Smoke test state
+  const [smokeTestReport, setSmokeTestReport] = useState(null)
+  const [runningSmokeTest, setRunningSmokeTest] = useState(false)
+  const [showSmokeTestResults, setShowSmokeTestResults] = useState(false)
+
+  // Comparison mode state
+  const [compareProfile1, setCompareProfile1] = useState([])
+  const [compareProfile2, setCompareProfile2] = useState([])
+  const [compareToolName, setCompareToolName] = useState('')
+  const [compareParameters, setCompareParameters] = useState('{}')
+  const [compareIterations, setCompareIterations] = useState(3)
+  const [comparisonResults, setComparisonResults] = useState(null)
+  const [runningComparison, setRunningComparison] = useState(false)
 
   // For Explorer, only use the first selected profile (single MCP at a time)
   const activeProfile = selectedProfiles.length > 0 ? selectedProfiles[0] : null
@@ -96,6 +115,7 @@ function MCPExplorer({ selectedProfiles = [] }) {
 
   const loadData = async () => {
     setLoading(true)
+    setError(null)
     try {
       // Only use the first selected profile for Explorer (single MCP at a time)
       const params = new URLSearchParams()
@@ -113,8 +133,9 @@ function MCPExplorer({ selectedProfiles = [] }) {
       setTools(await toolsRes.json())
       setResources(await resourcesRes.json())
       setPrompts(await promptsRes.json())
-    } catch (error) {
-      console.error('Failed to load MCP data:', error)
+    } catch (err) {
+      console.error('Failed to load MCP data:', err)
+      setError(err.message || 'Failed to load MCP data')
     } finally {
       setLoading(false)
     }
@@ -219,6 +240,43 @@ function MCPExplorer({ selectedProfiles = [] }) {
         next.delete(toolName)
         return next
       })
+    }
+  }
+
+  const runSmokeTest = async () => {
+    if (!activeProfile) {
+      alert('No MCP profile selected')
+      return
+    }
+
+    setRunningSmokeTest(true)
+    setSmokeTestReport(null)
+
+    try {
+      const res = await fetch('/api/smoke-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          profile_id: activeProfile,
+          test_all_tools: true,
+          max_tools_to_test: 10,
+        }),
+      })
+
+      if (res.ok) {
+        const report = await res.json()
+        setSmokeTestReport(report)
+        setShowSmokeTestResults(true)
+      } else {
+        const error = await res.json()
+        console.error('Smoke test failed:', error)
+        alert(`Failed to run smoke test: ${error.detail || 'Unknown error'}`)
+      }
+    } catch (error) {
+      console.error('Failed to run smoke test:', error)
+      alert(`Failed to run smoke test: ${error.message}`)
+    } finally {
+      setRunningSmokeTest(false)
     }
   }
 
@@ -331,12 +389,103 @@ function MCPExplorer({ selectedProfiles = [] }) {
     )
   }
 
+  // Run tool comparison
+  const runComparison = async () => {
+    if (!compareToolName.trim()) {
+      alert('Please select a tool to compare')
+      return
+    }
+    if (compareProfile1.length === 0 || compareProfile2.length === 0) {
+      alert('Please select two profiles/servers to compare')
+      return
+    }
+    if (compareProfile1[0] === compareProfile2[0]) {
+      alert('Please select two different profiles/servers')
+      return
+    }
+
+    let parameters = {}
+    try {
+      parameters = JSON.parse(compareParameters)
+    } catch (e) {
+      alert('Invalid JSON in parameters field')
+      return
+    }
+
+    setRunningComparison(true)
+    setComparisonResults(null)
+
+    try {
+      const response = await fetch('/api/tools/compare', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tool_name: compareToolName,
+          profile1: compareProfile1[0],
+          profile2: compareProfile2[0],
+          parameters: parameters,
+          iterations: compareIterations,
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.detail || 'Comparison failed')
+      }
+
+      const data = await response.json()
+      setComparisonResults(data)
+    } catch (error) {
+      console.error('Comparison error:', error)
+      alert(`Comparison failed: ${error.message}`)
+    } finally {
+      setRunningComparison(false)
+    }
+  }
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-          <div className="text-text-secondary">Loading MCP data...</div>
+      <div className="h-full flex flex-col">
+        <div className="p-4 border-b border-border bg-surface-elevated">
+          <h1 className="text-2xl font-bold">Explorer</h1>
+          <p className="text-text-secondary mt-1 text-base">
+            Loading MCP data...
+          </p>
+        </div>
+        <div className="flex-1 overflow-auto p-4 bg-background-subtle">
+          <div className="max-w-5xl mx-auto space-y-4">
+            {Array.from({ length: 5 }).map((_, idx) => (
+              <ToolCardSkeleton key={idx} />
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="h-full flex flex-col">
+        <div className="p-4 border-b border-border bg-surface-elevated">
+          <h1 className="text-2xl font-bold">Explorer</h1>
+          <p className="text-text-secondary mt-1 text-base">
+            Failed to load MCP data
+          </p>
+        </div>
+        <div className="flex-1 overflow-auto p-4 bg-background-subtle">
+          <div className="max-w-2xl mx-auto">
+            <div className="bg-error/10 border border-error/30 rounded-lg p-6 text-center">
+              <AlertCircle size={48} className="text-error mx-auto mb-4" />
+              <h2 className="text-xl font-semibold text-error mb-2">Failed to Load MCP Data</h2>
+              <p className="text-text-secondary mb-4">{error}</p>
+              <button
+                onClick={loadData}
+                className="btn btn-primary"
+              >
+                Retry
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     )
@@ -358,6 +507,24 @@ function MCPExplorer({ selectedProfiles = [] }) {
             </p>
           </div>
           <div className="flex gap-2">
+            <button
+              onClick={() => runSmokeTest()}
+              className="btn btn-primary text-sm flex items-center gap-2"
+              title="Run smoke tests on this MCP server"
+              disabled={!activeProfile || runningSmokeTest}
+            >
+              {runningSmokeTest ? (
+                <>
+                  <LoadingSpinner size={16} />
+                  <span>Running...</span>
+                </>
+              ) : (
+                <>
+                  <TestTube2 size={16} />
+                  <span>Smoke Test</span>
+                </>
+              )}
+            </button>
             <button
               onClick={() => {
                 setBatchMode(!batchMode)
@@ -456,6 +623,18 @@ function MCPExplorer({ selectedProfiles = [] }) {
               }`}
             >
               Prompts ({filterPrompts().length}/{prompts.length})
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab('compare')
+                setComparisonResults(null)
+              }}
+              className={`tab ${
+                activeTab === 'compare' ? 'tab-active' : 'tab-inactive'
+              }`}
+            >
+              <GitCompare size={16} className="mr-1" />
+              Compare
             </button>
           </div>
           {batchMode && activeTab === 'tools' && (
@@ -610,6 +789,17 @@ function MCPExplorer({ selectedProfiles = [] }) {
                       >
                         <MessageSquare size={16} />
                         <span>Try in Chat</span>
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setSelectedToolForDebug(tool)
+                        }}
+                        className="btn btn-secondary text-sm"
+                        title="Debug this tool with trace visualization"
+                      >
+                        <Bug size={16} />
+                        <span>Debug</span>
                       </button>
                     </div>
 
@@ -878,6 +1068,15 @@ function MCPExplorer({ selectedProfiles = [] }) {
         />
       )}
 
+      {/* Tool Debug Modal */}
+      {selectedToolForDebug && (
+        <ToolDebugModal
+          tool={selectedToolForDebug}
+          profile={activeProfile}
+          onClose={() => setSelectedToolForDebug(null)}
+        />
+      )}
+
       {/* Keyboard Shortcuts Modal */}
       {showShortcuts && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowShortcuts(false)}>
@@ -912,6 +1111,139 @@ function MCPExplorer({ selectedProfiles = [] }) {
             <p className="mt-4 text-xs text-text-tertiary italic">
               Tip: Shortcuts work when you're not typing in a field
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* Smoke Test Results Modal */}
+      {showSmokeTestResults && smokeTestReport && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowSmokeTestResults(false)}>
+          <div className="bg-surface border border-border rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b border-border flex items-center justify-between bg-surface-elevated">
+              <div>
+                <h2 className="text-xl font-bold">Smoke Test Results</h2>
+                <p className="text-sm text-text-secondary mt-1">{smokeTestReport.server_url}</p>
+              </div>
+              <button
+                onClick={() => setShowSmokeTestResults(false)}
+                className="text-text-secondary hover:text-text-primary"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+              {/* Summary */}
+              <div className={`p-4 rounded-lg border mb-6 ${
+                smokeTestReport.failed === 0
+                  ? 'bg-success/10 border-success/30'
+                  : smokeTestReport.passed === 0
+                  ? 'bg-error/10 border-error/30'
+                  : 'bg-warning/10 border-warning/30'
+              }`}>
+                <div className="flex items-center gap-3 mb-3">
+                  <span className={`text-2xl ${
+                    smokeTestReport.failed === 0
+                      ? 'text-success-light'
+                      : smokeTestReport.passed === 0
+                      ? 'text-error-light'
+                      : 'text-warning-light'
+                  }`}>
+                    {smokeTestReport.failed === 0 ? '✓' : smokeTestReport.passed === 0 ? '✗' : '⚠'}
+                  </span>
+                  <div>
+                    <h3 className="font-bold text-lg">
+                      {smokeTestReport.failed === 0 ? 'All Tests Passed' : `${smokeTestReport.passed}/${smokeTestReport.total_tests} Tests Passed`}
+                    </h3>
+                    <p className="text-sm text-text-secondary">
+                      Success Rate: {smokeTestReport.success_rate.toFixed(1)}% • Duration: {smokeTestReport.duration_ms.toFixed(0)}ms
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4 mt-4">
+                  <div className="bg-surface/50 rounded p-3 border border-border">
+                    <p className="text-xs text-text-tertiary uppercase">Total Tests</p>
+                    <p className="text-2xl font-bold">{smokeTestReport.total_tests}</p>
+                  </div>
+                  <div className="bg-success/10 rounded p-3 border border-success/30">
+                    <p className="text-xs text-success-light uppercase">Passed</p>
+                    <p className="text-2xl font-bold text-success-light">{smokeTestReport.passed}</p>
+                  </div>
+                  <div className="bg-error/10 rounded p-3 border border-error/30">
+                    <p className="text-xs text-error-light uppercase">Failed</p>
+                    <p className="text-2xl font-bold text-error-light">{smokeTestReport.failed}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Test Results */}
+              <div>
+                <h4 className="font-bold mb-3">Test Details</h4>
+                <div className="space-y-2">
+                  {smokeTestReport.results.map((result, idx) => (
+                    <div
+                      key={idx}
+                      className={`p-3 rounded border ${
+                        result.success
+                          ? 'bg-success/5 border-success/20'
+                          : 'bg-error/5 border-error/20'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-start gap-3 flex-1">
+                          <span className={`text-lg ${result.success ? 'text-success-light' : 'text-error-light'}`}>
+                            {result.success ? '✓' : '✗'}
+                          </span>
+                          <div className="flex-1">
+                            <p className="font-medium">{result.test_name}</p>
+                            {result.error_message && (
+                              <p className="text-sm text-error-light mt-1">{result.error_message}</p>
+                            )}
+                            {result.details && result.success && (
+                              <div className="text-xs text-text-secondary mt-1">
+                                {result.details.tool_count !== undefined && (
+                                  <span>{result.details.tool_count} tools available</span>
+                                )}
+                                {result.details.tool && (
+                                  <span>Called {result.details.tool} with {Object.keys(result.details.parameters || {}).length} params</span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <span className="text-xs text-text-tertiary whitespace-nowrap ml-4">
+                          {result.duration_ms.toFixed(0)}ms
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-border bg-surface-elevated flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  const blob = new Blob([JSON.stringify(smokeTestReport, null, 2)], { type: 'application/json' })
+                  const url = URL.createObjectURL(blob)
+                  const a = document.createElement('a')
+                  a.href = url
+                  a.download = `smoke-test-${Date.now()}.json`
+                  a.click()
+                  URL.revokeObjectURL(url)
+                }}
+                className="btn btn-secondary text-sm"
+              >
+                Download JSON
+              </button>
+              <button
+                onClick={() => setShowSmokeTestResults(false)}
+                className="btn btn-primary text-sm"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -7,6 +7,7 @@ import re
 import warnings
 from contextlib import asynccontextmanager
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +15,7 @@ import yaml
 from fastapi import FastAPI, HTTPException, WebSocket, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 # Suppress websockets deprecation warnings from uvicorn (third-party code)
 # uvicorn hasn't updated to websockets 14.0 API yet
@@ -23,6 +24,13 @@ warnings.filterwarnings(
     "ignore", category=DeprecationWarning, module="uvicorn.protocols.websockets"
 )
 
+from testmcpy.auth_debugger import (
+    AuthDebugger,
+    debug_oauth_flow,
+    debug_jwt_flow,
+    debug_bearer_token
+)
+from testmcpy.auth_flow_recorder import AuthFlowRecorder
 from testmcpy.config import get_config
 from testmcpy.evals.base_evaluators import create_evaluator
 from testmcpy.mcp_profiles import MCPProfile, MCPServer, load_profile
@@ -31,11 +39,40 @@ from testmcpy.src.mcp_client import MCPClient, MCPToolCall
 from testmcpy.src.test_runner import TestCase, TestRunner
 
 
+# Enums for validation
+class LLMProvider(str, Enum):
+    OLLAMA = "ollama"
+    OPENAI = "openai"
+    LOCAL = "local"
+    ANTHROPIC = "anthropic"
+    CLAUDE_SDK = "claude-sdk"
+    CLAUDE_CLI = "claude-cli"
+
+
+class AuthType(str, Enum):
+    NONE = "none"
+    BEARER = "bearer"
+    JWT = "jwt"
+    OAUTH = "oauth"
+
+
 # Pydantic models for request/response
+class AuthConfig(BaseModel):
+    type: AuthType
+    token: str | None = None
+    api_url: str | None = None
+    api_token: str | None = None
+    api_secret: str | None = None
+    client_id: str | None = None
+    client_secret: str | None = None
+    token_url: str | None = None
+    scopes: list[str] | None = None
+
+
 class ChatRequest(BaseModel):
-    message: str
+    message: str = Field(..., min_length=1)
     model: str | None = None
-    provider: str | None = None
+    provider: LLMProvider
     profiles: list[str] | None = None  # List of MCP profile IDs to use
     history: list[dict[str, Any]] | None = None  # Chat history for context
 
@@ -49,12 +86,22 @@ class ChatResponse(BaseModel):
 
 
 class TestFileCreate(BaseModel):
-    filename: str
-    content: str
+    # Support both structured data and raw YAML content
+    filename: str | None = None
+    content: str | None = None
+    # Structured test data fields
+    name: str | None = None
+    description: str | None = None
+    test_cases: list[dict[str, Any]] | None = None
 
 
 class TestFileUpdate(BaseModel):
-    content: str
+    # Support both structured data and raw YAML content
+    content: str | None = None
+    # Structured test data fields
+    name: str | None = None
+    description: str | None = None
+    test_cases: list[dict[str, Any]] | None = None
 
 
 class TestRunRequest(BaseModel):
@@ -106,45 +153,40 @@ class OptimizeDocsResponse(BaseModel):
 
 
 class ProfileCreateRequest(BaseModel):
-    name: str
-    description: str
-    is_default: bool = False
+    name: str = Field(..., min_length=1, max_length=255)
+    description: str = Field(default="", max_length=1000)
+    set_as_default: bool = False
+
+    @field_validator('name')
+    @classmethod
+    def validate_name(cls, v):
+        if not re.match(r'^[a-zA-Z0-9_-]+$', v):
+            raise ValueError("Profile name must contain only alphanumeric characters, hyphens, and underscores")
+        if '..' in v or '/' in v or '\\' in v:
+            raise ValueError("Profile name cannot contain path traversal characters")
+        if '\x00' in v:
+            raise ValueError("Profile name cannot contain null bytes")
+        return v
 
 
 class ProfileUpdateRequest(BaseModel):
     name: str | None = None
     description: str | None = None
-    is_default: bool | None = None
+    set_as_default: bool | None = None
 
 
 class MCPCreateRequest(BaseModel):
-    name: str
+    name: str = Field(..., min_length=1, max_length=255)
     mcp_url: str
-    auth_type: str  # bearer, jwt, oauth, none
-    token: str | None = None
-    api_url: str | None = None
-    api_token: str | None = None
-    api_secret: str | None = None
-    client_id: str | None = None
-    client_secret: str | None = None
-    token_url: str | None = None
-    scopes: list[str] | None = None
+    auth: AuthConfig
     timeout: int | None = None
     rate_limit_rpm: int | None = None
 
 
 class MCPUpdateRequest(BaseModel):
-    name: str | None = None
+    name: str | None = Field(None, min_length=1, max_length=255)
     mcp_url: str | None = None
-    auth_type: str | None = None
-    token: str | None = None
-    api_url: str | None = None
-    api_token: str | None = None
-    api_secret: str | None = None
-    client_id: str | None = None
-    client_secret: str | None = None
-    token_url: str | None = None
-    scopes: list[str] | None = None
+    auth: AuthConfig | None = None
     timeout: int | None = None
     rate_limit_rpm: int | None = None
 
@@ -154,11 +196,79 @@ class MCPReorderRequest(BaseModel):
     to_index: int
 
 
+class DebugAuthRequest(BaseModel):
+    auth_type: str  # "oauth", "jwt", "bearer"
+    # OAuth fields
+    client_id: str | None = None
+    client_secret: str | None = None
+    token_url: str | None = None
+    scopes: list[str] | None = None
+    # JWT fields
+    api_url: str | None = None
+    api_token: str | None = None
+    api_secret: str | None = None
+    # Bearer fields
+    token: str | None = None
+
+
+class DebugAuthResponse(BaseModel):
+    success: bool
+    auth_type: str
+    steps: list[dict[str, Any]]
+    total_time: float
+    error: str | None = None
+    token_preview: str | None = None
+
+
+class SaveAuthFlowRequest(BaseModel):
+    flow_name: str
+    filename: str | None = None
+
+
+class AuthFlowListItem(BaseModel):
+    filepath: str
+    filename: str
+    recording_id: str
+    flow_name: str
+    auth_type: str
+    created_at: str
+    duration: float
+    success: bool | None
+    step_count: int
+
+
+class AuthFlowCompareRequest(BaseModel):
+    filepath1: str
+    filepath2: str
+
+
+class ToolCompareRequest(BaseModel):
+    tool_name: str
+    profile1: str  # Format: "profile_id:mcp_name"
+    profile2: str  # Format: "profile_id:mcp_name"
+    parameters: dict[str, Any] = {}
+    iterations: int = 3
+
+
+class ToolDebugRequest(BaseModel):
+    parameters: dict[str, Any]
+    profile: str | None = None
+
+
+class ToolDebugResponse(BaseModel):
+    success: bool
+    response: dict[str, Any] | list[Any] | str | None
+    steps: list[dict[str, Any]]
+    total_time: float
+    error: str | None = None
+
+
 # Global state
 config = get_config()
 mcp_client: MCPClient | None = None  # Default MCP client (for backwards compat)
 mcp_clients: dict[str, MCPClient] = {}  # Cache of MCP clients by "{profile_id}:{mcp_name}"
 active_websockets: list[WebSocket] = []
+auth_flow_recorder = AuthFlowRecorder()  # Global auth flow recorder instance
 
 
 # Helper functions for YAML file manipulation
@@ -616,6 +726,14 @@ class CSPMiddleware(BaseHTTPMiddleware):
 app.add_middleware(CSPMiddleware)
 
 
+# Global Exception Handlers - Never let the server crash
+
+from testmcpy.error_handlers import global_exception_handler
+
+app.exception_handler(Exception)(global_exception_handler)
+
+
+
 # API Routes
 
 
@@ -631,10 +749,34 @@ async def root():
 
 @app.get("/api/health")
 async def health_check():
-    """Health check endpoint."""
+    """Health check endpoint with detailed status."""
+    from testmcpy.mcp_profiles import get_profile_config
+
+    # Check if MCP config exists
+    has_config = False
+    profile_count = 0
+    mcp_server_count = 0
+
+    try:
+        profile_config = get_profile_config()
+        if profile_config.has_profiles():
+            has_config = True
+            profile_ids = profile_config.list_profiles()
+            profile_count = len(profile_ids)
+            for profile_id in profile_ids:
+                profile = profile_config.get_profile(profile_id)
+                if profile:
+                    mcp_server_count += len(profile.mcps)
+    except Exception as e:
+        pass
+
     return {
         "status": "healthy",
         "mcp_connected": mcp_client is not None,
+        "mcp_clients_cached": len(mcp_clients),
+        "has_config": has_config,
+        "profile_count": profile_count,
+        "mcp_server_count": mcp_server_count,
         "timestamp": datetime.now().isoformat(),
     }
 
@@ -777,6 +919,9 @@ async def list_mcp_profiles():
                     "rate_limit_rpm": mcp_server.rate_limit_rpm,
                 })
 
+            # Check if this profile is the default
+            is_default = profile.profile_id == profile_config.default_profile
+
             profiles_list.append({
                 "id": profile.profile_id,
                 "name": profile.name,
@@ -784,7 +929,7 @@ async def list_mcp_profiles():
                 "mcps": mcps_info,
                 "timeout": profile.timeout,
                 "rate_limit_rpm": profile.rate_limit_rpm,
-                "is_default": profile.is_default,
+                "is_default": is_default,
             })
 
         # Get the default profile and server selection
@@ -831,7 +976,7 @@ async def create_mcp_profile(request: ProfileCreateRequest):
         config_data["profiles"][profile_id] = new_profile
 
         # Set as default if requested
-        if request.is_default:
+        if request.set_as_default:
             config_data["default"] = profile_id
 
         # Save to file
@@ -870,7 +1015,7 @@ async def update_mcp_profile(profile_id: str, request: ProfileUpdateRequest):
         if request.description is not None:
             profile["description"] = request.description
 
-        if request.is_default is not None and request.is_default:
+        if request.set_as_default is not None and request.set_as_default:
             config_data["default"] = profile_id
 
         # Save to file
@@ -1026,27 +1171,25 @@ async def add_mcp_to_profile(profile_id: str, request: MCPCreateRequest):
                 detail=f"MCP with name '{request.name}' already exists in profile '{profile_id}'"
             )
 
-        # Build auth config
-        auth_config = {"type": request.auth_type}
+        # Build auth config from nested object
+        auth_config = {"type": request.auth.type.value}
 
-        if request.auth_type == "bearer" and request.token:
-            auth_config["token"] = request.token
-        elif request.auth_type == "jwt":
-            if request.api_url:
-                auth_config["api_url"] = request.api_url
-            if request.api_token:
-                auth_config["api_token"] = request.api_token
-            if request.api_secret:
-                auth_config["api_secret"] = request.api_secret
-        elif request.auth_type == "oauth":
-            if request.client_id:
-                auth_config["client_id"] = request.client_id
-            if request.client_secret:
-                auth_config["client_secret"] = request.client_secret
-            if request.token_url:
-                auth_config["token_url"] = request.token_url
-            if request.scopes:
-                auth_config["scopes"] = request.scopes
+        if request.auth.token:
+            auth_config["token"] = request.auth.token
+        if request.auth.api_url:
+            auth_config["api_url"] = request.auth.api_url
+        if request.auth.api_token:
+            auth_config["api_token"] = request.auth.api_token
+        if request.auth.api_secret:
+            auth_config["api_secret"] = request.auth.api_secret
+        if request.auth.client_id:
+            auth_config["client_id"] = request.auth.client_id
+        if request.auth.client_secret:
+            auth_config["client_secret"] = request.auth.client_secret
+        if request.auth.token_url:
+            auth_config["token_url"] = request.auth.token_url
+        if request.auth.scopes:
+            auth_config["scopes"] = request.auth.scopes
 
         # Create new MCP
         new_mcp = {
@@ -1084,6 +1227,51 @@ async def add_mcp_to_profile(profile_id: str, request: MCPCreateRequest):
         )
 
 
+@app.put("/api/mcp/profiles/{profile_id}/mcps/reorder")
+async def reorder_mcps_in_profile(profile_id: str, request: MCPReorderRequest):
+    """Reorder MCPs in a profile."""
+    try:
+        config_data = load_mcp_yaml()
+
+        if "profiles" not in config_data or profile_id not in config_data["profiles"]:
+            raise HTTPException(status_code=404, detail=f"Profile '{profile_id}' not found")
+
+        profile = config_data["profiles"][profile_id]
+        mcps = profile.get("mcps", [])
+
+        if request.from_index < 0 or request.from_index >= len(mcps):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid from_index: {request.from_index}. Must be between 0 and {len(mcps)-1}"
+            )
+
+        if request.to_index < 0 or request.to_index >= len(mcps):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid to_index: {request.to_index}. Must be between 0 and {len(mcps)-1}"
+            )
+
+        # Reorder
+        mcp = mcps.pop(request.from_index)
+        mcps.insert(request.to_index, mcp)
+
+        # Save to file
+        save_mcp_yaml(config_data)
+
+        return {
+            "success": True,
+            "message": f"MCPs reordered successfully in profile '{profile_id}'"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to reorder MCPs in profile '{profile_id}': {str(e)}"
+        )
+
+
 @app.put("/api/mcp/profiles/{profile_id}/mcps/{mcp_index}")
 async def update_mcp_in_profile(profile_id: str, mcp_index: int, request: MCPUpdateRequest):
     """Update an MCP server in a profile."""
@@ -1117,36 +1305,27 @@ async def update_mcp_in_profile(profile_id: str, mcp_index: int, request: MCPUpd
             mcp["mcp_url"] = request.mcp_url
 
         # Update auth
-        if request.auth_type is not None:
-            if "auth" not in mcp:
-                mcp["auth"] = {}
-            mcp["auth"]["type"] = request.auth_type
+        if request.auth is not None:
+            auth_config = {"type": request.auth.type.value}
 
-            # Clear old auth fields and add new ones
-            if request.auth_type == "bearer":
-                mcp["auth"] = {"type": "bearer"}
-                if request.token is not None:
-                    mcp["auth"]["token"] = request.token
-            elif request.auth_type == "jwt":
-                mcp["auth"] = {"type": "jwt"}
-                if request.api_url is not None:
-                    mcp["auth"]["api_url"] = request.api_url
-                if request.api_token is not None:
-                    mcp["auth"]["api_token"] = request.api_token
-                if request.api_secret is not None:
-                    mcp["auth"]["api_secret"] = request.api_secret
-            elif request.auth_type == "oauth":
-                mcp["auth"] = {"type": "oauth"}
-                if request.client_id is not None:
-                    mcp["auth"]["client_id"] = request.client_id
-                if request.client_secret is not None:
-                    mcp["auth"]["client_secret"] = request.client_secret
-                if request.token_url is not None:
-                    mcp["auth"]["token_url"] = request.token_url
-                if request.scopes is not None:
-                    mcp["auth"]["scopes"] = request.scopes
-            elif request.auth_type == "none":
-                mcp["auth"] = {"type": "none"}
+            if request.auth.token:
+                auth_config["token"] = request.auth.token
+            if request.auth.api_url:
+                auth_config["api_url"] = request.auth.api_url
+            if request.auth.api_token:
+                auth_config["api_token"] = request.auth.api_token
+            if request.auth.api_secret:
+                auth_config["api_secret"] = request.auth.api_secret
+            if request.auth.client_id:
+                auth_config["client_id"] = request.auth.client_id
+            if request.auth.client_secret:
+                auth_config["client_secret"] = request.auth.client_secret
+            if request.auth.token_url:
+                auth_config["token_url"] = request.auth.token_url
+            if request.auth.scopes:
+                auth_config["scopes"] = request.auth.scopes
+
+            mcp["auth"] = auth_config
 
         if request.timeout is not None:
             mcp["timeout"] = request.timeout
@@ -1229,51 +1408,6 @@ async def delete_mcp_from_profile(profile_id: str, mcp_index: int):
         raise HTTPException(
             status_code=500,
             detail=f"Failed to delete MCP at index {mcp_index} from profile '{profile_id}': {str(e)}"
-        )
-
-
-@app.put("/api/mcp/profiles/{profile_id}/mcps/reorder")
-async def reorder_mcps_in_profile(profile_id: str, request: MCPReorderRequest):
-    """Reorder MCPs in a profile."""
-    try:
-        config_data = load_mcp_yaml()
-
-        if "profiles" not in config_data or profile_id not in config_data["profiles"]:
-            raise HTTPException(status_code=404, detail=f"Profile '{profile_id}' not found")
-
-        profile = config_data["profiles"][profile_id]
-        mcps = profile.get("mcps", [])
-
-        if request.from_index < 0 or request.from_index >= len(mcps):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid from_index: {request.from_index}. Must be between 0 and {len(mcps)-1}"
-            )
-
-        if request.to_index < 0 or request.to_index >= len(mcps):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid to_index: {request.to_index}. Must be between 0 and {len(mcps)-1}"
-            )
-
-        # Reorder
-        mcp = mcps.pop(request.from_index)
-        mcps.insert(request.to_index, mcp)
-
-        # Save to file
-        save_mcp_yaml(config_data)
-
-        return {
-            "success": True,
-            "message": f"MCPs reordered successfully in profile '{profile_id}'"
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to reorder MCPs in profile '{profile_id}': {str(e)}"
         )
 
 
@@ -1498,7 +1632,16 @@ async def list_mcp_tools(profiles: list[str] = Query(default=None)):
                             })
 
         return all_tools
+    except HTTPException:
+        raise
     except Exception as e:
+        # Check if it's a connection error
+        error_msg = str(e).lower()
+        if "403" in error_msg or "forbidden" in error_msg or "not connect" in error_msg:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Service unavailable: Unable to connect to MCP server. {str(e)}"
+            )
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1532,7 +1675,16 @@ async def list_mcp_resources(profiles: list[str] = Query(default=None)):
                             all_resources.append(resource)
 
         return all_resources
+    except HTTPException:
+        raise
     except Exception as e:
+        # Check if it's a connection error
+        error_msg = str(e).lower()
+        if "403" in error_msg or "forbidden" in error_msg or "not connect" in error_msg:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Service unavailable: Unable to connect to MCP server. {str(e)}"
+            )
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1566,6 +1718,388 @@ async def list_mcp_prompts(profiles: list[str] = Query(default=None)):
                             all_prompts.append(prompt)
 
         return all_prompts
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Check if it's a connection error
+        error_msg = str(e).lower()
+        if "403" in error_msg or "forbidden" in error_msg or "not connect" in error_msg:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Service unavailable: Unable to connect to MCP server. {str(e)}"
+            )
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# LLM Provider Profile endpoints
+
+
+@app.get("/api/llm/profiles")
+async def list_llm_profiles():
+    """List available LLM provider profiles from .llm_providers.yaml."""
+    from testmcpy.llm_profiles import get_llm_profile_config
+
+    try:
+        profile_config = get_llm_profile_config()
+        if not profile_config.has_profiles():
+            return {
+                "profiles": [],
+                "default": None,
+                "message": "No .llm_providers.yaml file found",
+            }
+
+        profiles_list = []
+        for profile_id in profile_config.list_profiles():
+            profile = profile_config.get_profile(profile_id)
+            if not profile:
+                continue
+
+            providers_info = []
+            for provider in profile.providers:
+                # Mask API keys in response
+                provider_dict = {
+                    "name": provider.name,
+                    "provider": provider.provider,
+                    "model": provider.model,
+                    "api_key_env": provider.api_key_env,
+                    "base_url": provider.base_url,
+                    "timeout": provider.timeout,
+                    "default": provider.default,
+                }
+                providers_info.append(provider_dict)
+
+            profiles_list.append({
+                "profile_id": profile.profile_id,
+                "name": profile.name,
+                "description": profile.description,
+                "providers": providers_info,
+            })
+
+        return {
+            "profiles": profiles_list,
+            "default": profile_config.default_profile_id,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/llm/profiles/{profile_id}")
+async def create_llm_profile(profile_id: str, request: dict):
+    """Create a new LLM provider profile."""
+    from testmcpy.llm_profiles import (
+        get_llm_profile_config,
+        LLMProfile,
+        LLMProviderConfig,
+        reload_llm_profile_config,
+    )
+
+    try:
+        profile_config = get_llm_profile_config()
+
+        # Create providers
+        providers = []
+        for p in request.get("providers", []):
+            provider = LLMProviderConfig(
+                name=p.get("name"),
+                provider=p.get("provider"),
+                model=p.get("model"),
+                api_key_env=p.get("api_key_env"),
+                base_url=p.get("base_url"),
+                timeout=p.get("timeout", 60),
+                default=p.get("default", False),
+            )
+            providers.append(provider)
+
+        # Create profile
+        profile = LLMProfile(
+            profile_id=profile_id,
+            name=request.get("name", profile_id),
+            description=request.get("description", ""),
+            providers=providers,
+        )
+
+        profile_config.add_profile(profile)
+        profile_config.save()
+        reload_llm_profile_config()
+
+        return {"success": True, "profile_id": profile_id}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.put("/api/llm/profiles/{profile_id}")
+async def update_llm_profile(profile_id: str, request: dict):
+    """Update an existing LLM provider profile."""
+    from testmcpy.llm_profiles import (
+        get_llm_profile_config,
+        LLMProfile,
+        LLMProviderConfig,
+        reload_llm_profile_config,
+    )
+
+    try:
+        profile_config = get_llm_profile_config()
+
+        # Check if profile exists
+        if profile_id not in profile_config.profiles:
+            raise HTTPException(status_code=404, detail=f"Profile '{profile_id}' not found")
+
+        # Create providers
+        providers = []
+        for p in request.get("providers", []):
+            provider = LLMProviderConfig(
+                name=p.get("name"),
+                provider=p.get("provider"),
+                model=p.get("model"),
+                api_key_env=p.get("api_key_env"),
+                base_url=p.get("base_url"),
+                timeout=p.get("timeout", 60),
+                default=p.get("default", False),
+            )
+            providers.append(provider)
+
+        # Update profile
+        profile = LLMProfile(
+            profile_id=profile_id,
+            name=request.get("name", profile_id),
+            description=request.get("description", ""),
+            providers=providers,
+        )
+
+        profile_config.add_profile(profile)
+        profile_config.save()
+        reload_llm_profile_config()
+
+        return {"success": True, "profile_id": profile_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/api/llm/profiles/{profile_id}")
+async def delete_llm_profile(profile_id: str):
+    """Delete an LLM provider profile."""
+    from testmcpy.llm_profiles import get_llm_profile_config, reload_llm_profile_config
+
+    try:
+        profile_config = get_llm_profile_config()
+
+        if profile_id not in profile_config.profiles:
+            raise HTTPException(status_code=404, detail=f"Profile '{profile_id}' not found")
+
+        profile_config.remove_profile(profile_id)
+        profile_config.save()
+        reload_llm_profile_config()
+
+        return {"success": True, "profile_id": profile_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/api/llm/profiles/default/{profile_id}")
+async def set_default_llm_profile(profile_id: str):
+    """Set the default LLM provider profile."""
+    from testmcpy.llm_profiles import get_llm_profile_config, reload_llm_profile_config
+
+    try:
+        profile_config = get_llm_profile_config()
+        profile_config.set_default_profile(profile_id)
+        profile_config.save()
+        reload_llm_profile_config()
+
+        return {"success": True, "default_profile": profile_id}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Test Profile endpoints
+
+
+@app.get("/api/test/profiles")
+async def list_test_profiles():
+    """List available test profiles from .test_profiles.yaml."""
+    from testmcpy.test_profiles import get_test_profile_config
+
+    try:
+        profile_config = get_test_profile_config()
+        if not profile_config.has_profiles():
+            return {
+                "profiles": [],
+                "default": None,
+                "message": "No .test_profiles.yaml file found",
+            }
+
+        profiles_list = []
+        for profile_id in profile_config.list_profiles():
+            profile = profile_config.get_profile(profile_id)
+            if not profile:
+                continue
+
+            configs_info = []
+            for config in profile.test_configs:
+                config_dict = {
+                    "name": config.name,
+                    "description": config.description,
+                    "tests_dir": config.tests_dir,
+                    "evaluators": config.evaluators,
+                    "timeout": config.timeout,
+                    "parallel": config.parallel,
+                    "max_retries": config.max_retries,
+                    "default": config.default,
+                }
+                configs_info.append(config_dict)
+
+            profiles_list.append({
+                "profile_id": profile.profile_id,
+                "name": profile.name,
+                "description": profile.description,
+                "test_configs": configs_info,
+            })
+
+        return {
+            "profiles": profiles_list,
+            "default": profile_config.default_profile_id,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/test/profiles/{profile_id}")
+async def create_test_profile(profile_id: str, request: dict):
+    """Create a new test profile."""
+    from testmcpy.test_profiles import (
+        get_test_profile_config,
+        TestProfile,
+        TestConfig,
+        reload_test_profile_config,
+    )
+
+    try:
+        profile_config = get_test_profile_config()
+
+        # Create test configs
+        test_configs = []
+        for c in request.get("test_configs", []):
+            config = TestConfig(
+                name=c.get("name"),
+                description=c.get("description", ""),
+                tests_dir=c.get("tests_dir", "tests"),
+                evaluators=c.get("evaluators", []),
+                timeout=c.get("timeout", 120),
+                parallel=c.get("parallel", False),
+                max_retries=c.get("max_retries", 0),
+                default=c.get("default", False),
+            )
+            test_configs.append(config)
+
+        # Create profile
+        profile = TestProfile(
+            profile_id=profile_id,
+            name=request.get("name", profile_id),
+            description=request.get("description", ""),
+            test_configs=test_configs,
+        )
+
+        profile_config.add_profile(profile)
+        profile_config.save()
+        reload_test_profile_config()
+
+        return {"success": True, "profile_id": profile_id}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.put("/api/test/profiles/{profile_id}")
+async def update_test_profile(profile_id: str, request: dict):
+    """Update an existing test profile."""
+    from testmcpy.test_profiles import (
+        get_test_profile_config,
+        TestProfile,
+        TestConfig,
+        reload_test_profile_config,
+    )
+
+    try:
+        profile_config = get_test_profile_config()
+
+        if profile_id not in profile_config.profiles:
+            raise HTTPException(status_code=404, detail=f"Profile '{profile_id}' not found")
+
+        # Create test configs
+        test_configs = []
+        for c in request.get("test_configs", []):
+            config = TestConfig(
+                name=c.get("name"),
+                description=c.get("description", ""),
+                tests_dir=c.get("tests_dir", "tests"),
+                evaluators=c.get("evaluators", []),
+                timeout=c.get("timeout", 120),
+                parallel=c.get("parallel", False),
+                max_retries=c.get("max_retries", 0),
+                default=c.get("default", False),
+            )
+            test_configs.append(config)
+
+        # Update profile
+        profile = TestProfile(
+            profile_id=profile_id,
+            name=request.get("name", profile_id),
+            description=request.get("description", ""),
+            test_configs=test_configs,
+        )
+
+        profile_config.add_profile(profile)
+        profile_config.save()
+        reload_test_profile_config()
+
+        return {"success": True, "profile_id": profile_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/api/test/profiles/{profile_id}")
+async def delete_test_profile(profile_id: str):
+    """Delete a test profile."""
+    from testmcpy.test_profiles import get_test_profile_config, reload_test_profile_config
+
+    try:
+        profile_config = get_test_profile_config()
+
+        if profile_id not in profile_config.profiles:
+            raise HTTPException(status_code=404, detail=f"Profile '{profile_id}' not found")
+
+        profile_config.remove_profile(profile_id)
+        profile_config.save()
+        reload_test_profile_config()
+
+        return {"success": True, "profile_id": profile_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/api/test/profiles/default/{profile_id}")
+async def set_default_test_profile(profile_id: str):
+    """Set the default test profile."""
+    from testmcpy.test_profiles import get_test_profile_config, reload_test_profile_config
+
+    try:
+        profile_config = get_test_profile_config()
+        profile_config.set_default_profile(profile_id)
+        profile_config.save()
+        reload_test_profile_config()
+
+        return {"success": True, "default_profile": profile_id}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1784,28 +2318,49 @@ async def get_test_file(filename: str):
 
 @app.post("/api/tests")
 async def create_test_file(request: TestFileCreate):
-    """Create a new test file."""
+    """Create a new test file. Accepts either structured test data or raw YAML content."""
     tests_dir = Path.cwd() / "tests"
     tests_dir.mkdir(exist_ok=True)
 
-    file_path = tests_dir / request.filename
+    # Determine if this is structured data or raw content
+    if request.name is not None and request.test_cases is not None:
+        # Structured data: convert to YAML
+        test_data = {
+            "name": request.name,
+            "description": request.description or "",
+            "test_cases": request.test_cases
+        }
+        content = yaml.dump(test_data, default_flow_style=False, sort_keys=False, indent=2)
+        # Generate filename from name if not provided
+        filename = request.filename or f"{request.name.lower().replace(' ', '_')}.yaml"
+    elif request.content is not None and request.filename is not None:
+        # Raw YAML content
+        content = request.content
+        filename = request.filename
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Either provide (name, test_cases) for structured data or (filename, content) for raw YAML"
+        )
+
+    file_path = tests_dir / filename
 
     if file_path.exists():
         raise HTTPException(status_code=400, detail="File already exists")
 
     # Validate YAML
     try:
-        yaml.safe_load(request.content)
+        yaml.safe_load(content)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid YAML: {str(e)}")
 
     try:
         with open(file_path, "w") as f:
-            f.write(request.content)
+            f.write(content)
 
         return {
             "message": "Test file created successfully",
-            "filename": request.filename,
+            "filename": filename,
             "path": str(file_path),
         }
     except Exception as e:
@@ -1814,22 +2369,40 @@ async def create_test_file(request: TestFileCreate):
 
 @app.put("/api/tests/{filename:path}")
 async def update_test_file(filename: str, request: TestFileUpdate):
-    """Update an existing test file (supports paths like 'folder/file.yaml')."""
+    """Update an existing test file. Accepts either structured test data or raw YAML content."""
     tests_dir = Path.cwd() / "tests"
     file_path = tests_dir / filename
 
     if not file_path.exists() or not file_path.is_relative_to(tests_dir):
         raise HTTPException(status_code=404, detail="Test file not found")
 
+    # Determine if this is structured data or raw content
+    if request.name is not None and request.test_cases is not None:
+        # Structured data: convert to YAML
+        test_data = {
+            "name": request.name,
+            "description": request.description or "",
+            "test_cases": request.test_cases
+        }
+        content = yaml.dump(test_data, default_flow_style=False, sort_keys=False, indent=2)
+    elif request.content is not None:
+        # Raw YAML content
+        content = request.content
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Either provide (name, test_cases) for structured data or content for raw YAML"
+        )
+
     # Validate YAML
     try:
-        yaml.safe_load(request.content)
+        yaml.safe_load(content)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid YAML: {str(e)}")
 
     try:
         with open(file_path, "w") as f:
-            f.write(request.content)
+            f.write(content)
 
         return {
             "message": "Test file updated successfully",
@@ -1914,6 +2487,131 @@ async def run_tests(request: TestRunRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/tests/{test_name}/run")
+async def run_specific_test(test_name: str, request: TestRunRequest | None = None):
+    """Run all test cases from a specific test file."""
+    tests_dir = Path.cwd() / "tests"
+    # Try with .yaml extension first
+    test_path = tests_dir / f"{test_name}.yaml"
+    if not test_path.exists():
+        # Try without extension (if test_name already has extension)
+        test_path = tests_dir / test_name
+
+    if not test_path.exists():
+        raise HTTPException(status_code=404, detail=f"Test file '{test_name}' not found")
+
+    model = (request.model if request else None) or config.default_model
+    provider = (request.provider if request else None) or config.default_provider
+
+    try:
+        # Load test cases
+        with open(test_path) as f:
+            data = yaml.safe_load(f)
+
+        test_cases = []
+        if "test_cases" in data:
+            for test_data in data["test_cases"]:
+                test_cases.append(TestCase.from_dict(test_data))
+        elif "tests" in data:
+            for test_data in data["tests"]:
+                test_cases.append(TestCase.from_dict(test_data))
+        else:
+            test_cases.append(TestCase.from_dict(data))
+
+        # Run tests
+        runner = TestRunner(
+            model=model,
+            provider=provider,
+            mcp_url=config.mcp_url,
+            verbose=False,
+            hide_tool_output=True,
+        )
+
+        results = await runner.run_tests(test_cases)
+
+        # Format results
+        return {
+            "summary": {
+                "total": len(results),
+                "passed": sum(1 for r in results if r.passed),
+                "failed": sum(1 for r in results if not r.passed),
+                "total_cost": sum(r.cost for r in results),
+                "total_tokens": sum(
+                    r.token_usage.get("total", 0) for r in results if r.token_usage
+                ),
+            },
+            "results": [r.to_dict() for r in results],
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/tests/{test_name}/cases/{case_index}/run")
+async def run_specific_test_case(test_name: str, case_index: int, request: TestRunRequest | None = None):
+    """Run a specific test case from a test file."""
+    tests_dir = Path.cwd() / "tests"
+    # Try with .yaml extension first
+    test_path = tests_dir / f"{test_name}.yaml"
+    if not test_path.exists():
+        # Try without extension (if test_name already has extension)
+        test_path = tests_dir / test_name
+
+    if not test_path.exists():
+        raise HTTPException(status_code=404, detail=f"Test file '{test_name}' not found")
+
+    model = (request.model if request else None) or config.default_model
+    provider = (request.provider if request else None) or config.default_provider
+
+    try:
+        # Load test cases
+        with open(test_path) as f:
+            data = yaml.safe_load(f)
+
+        test_cases = []
+        if "test_cases" in data:
+            test_case_data = data["test_cases"]
+        elif "tests" in data:
+            test_case_data = data["tests"]
+        else:
+            test_case_data = [data]
+
+        if case_index < 0 or case_index >= len(test_case_data):
+            raise HTTPException(
+                status_code=404,
+                detail=f"Test case index {case_index} not found. Valid indices: 0-{len(test_case_data)-1}"
+            )
+
+        # Get the specific test case
+        test_case = TestCase.from_dict(test_case_data[case_index])
+
+        # Run test
+        runner = TestRunner(
+            model=model,
+            provider=provider,
+            mcp_url=config.mcp_url,
+            verbose=False,
+            hide_tool_output=True,
+        )
+
+        results = await runner.run_tests([test_case])
+
+        # Format result
+        result = results[0] if results else None
+        if not result:
+            raise HTTPException(status_code=500, detail="Test execution failed")
+
+        return {
+            "passed": result.passed,
+            "result": result.to_dict(),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/tests/run-tool/{tool_name}")
 async def run_tool_tests(tool_name: str, model: str | None = None, provider: str | None = None):
     """Run all tests for a specific tool."""
@@ -1994,6 +2692,40 @@ async def run_tool_tests(tool_name: str, model: str | None = None, provider: str
 
 
 # Eval endpoints
+
+
+@app.get("/api/reports")
+async def get_reports():
+    """Get list of test execution reports."""
+    reports_dir = Path.cwd() / "reports"
+
+    if not reports_dir.exists():
+        return {"reports": []}
+
+    try:
+        reports = []
+        for report_file in reports_dir.glob("*.json"):
+            try:
+                with open(report_file) as f:
+                    report_data = json.load(f)
+                    reports.append({
+                        "filename": report_file.name,
+                        "path": str(report_file),
+                        "created": datetime.fromtimestamp(report_file.stat().st_mtime).isoformat(),
+                        "summary": report_data.get("summary", {}),
+                        "test_name": report_data.get("test_name", ""),
+                    })
+            except Exception as e:
+                print(f"Warning: Failed to read report {report_file}: {e}")
+                continue
+
+        # Sort by creation time, newest first
+        reports.sort(key=lambda x: x["created"], reverse=True)
+
+        return {"reports": reports}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list reports: {str(e)}")
 
 
 @app.post("/api/eval/run")
@@ -2777,6 +3509,599 @@ Call the submit_analysis tool NOW with complete data."""
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to optimize documentation: {str(e)}")
+
+
+@app.post("/api/tools/compare")
+async def compare_tools(request: ToolCompareRequest):
+    """
+    Compare the same tool across two different MCP profiles/servers.
+
+    This endpoint runs the specified tool multiple times on two different
+    MCP servers and returns performance metrics and results for comparison.
+    """
+    import time
+
+    # Parse profile IDs
+    profile1_parts = request.profile1.split(':', 1)
+    profile2_parts = request.profile2.split(':', 1)
+
+    if len(profile1_parts) != 2 or len(profile2_parts) != 2:
+        raise HTTPException(
+            status_code=400,
+            detail="Profile format must be 'profile_id:mcp_name'"
+        )
+
+    profile1_id, mcp1_name = profile1_parts
+    profile2_id, mcp2_name = profile2_parts
+
+    # Load profiles
+    try:
+        profile1_data = load_profile(profile1_id)
+        profile2_data = load_profile(profile2_id)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"Profile not found: {str(e)}")
+
+    if not profile1_data or not profile2_data:
+        raise HTTPException(status_code=404, detail="One or both profiles not found")
+
+    # Find MCP configs
+    mcp1 = next((m for m in profile1_data.mcps if m.name == mcp1_name), None)
+    mcp2 = next((m for m in profile2_data.mcps if m.name == mcp2_name), None)
+
+    if not mcp1 or not mcp2:
+        raise HTTPException(status_code=404, detail="MCP server not found in profile")
+
+    # Helper function to run a single iteration
+    async def run_iteration(mcp_config, iteration_num):
+        result = {
+            "iteration": iteration_num,
+            "success": False,
+            "result": None,
+            "error": None,
+            "duration_ms": 0
+        }
+
+        client = None
+        try:
+            start_time = time.time()
+
+            # Initialize client
+            client = MCPClient(
+                mcp_url=mcp_config.mcp_url,
+                auth=mcp_config.auth
+            )
+            await client.initialize()
+
+            # Call the tool
+            tool_result = await client.call_tool(
+                name=request.tool_name,
+                arguments=request.parameters
+            )
+
+            result["success"] = True
+            result["result"] = tool_result
+            result["duration_ms"] = (time.time() - start_time) * 1000
+
+        except Exception as e:
+            result["success"] = False
+            result["error"] = str(e)
+            result["duration_ms"] = (time.time() - start_time) * 1000
+        finally:
+            if client:
+                try:
+                    await client.cleanup()
+                except Exception:
+                    pass
+
+        return result
+
+    # Run iterations for both profiles
+    results1 = []
+    results2 = []
+
+    try:
+        for i in range(request.iterations):
+            # Run on profile 1
+            result1 = await run_iteration(mcp1, i + 1)
+            results1.append(result1)
+
+            # Run on profile 2
+            result2 = await run_iteration(mcp2, i + 1)
+            results2.append(result2)
+
+        # Calculate metrics
+        avg_time1 = sum(r["duration_ms"] for r in results1) / len(results1)
+        avg_time2 = sum(r["duration_ms"] for r in results2) / len(results2)
+        success_rate1 = (sum(1 for r in results1 if r["success"]) / len(results1)) * 100
+        success_rate2 = (sum(1 for r in results2 if r["success"]) / len(results2)) * 100
+
+        return {
+            "tool_name": request.tool_name,
+            "profile1": f"{profile1_data.name} ({mcp1_name})",
+            "profile2": f"{profile2_data.name} ({mcp2_name})",
+            "parameters": request.parameters,
+            "iterations": request.iterations,
+            "results1": results1,
+            "results2": results2,
+            "metrics": {
+                "avg_time1_ms": avg_time1,
+                "avg_time2_ms": avg_time2,
+                "success_rate1_pct": success_rate1,
+                "success_rate2_pct": success_rate2,
+                "faster_profile": 1 if avg_time1 < avg_time2 else 2,
+                "time_difference_ms": abs(avg_time1 - avg_time2),
+                "time_difference_pct": (abs(avg_time1 - avg_time2) / max(avg_time1, avg_time2)) * 100
+            }
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Comparison failed: {str(e)}")
+
+
+@app.post("/api/tools/{tool_name}/debug", response_model=ToolDebugResponse)
+async def debug_tool(tool_name: str, request: ToolDebugRequest):
+    """
+    Debug a tool by calling it with parameters and returning detailed trace.
+
+    This endpoint calls the specified tool with the provided parameters
+    and returns the response along with execution timing information.
+    """
+    import time
+
+    start_time = time.time()
+    steps = []
+
+    try:
+        # Step 1: Prepare request
+        step_start = time.time()
+        steps.append({
+            "step": "Request Prepared",
+            "timestamp": (time.time() - start_time) * 1000,
+            "data": {
+                "tool_name": tool_name,
+                "parameters": request.parameters,
+                "profile": request.profile,
+            }
+        })
+
+        # Get MCP client for the specified profile
+        client_key = request.profile or "default"
+        client = mcp_clients.get(client_key)
+
+        if not client:
+            # Try to initialize client from profile
+            if request.profile:
+                try:
+                    profile_data = load_profile(request.profile)
+                    if profile_data and profile_data.mcps:
+                        mcp_config = profile_data.mcps[0]
+                        client = MCPClient(
+                            mcp_url=mcp_config.mcp_url,
+                            auth=mcp_config.auth
+                        )
+                        await client.initialize()
+                        mcp_clients[client_key] = client
+                except Exception as e:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Failed to load profile '{request.profile}': {str(e)}"
+                    )
+
+        if not client:
+            # Fall back to global default client
+            global mcp_client
+            if not mcp_client:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No MCP client configured. Please select a profile or configure a default MCP server."
+                )
+            client = mcp_client
+
+        # Step 2: Call tool
+        step_start = time.time()
+
+        try:
+            response = await client.call_tool(tool_name, request.parameters)
+
+            steps.append({
+                "step": "MCP Processing Complete",
+                "timestamp": (time.time() - start_time) * 1000,
+                "data": {
+                    "success": True,
+                }
+            })
+
+            # Step 3: Response received
+            steps.append({
+                "step": "Response Received",
+                "timestamp": (time.time() - start_time) * 1000,
+                "data": {
+                    "response_type": type(response).__name__,
+                }
+            })
+
+            total_time = (time.time() - start_time) * 1000
+
+            return ToolDebugResponse(
+                success=True,
+                response=response,
+                steps=steps,
+                total_time=total_time,
+            )
+
+        except Exception as tool_error:
+            steps.append({
+                "step": "Tool Call Failed",
+                "timestamp": (time.time() - start_time) * 1000,
+                "data": {
+                    "error": str(tool_error),
+                }
+            })
+
+            total_time = (time.time() - start_time) * 1000
+
+            return ToolDebugResponse(
+                success=False,
+                response=None,
+                steps=steps,
+                total_time=total_time,
+                error=str(tool_error),
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        total_time = (time.time() - start_time) * 1000
+
+        return ToolDebugResponse(
+            success=False,
+            response=None,
+            steps=steps,
+            total_time=total_time,
+            error=str(e),
+        )
+
+
+@app.post("/api/debug-auth", response_model=DebugAuthResponse)
+async def debug_auth_endpoint(
+    request: DebugAuthRequest,
+    record: bool = Query(False, description="Record the auth flow for later replay"),
+    flow_name: str | None = Query(None, description="Name for the recorded flow")
+):
+    """API endpoint for debug_auth."""
+    return await debug_auth(request, record, flow_name)
+
+
+async def debug_auth(
+    request: DebugAuthRequest,
+    record: bool = False,
+    flow_name: str | None = None
+):
+    """Debug authentication flow with detailed step-by-step logging."""
+    try:
+        # Create debugger with optional recorder
+        recorder = auth_flow_recorder if record else None
+        debugger = AuthDebugger(enabled=True, recorder=recorder)
+
+        # Start recording if enabled
+        if record:
+            recording_name = flow_name or f"{request.auth_type}_debug"
+            debugger.start_flow_recording(
+                flow_name=recording_name,
+                auth_type=request.auth_type,
+                protocol_version="OAuth 2.0" if request.auth_type == "oauth" else None
+            )
+
+        token = None
+        error = None
+
+        try:
+            if request.auth_type == "oauth":
+                if not all([request.client_id, request.client_secret, request.token_url]):
+                    raise HTTPException(
+                        status_code=400,
+                        detail="OAuth requires client_id, client_secret, and token_url"
+                    )
+                token = await debug_oauth_flow(
+                    client_id=request.client_id,
+                    client_secret=request.client_secret,
+                    token_url=request.token_url,
+                    scopes=request.scopes,
+                    debugger=debugger
+                )
+            elif request.auth_type == "jwt":
+                if not all([request.api_url, request.api_token, request.api_secret]):
+                    raise HTTPException(
+                        status_code=400,
+                        detail="JWT requires api_url, api_token, and api_secret"
+                    )
+                token = await debug_jwt_flow(
+                    api_url=request.api_url,
+                    api_token=request.api_token,
+                    api_secret=request.api_secret,
+                    debugger=debugger
+                )
+            elif request.auth_type == "bearer":
+                if not request.token:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Bearer auth requires token"
+                    )
+                token = debug_bearer_token(
+                    token=request.token,
+                    debugger=debugger
+                )
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported auth type: {request.auth_type}"
+                )
+
+        except Exception as e:
+            error = str(e)
+
+        # Save recording if enabled
+        if record:
+            debugger.save_flow_recording(
+                success=error is None and not debugger.has_failures(),
+                error=error
+            )
+
+        trace = debugger.get_trace()
+
+        return DebugAuthResponse(
+            success=not debugger.has_failures() and error is None,
+            auth_type=request.auth_type,
+            steps=trace["steps"],
+            total_time=trace["total_time"],
+            error=error,
+            token_preview=token[:20] + "..." if token and len(token) > 20 else token
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to debug auth: {str(e)}"
+        )
+
+
+@app.post("/api/mcp/profiles/{profile_id}/debug-auth", response_model=DebugAuthResponse)
+async def debug_profile_auth(profile_id: str):
+    """Debug authentication for a specific MCP profile."""
+    try:
+        config_data = load_mcp_yaml()
+
+        if "profiles" not in config_data or profile_id not in config_data["profiles"]:
+            raise HTTPException(status_code=404, detail=f"Profile '{profile_id}' not found")
+
+        profile_data = config_data["profiles"][profile_id]
+
+        # Get the first MCP server's auth config
+        if "mcps" not in profile_data or not profile_data["mcps"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Profile '{profile_id}' has no MCP servers configured"
+            )
+
+        mcp_config = profile_data["mcps"][0]
+        auth_config = mcp_config.get("auth", {})
+
+        if not auth_config:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Profile '{profile_id}' has no authentication configured"
+            )
+
+        # Build request from profile auth config
+        auth_type = auth_config.get("type", "").lower()
+
+        if auth_type == "oauth":
+            request = DebugAuthRequest(
+                auth_type="oauth",
+                client_id=auth_config.get("client_id"),
+                client_secret=auth_config.get("client_secret"),
+                token_url=auth_config.get("token_url"),
+                scopes=auth_config.get("scopes", [])
+            )
+        elif auth_type == "jwt":
+            request = DebugAuthRequest(
+                auth_type="jwt",
+                api_url=auth_config.get("api_url"),
+                api_token=auth_config.get("api_token"),
+                api_secret=auth_config.get("api_secret")
+            )
+        elif auth_type == "bearer":
+            request = DebugAuthRequest(
+                auth_type="bearer",
+                token=auth_config.get("token")
+            )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported auth type in profile: {auth_type}"
+            )
+
+        # Call the main debug_auth endpoint
+        return await debug_auth(request)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to debug profile auth: {str(e)}"
+        )
+
+
+# Auth Flow Recording API endpoints
+
+
+@app.get("/api/auth-flows", response_model=list[AuthFlowListItem])
+async def list_auth_flows(
+    auth_type: str | None = Query(None, description="Filter by auth type (oauth, jwt, bearer)"),
+    limit: int | None = Query(None, description="Maximum number of recordings to return")
+):
+    """List all saved authentication flow recordings."""
+    try:
+        recordings = auth_flow_recorder.list_recordings(
+            auth_type=auth_type,
+            limit=limit
+        )
+        return recordings
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to list auth flows: {str(e)}"
+        )
+
+
+@app.get("/api/auth-flows/{filename}")
+async def get_auth_flow(filename: str):
+    """Get a specific authentication flow recording."""
+    try:
+        filepath = auth_flow_recorder.storage_dir / filename
+        if not filepath.exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Auth flow recording '{filename}' not found"
+            )
+
+        recording = auth_flow_recorder.load_recording(filepath)
+        return recording.to_dict()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to load auth flow: {str(e)}"
+        )
+
+
+@app.delete("/api/auth-flows/{filename}")
+async def delete_auth_flow(filename: str):
+    """Delete an authentication flow recording."""
+    try:
+        filepath = auth_flow_recorder.storage_dir / filename
+        if not filepath.exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Auth flow recording '{filename}' not found"
+            )
+
+        auth_flow_recorder.delete_recording(filepath)
+        return {"message": f"Auth flow '{filename}' deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete auth flow: {str(e)}"
+        )
+
+
+@app.post("/api/auth-flows/compare")
+async def compare_auth_flows(request: AuthFlowCompareRequest):
+    """Compare two authentication flow recordings."""
+    try:
+        # Load both recordings
+        filepath1 = Path(request.filepath1)
+        filepath2 = Path(request.filepath2)
+
+        if not filepath1.exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Recording 1 not found: {request.filepath1}"
+            )
+        if not filepath2.exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Recording 2 not found: {request.filepath2}"
+            )
+
+        recording1 = auth_flow_recorder.load_recording(filepath1)
+        recording2 = auth_flow_recorder.load_recording(filepath2)
+
+        # Compare recordings
+        comparison = auth_flow_recorder.compare_recordings(recording1, recording2)
+        return comparison
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to compare auth flows: {str(e)}"
+        )
+
+
+@app.post("/api/auth-flows/{filename}/export")
+async def export_auth_flow(filename: str, sanitize: bool = Query(True, description="Remove sensitive data")):
+    """Export an authentication flow recording as JSON (optionally sanitized)."""
+    try:
+        filepath = auth_flow_recorder.storage_dir / filename
+        if not filepath.exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Auth flow recording '{filename}' not found"
+            )
+
+        recording = auth_flow_recorder.load_recording(filepath)
+
+        if sanitize:
+            recording = auth_flow_recorder.sanitize_recording(recording)
+
+        return recording.to_dict()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to export auth flow: {str(e)}"
+        )
+
+
+class SmokeTestRequest(BaseModel):
+    """Request to run smoke tests."""
+
+    profile_id: str | None = None
+    mcp_url: str | None = None
+    test_all_tools: bool = True
+    max_tools_to_test: int = 10
+
+
+@app.post("/api/smoke-test")
+async def run_smoke_test_endpoint(request: SmokeTestRequest):
+    """Run smoke tests on an MCP server."""
+    from testmcpy.smoke_test import run_smoke_test
+    from testmcpy.mcp_profiles import load_profile
+
+    # Determine MCP URL and auth config
+    if request.profile_id:
+        profile = load_profile(request.profile_id)
+        if not profile or not profile.mcps:
+            raise HTTPException(
+                status_code=404, detail=f"Profile '{request.profile_id}' not found or has no MCP servers"
+            )
+
+        mcp_server = profile.mcps[0]
+        mcp_url = mcp_server.mcp_url
+        auth_config = mcp_server.auth.to_dict() if mcp_server.auth else None
+    elif request.mcp_url:
+        mcp_url = request.mcp_url
+        auth_config = None
+    else:
+        raise HTTPException(status_code=400, detail="Either profile_id or mcp_url must be provided")
+
+    # Run smoke tests
+    report = await run_smoke_test(
+        mcp_url=mcp_url,
+        auth_config=auth_config,
+        test_all_tools=request.test_all_tools,
+        max_tools_to_test=request.max_tools_to_test,
+    )
+
+    return report.to_dict()
 
 
 # Catch-all route for React Router (must be before static files)

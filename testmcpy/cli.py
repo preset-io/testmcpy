@@ -3083,5 +3083,200 @@ def doctor():
     console.print()
 
 
+@app.command()
+def smoke_test(
+    profile: str | None = typer.Option(
+        None,
+        "--profile",
+        "-p",
+        help="MCP service profile from .mcp_services.yaml",
+    ),
+    mcp_url: str | None = typer.Option(
+        None,
+        "--mcp-url",
+        help="MCP service URL (overrides profile)",
+    ),
+    test_all_tools: bool = typer.Option(
+        True,
+        "--test-all/--basic-only",
+        help="Test all tools or just basic operations",
+    ),
+    max_tools: int = typer.Option(
+        10,
+        "--max-tools",
+        help="Maximum number of tools to test",
+    ),
+    output_format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format: table, json, or summary",
+    ),
+    save_report: str | None = typer.Option(
+        None,
+        "--save",
+        "-s",
+        help="Save detailed report to file (JSON format)",
+    ),
+):
+    """
+    Run smoke tests on an MCP server.
+
+    Performs basic health checks and tests all available tools with reasonable
+    parameters to verify the MCP server is working correctly.
+
+    Tests include:
+    - Connection check
+    - List tools
+    - Call each tool with reasonable default parameters
+
+    Examples:
+        testmcpy smoke-test --profile prod
+        testmcpy smoke-test --mcp-url http://localhost:5008/mcp
+        testmcpy smoke-test --profile sandbox --basic-only
+        testmcpy smoke-test --profile prod --save smoke-test-report.json
+    """
+    console.print(
+        Panel.fit(
+            "[bold cyan]MCP Server Smoke Test[/bold cyan]\n"
+            "[dim]Running health checks and testing tools...[/dim]",
+            border_style="cyan",
+        )
+    )
+
+    # Load config with profile if specified
+    if profile:
+        from testmcpy.config import Config
+        cfg = Config(profile=profile)
+        effective_mcp_url = mcp_url or cfg.get_mcp_url()
+        mcp_server = cfg.get_default_mcp_server()
+        auth_config = mcp_server.auth.to_dict() if mcp_server and mcp_server.auth else None
+    else:
+        effective_mcp_url = mcp_url or DEFAULT_MCP_URL
+        auth_config = None
+
+    if not effective_mcp_url:
+        console.print("[red]Error:[/red] No MCP URL provided. Use --mcp-url or --profile")
+        console.print("\nExamples:")
+        console.print("  testmcpy smoke-test --mcp-url http://localhost:5008/mcp")
+        console.print("  testmcpy smoke-test --profile my-profile")
+        raise typer.Exit(1)
+
+    async def run_tests():
+        from testmcpy.smoke_test import run_smoke_test
+
+        console.print(f"\n[bold]Server:[/bold] {effective_mcp_url}")
+        if auth_config:
+            console.print(f"[bold]Auth:[/bold] {auth_config.get('type', 'none')}")
+        console.print()
+
+        with console.status("[cyan]Running smoke tests...[/cyan]"):
+            report = await run_smoke_test(
+                mcp_url=effective_mcp_url,
+                auth_config=auth_config,
+                test_all_tools=test_all_tools,
+                max_tools_to_test=max_tools,
+            )
+
+        # Display results based on format
+        if output_format == "json":
+            console.print(json.dumps(report.to_dict(), indent=2))
+        elif output_format == "summary":
+            _print_smoke_test_summary(report)
+        else:  # table
+            _print_smoke_test_table(report)
+
+        # Save report if requested
+        if save_report:
+            with open(save_report, 'w') as f:
+                json.dump(report.to_dict(), f, indent=2)
+            console.print(f"\n[green]✓[/green] Report saved to: {save_report}")
+
+        # Return exit code based on success
+        if report.failed > 0:
+            raise typer.Exit(1)
+
+    asyncio.run(run_tests())
+
+
+def _print_smoke_test_summary(report):
+    """Print summary of smoke test results."""
+    from rich.table import Table
+
+    # Overall status
+    status_color = "green" if report.failed == 0 else "red" if report.passed == 0 else "yellow"
+    status_icon = "✓" if report.failed == 0 else "✗" if report.passed == 0 else "⚠"
+
+    console.print(f"\n[bold {status_color}]{status_icon} Smoke Test Results[/bold {status_color}]")
+    console.print(f"[dim]Server: {report.server_url}[/dim]")
+    console.print(f"[dim]Completed: {report.timestamp}[/dim]")
+    console.print()
+
+    # Stats
+    console.print(f"[bold]Total Tests:[/bold] {report.total_tests}")
+    console.print(f"[bold green]Passed:[/bold green] {report.passed}")
+    console.print(f"[bold red]Failed:[/bold red] {report.failed}")
+    console.print(f"[bold]Success Rate:[/bold] {report.success_rate:.1f}%")
+    console.print(f"[bold]Duration:[/bold] {report.duration_ms:.0f}ms")
+
+    # Failed tests
+    if report.failed > 0:
+        console.print("\n[bold red]Failed Tests:[/bold red]")
+        for result in report.results:
+            if not result.success:
+                console.print(f"  • {result.test_name}")
+                if result.error_message:
+                    console.print(f"    [dim]{result.error_message}[/dim]")
+
+
+def _print_smoke_test_table(report):
+    """Print detailed table of smoke test results."""
+    from rich.table import Table
+
+    # Overall status panel
+    status_color = "green" if report.failed == 0 else "red" if report.passed == 0 else "yellow"
+    status_icon = "✓" if report.failed == 0 else "✗" if report.passed == 0 else "⚠"
+
+    console.print(
+        Panel.fit(
+            f"[bold {status_color}]{status_icon} Smoke Test Results[/bold {status_color}]\n"
+            f"[dim]Server: {report.server_url}[/dim]\n"
+            f"Tests: {report.passed}/{report.total_tests} passed | "
+            f"Success Rate: {report.success_rate:.1f}% | "
+            f"Duration: {report.duration_ms:.0f}ms",
+            border_style=status_color,
+        )
+    )
+
+    # Results table
+    table = Table(show_header=True, header_style="bold cyan", show_lines=True)
+    table.add_column("Status", style="bold", width=8)
+    table.add_column("Test Name", style="cyan")
+    table.add_column("Duration", justify="right")
+    table.add_column("Details")
+
+    for result in report.results:
+        status = "[green]✓ PASS[/green]" if result.success else "[red]✗ FAIL[/red]"
+        duration = f"{result.duration_ms:.0f}ms"
+
+        # Details column
+        if result.success and result.details:
+            if "tool_count" in result.details:
+                details = f"{result.details['tool_count']} tools available"
+            elif "tool" in result.details:
+                details = f"Called with {len(result.details.get('parameters', {}))} params"
+            else:
+                details = "Success"
+        elif not result.success:
+            details = result.error_message or "Failed"
+        else:
+            details = "Success"
+
+        table.add_row(status, result.test_name, duration, details)
+
+    console.print()
+    console.print(table)
+
+
 if __name__ == "__main__":
     app()
