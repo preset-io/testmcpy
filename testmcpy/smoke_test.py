@@ -137,13 +137,11 @@ class SmokeTestRunner:
         required = input_schema.get("required", [])
 
         for param_name, param_def in properties.items():
-            # Skip optional parameters unless they're commonly needed
-            if param_name not in required and param_name not in [
-                "limit",
-                "page",
-                "page_size",
-            ]:
-                continue
+            # Only process required parameters and commonly needed optional ones
+            if param_name not in required:
+                # Skip optional parameters unless they're commonly needed
+                if param_name not in ["limit", "page", "page_size"]:
+                    continue
 
             param_type = param_def.get("type", "string")
             param_default = param_def.get("default")
