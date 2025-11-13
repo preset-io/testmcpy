@@ -129,11 +129,13 @@ class GenerateTestsRequest(BaseModel):
 
 
 class FormatSchemaRequest(BaseModel):
-    schema: dict[str, Any]
+    tool_schema: dict[str, Any] = Field(..., alias="schema")
     tool_name: str
     format: str  # e.g., "python_client", "javascript_client", "typescript_client"
     mcp_url: str | None = None  # For curl format with actual values
     auth_token: str | None = None  # For curl format with actual values
+
+    model_config = {"populate_by_name": True}
 
 
 class OptimizeDocsRequest(BaseModel):
@@ -664,9 +666,13 @@ async def lifespan(app: FastAPI):
     global mcp_client, mcp_clients
     # Startup
     try:
-        mcp_client = MCPClient(config.mcp_url)
-        await mcp_client.initialize()
-        print(f"MCP client initialized at {config.mcp_url}")
+        mcp_url = config.get_mcp_url()
+        if mcp_url:
+            mcp_client = MCPClient(mcp_url)
+            await mcp_client.initialize()
+            print(f"MCP client initialized at {mcp_url}")
+        else:
+            print("No default MCP URL configured")
     except Exception as e:
         print(f"Warning: Failed to initialize MCP client: {e}")
 
@@ -3056,13 +3062,13 @@ async def format_schema(request: FormatSchemaRequest):
             auth_token = request.auth_token or config.mcp_auth_token
 
             formatted = converter(
-                request.schema,
+                request.tool_schema,
                 request.tool_name,
                 mcp_url=mcp_url,
                 auth_token=auth_token
             )
         else:
-            formatted = converter(request.schema, request.tool_name)
+            formatted = converter(request.tool_schema, request.tool_name)
 
         return {
             "success": True,
