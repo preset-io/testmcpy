@@ -725,18 +725,13 @@ class AnthropicProvider(LLMProvider):
                         }
                     )
 
-            # Execute tool calls locally
+            # Execute tool calls locally (don't append to response_text - tool results shown separately in UI)
             for tool_call in tool_calls:
                 try:
                     tool_result = await self.tool_discovery.execute_tool_call(tool_call)
-                    if not tool_result.is_error:
-                        response_text += f"\n\nTool {tool_call['name']} executed successfully: {tool_result.content}"
-                    else:
-                        response_text += (
-                            f"\n\nTool {tool_call['name']} failed: {tool_result.error_message}"
-                        )
+                    # Tool results are returned separately, not appended to response text
                 except Exception as e:
-                    response_text += f"\n\nTool {tool_call['name']} execution error: {e}"
+                    pass  # Errors are handled by the tool execution
 
             # Calculate usage and cost
             usage = result.get("usage", {})
@@ -1122,14 +1117,9 @@ class ClaudeCodeProvider(LLMProvider):
             for tool_call in tool_calls:
                 try:
                     result = await self.tool_discovery.execute_tool_call(tool_call)
-                    if not result.is_error:
-                        response_text += f"\n\nTool {tool_call['name']} executed: {result.content}"
-                    else:
-                        response_text += (
-                            f"\n\nTool {tool_call['name']} failed: {result.error_message}"
-                        )
+                    # Tool results are returned separately, not appended to response text
                 except Exception as e:
-                    response_text += f"\n\nTool execution error: {e}"
+                    pass  # Errors are handled by the tool execution
 
             return LLMResult(
                 response=response_text,
