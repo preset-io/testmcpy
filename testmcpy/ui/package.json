@@ -10,7 +10,7 @@
   "dependencies": {
     "@microlink/react-json-view": "^1.27.0",
     "@monaco-editor/react": "^4.6.0",
-    "js-yaml": "^4.1.0",
+    "js-yaml": "^4.1.1",
     "lucide-react": "^0.294.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
