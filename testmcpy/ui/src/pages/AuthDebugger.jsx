@@ -484,6 +484,7 @@ function AuthDebugger() {
 
   // Form fields for Bearer
   const [bearerToken, setBearerToken] = useState('')
+  const [mcpUrl, setMcpUrl] = useState('')
 
   useEffect(() => {
     loadProfiles()
@@ -506,31 +507,29 @@ function AuthDebugger() {
     }
 
     try {
-      const res = await fetch('/api/mcp/profiles')
-      const data = await res.json()
-      const profile = data.profiles.find(p => p.id === profileId)
+      // Fetch unmasked auth config
+      const res = await fetch(`/api/mcp/profiles/${profileId}/auth`)
+      if (!res.ok) {
+        console.error('Failed to load profile auth')
+        return
+      }
+      const auth = await res.json()
 
-      if (profile && profile.mcps && profile.mcps.length > 0) {
-        const mcp = profile.mcps[0]
-        const auth = mcp.auth
+      const type = auth.type?.toLowerCase() || 'oauth'
+      setAuthType(type)
+      setMcpUrl(auth.mcp_url || '')
 
-        if (auth) {
-          const type = auth.type?.toLowerCase() || 'oauth'
-          setAuthType(type)
-
-          if (type === 'oauth') {
-            setClientId(auth.client_id || '')
-            setClientSecret(auth.client_secret || '')
-            setTokenUrl(auth.token_url || '')
-            setScopes((auth.scopes || []).join(', '))
-          } else if (type === 'jwt') {
-            setApiUrl(auth.api_url || '')
-            setApiToken(auth.api_token || '')
-            setApiSecret(auth.api_secret || '')
-          } else if (type === 'bearer') {
-            setBearerToken(auth.token || '')
-          }
-        }
+      if (type === 'oauth') {
+        setClientId(auth.client_id || '')
+        setClientSecret(auth.client_secret || '')
+        setTokenUrl(auth.token_url || '')
+        setScopes((auth.scopes || []).join(', '))
+      } else if (type === 'jwt') {
+        setApiUrl(auth.api_url || '')
+        setApiToken(auth.api_token || '')
+        setApiSecret(auth.api_secret || '')
+      } else if (type === 'bearer') {
+        setBearerToken(auth.token || '')
       }
     } catch (error) {
       console.error('Failed to load profile auth:', error)
@@ -546,6 +545,7 @@ function AuthDebugger() {
     setApiToken('')
     setApiSecret('')
     setBearerToken('')
+    setMcpUrl('')
     setDebugResult(null)
   }
 
@@ -587,7 +587,8 @@ function AuthDebugger() {
       } else if (authType === 'bearer') {
         requestBody = {
           ...requestBody,
-          token: bearerToken
+          token: bearerToken,
+          mcp_url: mcpUrl
         }
       }
 
@@ -618,6 +619,15 @@ function AuthDebugger() {
 
       // Auto-expand all steps
       setExpandedSteps(new Set(data.steps.map((_, i) => i)))
+
+      // For JWT/OAuth success, populate bearer token field with the obtained token
+      if (data.success && (authType === 'jwt' || authType === 'oauth')) {
+        // Find access_token from the "Token Extracted" step
+        const tokenStep = data.steps.find(s => s.step.includes('Token Extracted'))
+        if (tokenStep?.data?.access_token) {
+          setBearerToken(tokenStep.data.access_token)
+        }
+      }
 
       if (!data.success) {
         setAuthError(data.error)
@@ -681,6 +691,14 @@ function AuthDebugger() {
 
       // Auto-expand all steps
       setExpandedSteps(new Set(data.steps.map((_, i) => i)))
+
+      // For JWT/OAuth success, populate bearer token field with the obtained token
+      if (data.success) {
+        const tokenStep = data.steps.find(s => s.step.includes('Token Extracted'))
+        if (tokenStep?.data?.access_token) {
+          setBearerToken(tokenStep.data.access_token)
+        }
+      }
 
       if (!data.success) {
         setAuthError(data.error)
@@ -748,7 +766,7 @@ function AuthDebugger() {
     } else if (authType === 'jwt') {
       return apiUrl && apiToken && apiSecret
     } else if (authType === 'bearer') {
-      return bearerToken
+      return bearerToken && mcpUrl
     }
     return false
   }
@@ -856,11 +874,11 @@ function AuthDebugger() {
                         Client Secret
                       </label>
                       <input
-                        type="password"
+                        type="text"
                         value={clientSecret}
                         onChange={(e) => setClientSecret(e.target.value)}
                         placeholder="your-client-secret"
-                        className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-text-primary placeholder-text-disabled focus:outline-none focus:ring-2 focus:ring-primary"
+                        className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-text-primary placeholder-text-disabled focus:outline-none focus:ring-2 focus:ring-primary font-mono text-sm"
                       />
                     </div>
                     <div>
@@ -922,11 +940,11 @@ function AuthDebugger() {
                         API Secret
                       </label>
                       <input
-                        type="password"
+                        type="text"
                         value={apiSecret}
                         onChange={(e) => setApiSecret(e.target.value)}
                         placeholder="your-api-secret"
-                        className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-text-primary placeholder-text-disabled focus:outline-none focus:ring-2 focus:ring-primary"
+                        className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-text-primary placeholder-text-disabled focus:outline-none focus:ring-2 focus:ring-primary font-mono text-sm"
                       />
                     </div>
                   </div>
@@ -935,6 +953,21 @@ function AuthDebugger() {
                 {/* Bearer Fields */}
                 {authType === 'bearer' && (
                   <div className="space-y-3 mt-4">
+                    <div>
+                      <label className="block text-sm font-medium text-text-secondary mb-1">
+                        MCP URL
+                      </label>
+                      <input
+                        type="text"
+                        value={mcpUrl}
+                        onChange={(e) => setMcpUrl(e.target.value)}
+                        placeholder="https://example.preset.io/mcp"
+                        className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-text-primary placeholder-text-disabled focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                      <p className="text-xs text-text-tertiary mt-1">
+                        Token will be tested by calling tools/list on this endpoint
+                      </p>
+                    </div>
                     <div>
                       <label className="block text-sm font-medium text-text-secondary mb-1">
                         Bearer Token
@@ -1256,7 +1289,12 @@ function AuthDebugger() {
                                   collapsed={false}
                                   displayDataTypes={false}
                                   displayObjectSize={true}
-                                  enableClipboard={true}
+                                  enableClipboard={(copy) => {
+                                    // Copy raw value without quotes for strings
+                                    const value = copy.src
+                                    const textToCopy = typeof value === 'string' ? value : JSON.stringify(value, null, 2)
+                                    navigator.clipboard.writeText(textToCopy)
+                                  }}
                                   name={false}
                                   indentWidth={2}
                                   iconStyle="triangle"

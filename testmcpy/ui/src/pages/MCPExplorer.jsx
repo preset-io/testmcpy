@@ -992,6 +992,7 @@ function MCPExplorer({ selectedProfiles = [] }) {
                             <SchemaCodeViewer
                               schema={tool.input_schema}
                               toolName={tool.name}
+                              profile={activeProfile}
                             />
                           </div>
                         )}

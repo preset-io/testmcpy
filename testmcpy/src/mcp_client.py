@@ -200,7 +200,12 @@ class MCPClient:
                 },
             )
 
-            async with httpx.AsyncClient() as client:
+            # Check if SSL verification should be disabled
+            verify_ssl = True
+            if self.auth_config and self.auth_config.get('insecure', False):
+                verify_ssl = False
+
+            async with httpx.AsyncClient(verify=verify_ssl) as client:
                 try:
                     response = await asyncio.wait_for(
                         client.post(

@@ -55,14 +55,9 @@ class CurlFormatter(SchemaFormatter):
 
         return f"""{warning}curl -X POST {url} \\
   -H "Content-Type: application/json" \\
+  -H "Accept: application/json, text/event-stream" \\
   -H "Authorization: Bearer {token}" \\
-  -d '{json_str}'
-
-# For SSE (Server-Sent Events) transport:
-# Add header: -H "Accept: text/event-stream"
-
-# For stdio transport:
-# Use tool-specific client library instead of cURL"""
+  -d '{json_str}'"""
 
 
 def to_curl(

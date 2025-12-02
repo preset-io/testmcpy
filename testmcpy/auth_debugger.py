@@ -79,12 +79,9 @@ class AuthDebugger:
 
         timestamp = time.time() - self.start_time
 
-        self.steps.append({
-            "step": step_name,
-            "data": data,
-            "success": success,
-            "timestamp": timestamp
-        })
+        self.steps.append(
+            {"step": step_name, "data": data, "success": success, "timestamp": timestamp}
+        )
 
         # Record to recorder if available
         if self.recorder and self.recorder.current_recording:
@@ -192,14 +189,16 @@ class AuthDebugger:
         if failure_count == 0:
             self.console.print("\n[bold green]Authentication successful![/bold green]")
         else:
-            self.console.print(f"\n[bold red]Authentication failed ({failure_count} error(s))[/bold red]")
+            self.console.print(
+                f"\n[bold red]Authentication failed ({failure_count} error(s))[/bold red]"
+            )
 
         return {
             "total_steps": len(self.steps),
             "successful_steps": success_count,
             "failed_steps": failure_count,
             "total_time": total_time,
-            "steps": self.steps
+            "steps": self.steps,
         }
 
     def get_trace(self) -> dict[str, Any]:
@@ -211,7 +210,7 @@ class AuthDebugger:
         return {
             "enabled": self.enabled,
             "steps": self.steps,
-            "total_time": time.time() - self.start_time if self.steps else 0
+            "total_time": time.time() - self.start_time if self.steps else 0,
         }
 
     def clear(self) -> None:
@@ -302,7 +301,9 @@ class AuthDebugger:
         if self.enabled:
             self.console.print(f"\n[dim]Debug trace saved to: {filepath}[/dim]")
 
-    def save_flow_recording(self, success: bool = True, error: str | None = None, filename: str | None = None) -> Path | None:
+    def save_flow_recording(
+        self, success: bool = True, error: str | None = None, filename: str | None = None
+    ) -> Path | None:
         """Save the current flow recording.
 
         Args:
@@ -324,11 +325,7 @@ class AuthDebugger:
         if not self.recorder or not self.recorder.current_recording:
             return None
 
-        recording = self.recorder.stop_recording(
-            success=success,
-            error=error,
-            auto_save=False
-        )
+        recording = self.recorder.stop_recording(success=success, error=error, auto_save=False)
         filepath = self.recorder.save_recording(recording, filename=filename)
 
         if self.enabled:
@@ -342,7 +339,7 @@ async def debug_oauth_flow(
     client_secret: str,
     token_url: str,
     scopes: list[str] | None = None,
-    debugger: AuthDebugger | None = None
+    debugger: AuthDebugger | None = None,
 ) -> str:
     """Debug OAuth client credentials flow.
 
@@ -374,10 +371,13 @@ async def debug_oauth_flow(
     try:
         async with httpx.AsyncClient() as client:
             # Step 2: Send request
-            debugger.log_step("2. Sending POST to Token Endpoint", {
-                "url": token_url,
-                "headers": {"Content-Type": "application/x-www-form-urlencoded"}
-            })
+            debugger.log_step(
+                "2. Sending POST to Token Endpoint",
+                {
+                    "url": token_url,
+                    "headers": {"Content-Type": "application/x-www-form-urlencoded"},
+                },
+            )
 
             response = await client.post(
                 token_url,
@@ -392,30 +392,37 @@ async def debug_oauth_flow(
             )
 
             # Step 3: Response received
-            debugger.log_step("3. Response Received", {
-                "status_code": response.status_code,
-                "headers": dict(response.headers)
-            })
+            debugger.log_step(
+                "3. Response Received",
+                {"status_code": response.status_code, "headers": dict(response.headers)},
+            )
 
             response.raise_for_status()
             data = response.json()
 
             # Step 4: Token extracted
             if "access_token" not in data:
-                debugger.log_step("4. Token Extraction Failed", {
-                    "error": "No access_token found in response",
-                    "response_keys": list(data.keys())
-                }, success=False)
+                debugger.log_step(
+                    "4. Token Extraction Failed",
+                    {
+                        "error": "No access_token found in response",
+                        "response_keys": list(data.keys()),
+                    },
+                    success=False,
+                )
                 raise Exception("No access_token found in OAuth response")
 
             token = data["access_token"]
-            debugger.log_step("4. Token Extracted", {
-                "token_length": len(token),
-                "token_preview": token[:20] + "..." if len(token) > 20 else token,
-                "expires_in": data.get("expires_in", "unknown"),
-                "scope": data.get("scope", "unknown"),
-                "token_type": data.get("token_type", "unknown")
-            }, success=True)
+            debugger.log_step(
+                "4. Token Extracted",
+                {
+                    "access_token": token,
+                    "expires_in": data.get("expires_in", "unknown"),
+                    "scope": data.get("scope", "unknown"),
+                    "token_type": data.get("token_type", "unknown"),
+                },
+                success=True,
+            )
 
             return token
 
@@ -431,10 +438,11 @@ async def debug_oauth_flow(
         debugger.log_step("ERROR: HTTP Request Failed", error_data, success=False)
         raise
     except Exception as e:
-        debugger.log_step("ERROR: Unexpected Error", {
-            "error": str(e),
-            "error_type": type(e).__name__
-        }, success=False)
+        debugger.log_step(
+            "ERROR: Unexpected Error",
+            {"error": str(e), "error_type": type(e).__name__},
+            success=False,
+        )
         raise
 
 
@@ -442,7 +450,8 @@ async def debug_jwt_flow(
     api_url: str,
     api_token: str,
     api_secret: str,
-    debugger: AuthDebugger | None = None
+    debugger: AuthDebugger | None = None,
+    insecure: bool = False,
 ) -> str:
     """Debug JWT dynamic token fetch flow.
 
@@ -451,6 +460,7 @@ async def debug_jwt_flow(
         api_token: API token for authentication
         api_secret: API secret for authentication
         debugger: Optional AuthDebugger instance
+        insecure: Skip SSL certificate verification
 
     Returns:
         JWT access token
@@ -469,31 +479,28 @@ async def debug_jwt_flow(
     debugger.log_step("1. JWT Request Prepared", request_data)
 
     try:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(verify=not insecure) as client:
             # Step 2: Send request
-            debugger.log_step("2. Sending POST to JWT Endpoint", {
-                "url": api_url,
-                "headers": {
-                    "Content-Type": "application/json",
-                    "Accept": "application/json"
-                }
-            })
+            debugger.log_step(
+                "2. Sending POST to JWT Endpoint",
+                {
+                    "url": api_url,
+                    "headers": {"Content-Type": "application/json", "Accept": "application/json"},
+                },
+            )
 
             response = await client.post(
                 api_url,
-                headers={
-                    "Content-Type": "application/json",
-                    "Accept": "application/json"
-                },
+                headers={"Content-Type": "application/json", "Accept": "application/json"},
                 json=request_data,
                 timeout=10.0,
             )
 
             # Step 3: Response received
-            debugger.log_step("3. Response Received", {
-                "status_code": response.status_code,
-                "headers": dict(response.headers)
-            })
+            debugger.log_step(
+                "3. Response Received",
+                {"status_code": response.status_code, "headers": dict(response.headers)},
+            )
 
             response.raise_for_status()
             data = response.json()
@@ -507,16 +514,23 @@ async def debug_jwt_flow(
                 token = data["access_token"]
 
             if not token:
-                debugger.log_step("4. Token Extraction Failed", {
-                    "error": "No access_token found in response",
-                    "response_keys": list(data.keys())
-                }, success=False)
+                debugger.log_step(
+                    "4. Token Extraction Failed",
+                    {
+                        "error": "No access_token found in response",
+                        "response_keys": list(data.keys()),
+                    },
+                    success=False,
+                )
                 raise Exception("No access_token found in JWT response")
 
-            debugger.log_step("4. Token Extracted", {
-                "token_length": len(token),
-                "token_preview": token[:20] + "..." if len(token) > 20 else token,
-            }, success=True)
+            debugger.log_step(
+                "4. Token Extracted",
+                {
+                    "access_token": token,
+                },
+                success=True,
+            )
 
             return token
 
@@ -532,29 +546,169 @@ async def debug_jwt_flow(
         debugger.log_step("ERROR: HTTP Request Failed", error_data, success=False)
         raise
     except Exception as e:
-        debugger.log_step("ERROR: Unexpected Error", {
-            "error": str(e),
-            "error_type": type(e).__name__
-        }, success=False)
+        debugger.log_step(
+            "ERROR: Unexpected Error",
+            {"error": str(e), "error_type": type(e).__name__},
+            success=False,
+        )
         raise
 
 
-def debug_bearer_token(token: str, debugger: AuthDebugger | None = None) -> str:
-    """Debug bearer token authentication.
+async def debug_bearer_token(
+    token: str, mcp_url: str | None = None, debugger: AuthDebugger | None = None
+) -> str:
+    """Debug bearer token authentication by testing against MCP endpoint.
 
     Args:
         token: Bearer token
+        mcp_url: MCP endpoint URL to test against
         debugger: Optional AuthDebugger instance
 
     Returns:
         The bearer token
+
+    Raises:
+        Exception: If token validation fails
     """
     if debugger is None:
         debugger = AuthDebugger(enabled=False)
 
-    debugger.log_step("1. Bearer Token Validated", {
-        "token_length": len(token),
-        "token_preview": token[:20] + "..." if len(token) > 20 else token,
-    }, success=True)
+    debugger.log_step(
+        "1. Bearer Token Provided",
+        {
+            "access_token": token,
+        },
+        success=True,
+    )
 
-    return token
+    if not mcp_url:
+        debugger.log_step(
+            "2. No MCP URL provided",
+            {
+                "warning": "Cannot validate token without MCP URL",
+            },
+            success=True,
+        )
+        return token
+
+    # Test the token against MCP endpoint
+    try:
+        debugger.log_step(
+            "2. Testing token against MCP endpoint",
+            {
+                "mcp_url": mcp_url,
+            },
+            success=True,
+        )
+
+        async with httpx.AsyncClient() as client:
+            # Send tools/list request to MCP
+            response = await client.post(
+                mcp_url,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                    "Accept": "application/json, text/event-stream",
+                },
+                json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
+                timeout=10.0,
+            )
+
+            debugger.log_step(
+                "3. Response Received",
+                {
+                    "status_code": response.status_code,
+                    "headers": dict(response.headers),
+                },
+                success=response.status_code == 200,
+            )
+
+            if response.status_code == 401:
+                debugger.log_step(
+                    "4. Token Rejected",
+                    {
+                        "error": "Unauthorized - token is invalid or expired",
+                        "response_body": response.text[:500],
+                    },
+                    success=False,
+                )
+                raise Exception("Bearer token rejected by MCP server (401 Unauthorized)")
+
+            if response.status_code != 200:
+                debugger.log_step(
+                    "4. Request Failed",
+                    {
+                        "error": f"HTTP {response.status_code}",
+                        "response_body": response.text[:500],
+                    },
+                    success=False,
+                )
+                raise Exception(f"MCP request failed with status {response.status_code}")
+
+            # Parse response - handle both JSON and SSE formats
+            content_type = response.headers.get("content-type", "")
+            response_text = response.text
+
+            if "text/event-stream" in content_type:
+                # SSE format - parse the data lines
+                tools_count = 0
+                for line in response_text.split("\n"):
+                    if line.startswith("data:"):
+                        try:
+                            import json
+
+                            data = json.loads(line[5:].strip())
+                            if "result" in data and "tools" in data["result"]:
+                                tools_count = len(data["result"]["tools"])
+                                break
+                        except json.JSONDecodeError:
+                            pass
+
+                debugger.log_step(
+                    "4. Token Validated Successfully",
+                    {
+                        "tools_available": tools_count,
+                        "response_format": "SSE",
+                        "response": response_text,
+                    },
+                    success=True,
+                )
+            else:
+                # JSON format
+                data = response.json()
+                tools_count = len(data.get("result", {}).get("tools", []))
+
+                debugger.log_step(
+                    "4. Token Validated Successfully",
+                    {
+                        "tools_available": tools_count,
+                        "response_format": "JSON",
+                        "response": data,
+                    },
+                    success=True,
+                )
+
+            return token
+
+    except httpx.HTTPError as e:
+        debugger.log_step(
+            "ERROR: HTTP Request Failed",
+            {
+                "error": str(e),
+                "error_type": type(e).__name__,
+            },
+            success=False,
+        )
+        raise
+    except Exception as e:
+        if "Bearer token rejected" in str(e) or "MCP request failed" in str(e):
+            raise
+        debugger.log_step(
+            "ERROR: Unexpected Error",
+            {
+                "error": str(e),
+                "error_type": type(e).__name__,
+            },
+            success=False,
+        )
+        raise

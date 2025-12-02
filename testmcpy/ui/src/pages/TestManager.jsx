@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Plus,
   Play,
@@ -12,10 +12,53 @@ import {
   Folder,
   ChevronRight,
   ChevronDown,
+  Loader2,
 } from 'lucide-react'
 import Editor from '@monaco-editor/react'
 import TestStatusIndicator from '../components/TestStatusIndicator'
 import TestResultPanel from '../components/TestResultPanel'
+
+// Parse YAML content to find test locations (line numbers)
+function parseTestLocations(content) {
+  const lines = content.split('\n')
+  const tests = []
+  let inTestsArray = false
+  let currentIndent = 0
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    const trimmed = line.trim()
+
+    // Detect start of tests array
+    if (trimmed === 'tests:') {
+      inTestsArray = true
+      currentIndent = line.indexOf('tests:')
+      continue
+    }
+
+    if (inTestsArray) {
+      // Check for test item (starts with "- name:")
+      const match = line.match(/^(\s*)- name:\s*["']?([^"'\n]+)["']?/)
+      if (match) {
+        const indent = match[1].length
+        // Make sure it's at the right indentation level (inside tests array)
+        if (indent > currentIndent) {
+          tests.push({
+            name: match[2].trim(),
+            lineNumber: i + 1, // Monaco uses 1-based line numbers
+          })
+        }
+      }
+
+      // Check if we've left the tests array (another top-level key)
+      if (trimmed && !trimmed.startsWith('-') && !trimmed.startsWith('#') && trimmed.includes(':') && !line.startsWith(' ')) {
+        inTestsArray = false
+      }
+    }
+  }
+
+  return tests
+}
 
 function TestManager({ selectedProfiles = [] }) {
   const [testData, setTestData] = useState({ folders: {}, files: [] })
@@ -27,6 +70,12 @@ function TestManager({ selectedProfiles = [] }) {
   const [showNewFileDialog, setShowNewFileDialog] = useState(false)
   const [testResults, setTestResults] = useState(null)
   const [running, setRunning] = useState(false)
+  const [runningTestName, setRunningTestName] = useState(null)
+  const [testLocations, setTestLocations] = useState([])
+  const [testStatuses, setTestStatuses] = useState({}) // { testName: 'idle' | 'running' | 'passed' | 'failed' }
+  const editorRef = useRef(null)
+  const monacoRef = useRef(null)
+  const testLocationsRef = useRef([]) // Ref to avoid stale closure in click handler
   const [runningTests, setRunningTests] = useState({
     current: null,
     total: 0,
@@ -142,6 +191,221 @@ function TestManager({ selectedProfiles = [] }) {
     return {
       model: defaultProvider.model || 'claude-sonnet-4-5',
       provider: defaultProvider.provider || 'anthropic'
+    }
+  }
+
+  // Parse test locations when file content changes
+  useEffect(() => {
+    if (fileContent) {
+      const locations = parseTestLocations(fileContent)
+      setTestLocations(locations)
+      testLocationsRef.current = locations // Keep ref in sync
+      // Reset test statuses when content changes
+      const initialStatuses = {}
+      locations.forEach(t => initialStatuses[t.name] = 'idle')
+      setTestStatuses(initialStatuses)
+    } else {
+      setTestLocations([])
+      testLocationsRef.current = []
+      setTestStatuses({})
+    }
+  }, [fileContent])
+
+  // Update editor decorations when test statuses change
+  const updateEditorDecorations = useCallback(() => {
+    if (!editorRef.current || !monacoRef.current) return
+    if (testLocations.length === 0) return
+
+    const editor = editorRef.current
+    const monaco = monacoRef.current
+    const decorations = []
+
+    console.log('Updating decorations for tests:', testLocations.map(t => t.name))
+
+    testLocations.forEach(test => {
+      const status = testStatuses[test.name] || 'idle'
+      let className = ''
+      let glyphClassName = ''
+
+      switch (status) {
+        case 'running':
+          className = 'test-line-running'
+          glyphClassName = 'test-glyph-running'
+          break
+        case 'passed':
+          className = 'test-line-passed'
+          glyphClassName = 'test-glyph-passed'
+          break
+        case 'failed':
+          className = 'test-line-failed'
+          glyphClassName = 'test-glyph-failed'
+          break
+        default:
+          className = 'test-line-idle'
+          glyphClassName = 'test-glyph-idle'
+      }
+
+      decorations.push({
+        range: new monaco.Range(test.lineNumber, 1, test.lineNumber, 1),
+        options: {
+          isWholeLine: true,
+          className: className,
+          glyphMarginClassName: glyphClassName,
+          glyphMarginHoverMessage: { value: `Run test: ${test.name}` },
+        }
+      })
+    })
+
+    // Store decoration IDs for later removal
+    const ids = editor.deltaDecorations(
+      editor._testDecorationIds || [],
+      decorations
+    )
+    editor._testDecorationIds = ids
+  }, [testLocations, testStatuses])
+
+  // Update decorations when statuses or locations change
+  useEffect(() => {
+    updateEditorDecorations()
+  }, [testStatuses, testLocations, updateEditorDecorations])
+
+  // Handle editor mount
+  const handleEditorDidMount = (editor, monaco) => {
+    editorRef.current = editor
+    monacoRef.current = monaco
+
+    // Add custom CSS for test decorations
+    const styleEl = document.createElement('style')
+    styleEl.textContent = `
+      .test-line-idle { background: transparent; }
+      .test-line-running { background: rgba(234, 179, 8, 0.15) !important; }
+      .test-line-passed { background: rgba(34, 197, 94, 0.15) !important; }
+      .test-line-failed { background: rgba(239, 68, 68, 0.15) !important; }
+
+      .test-glyph-idle::before {
+        content: '\\25B6';
+        color: #6b7280;
+        font-size: 10px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+      }
+      .test-glyph-idle:hover::before { color: #22c55e; }
+      .test-glyph-running::before {
+        content: '';
+        width: 10px;
+        height: 10px;
+        border: 2px solid #eab308;
+        border-top-color: transparent;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: auto;
+      }
+      .test-glyph-passed::before {
+        content: '\\2713';
+        color: #22c55e;
+        font-size: 12px;
+        font-weight: bold;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+      }
+      .test-glyph-failed::before {
+        content: '\\2717';
+        color: #ef4444;
+        font-size: 12px;
+        font-weight: bold;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+    `
+    document.head.appendChild(styleEl)
+
+    // Handle click on glyph margin to run individual test
+    editor.onMouseDown((e) => {
+      if (e.target.type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
+        const lineNumber = e.target.position.lineNumber
+        // Use ref to avoid stale closure
+        const test = testLocationsRef.current.find(t => t.lineNumber === lineNumber)
+        if (test) {
+          runSingleTest(test.name)
+        }
+      }
+    })
+
+    // Initial decoration update
+    setTimeout(updateEditorDecorations, 100)
+  }
+
+  // Run a single test by name
+  const runSingleTest = async (testName) => {
+    if (!selectedFile || running) return
+
+    setRunning(true)
+    setRunningTestName(testName)
+    setTestStatuses(prev => ({ ...prev, [testName]: 'running' }))
+
+    try {
+      const llmConfig = getLlmConfig()
+      const res = await fetch('/api/tests/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          test_path: selectedFile.path,
+          model: llmConfig.model,
+          provider: llmConfig.provider,
+          profile: selectedMcpProfile,
+          test_name: testName, // Run only this test
+        }),
+      })
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ detail: 'Unknown error' }))
+        throw new Error(errorData.detail || `HTTP ${res.status}`)
+      }
+
+      const data = await res.json()
+
+      // Update status based on result
+      const testResult = data.results?.find(r => r.test_name === testName)
+      if (testResult) {
+        setTestStatuses(prev => ({
+          ...prev,
+          [testName]: testResult.passed ? 'passed' : 'failed'
+        }))
+      }
+
+      // Merge with existing results or set new results
+      setTestResults(prev => {
+        if (!prev) return data
+        // Merge results
+        const existingResults = prev.results.filter(r => r.test_name !== testName)
+        return {
+          ...data,
+          results: [...existingResults, ...(data.results || [])],
+          summary: {
+            total: existingResults.length + (data.results?.length || 0),
+            passed: existingResults.filter(r => r.passed).length + (data.summary?.passed || 0),
+            failed: existingResults.filter(r => !r.passed).length + (data.summary?.failed || 0),
+            total_cost: (prev.summary?.total_cost || 0) + (data.summary?.total_cost || 0)
+          }
+        }
+      })
+    } catch (error) {
+      console.error('Failed to run test:', error)
+      setTestStatuses(prev => ({ ...prev, [testName]: 'failed' }))
+    } finally {
+      setRunning(false)
+      setRunningTestName(null)
     }
   }
 
@@ -266,7 +530,7 @@ tests:
     setRunning(true)
     setTestResults(null)
 
-    // Initialize running tests state
+    // Initialize running tests state and set all tests to running
     const totalTests = selectedFile.test_count || 1
     setRunningTests({
       current: 'Initializing...',
@@ -274,6 +538,11 @@ tests:
       completed: 0,
       status: 'running'
     })
+
+    // Mark all tests as running
+    const runningStatuses = {}
+    testLocations.forEach(t => runningStatuses[t.name] = 'running')
+    setTestStatuses(runningStatuses)
 
     try {
       const llmConfig = getLlmConfig()
@@ -284,6 +553,7 @@ tests:
           test_path: selectedFile.path,
           model: llmConfig.model,
           provider: llmConfig.provider,
+          profile: selectedMcpProfile,
         }),
       })
 
@@ -295,6 +565,15 @@ tests:
       const data = await res.json()
       console.log('Test results received:', data)
       setTestResults(data)
+
+      // Update test statuses based on results
+      if (data.results) {
+        const newStatuses = {}
+        data.results.forEach(result => {
+          newStatuses[result.test_name] = result.passed ? 'passed' : 'failed'
+        })
+        setTestStatuses(prev => ({ ...prev, ...newStatuses }))
+      }
     } catch (error) {
       console.error('Failed to run tests:', error)
       setTestResults({
@@ -307,6 +586,10 @@ tests:
         results: [],
         error: error.message
       })
+      // Mark all tests as failed on error
+      const failedStatuses = {}
+      testLocations.forEach(t => failedStatuses[t.name] = 'failed')
+      setTestStatuses(failedStatuses)
       alert(`Failed to run tests: ${error.message}`)
     } finally {
       setRunning(false)
@@ -368,14 +651,14 @@ tests:
           {/* Test Profile Selector */}
           <div className="flex flex-col gap-1">
             <label className="text-xs font-medium text-text-tertiary uppercase tracking-wide">
-              Test Config
+              Test Environment
             </label>
             <select
               value={selectedTestProfile || ''}
               onChange={(e) => handleTestProfileChange(e.target.value)}
               className="input text-sm"
             >
-              {!selectedTestProfile && <option value="">Select config...</option>}
+              {!selectedTestProfile && <option value="">Select environment...</option>}
               {testProfiles.map(profile => {
                 const defaultConfig = profile.test_configs?.find(c => c.default) || profile.test_configs?.[0]
                 return (
@@ -619,6 +902,7 @@ tests:
                   theme="vs-dark"
                   value={fileContent}
                   onChange={(value) => setFileContent(value || '')}
+                  onMount={handleEditorDidMount}
                   options={{
                     readOnly: !editMode,
                     minimap: { enabled: false },
@@ -626,6 +910,9 @@ tests:
                     lineNumbers: 'on',
                     scrollBeyondLastLine: false,
                     automaticLayout: true,
+                    glyphMargin: true,
+                    folding: true,
+                    lineDecorationsWidth: 5,
                   }}
                 />
               </div>

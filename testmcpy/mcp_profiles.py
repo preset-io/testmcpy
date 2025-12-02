@@ -32,6 +32,8 @@ class AuthConfig:
     client_secret: str | None = None
     token_url: str | None = None
     scopes: list[str] = field(default_factory=list)
+    # SSL options
+    insecure: bool = False  # Disable SSL verification for self-signed certificates
 
     def to_dict(self) -> dict[str, Any]:
         """Convert AuthConfig to dict for MCPClient auth parameter.
@@ -59,6 +61,10 @@ class AuthConfig:
                 auth_dict["token_url"] = self.token_url
             if self.scopes:
                 auth_dict["scopes"] = self.scopes
+
+        # Include SSL options if configured
+        if self.insecure:
+            auth_dict["insecure"] = self.insecure
 
         return auth_dict
 
@@ -209,6 +215,8 @@ class MCPProfileConfig:
             client_secret=auth_data.get("client_secret"),
             token_url=auth_data.get("token_url"),
             scopes=auth_data.get("scopes", []),
+            # SSL options
+            insecure=auth_data.get("insecure", False),
         )
 
     def _parse_profile(self, profile_id: str, data: dict[str, Any]) -> MCPProfile:

@@ -129,6 +129,33 @@ class SmokeTestRunner:
             "result_type": type(result.content).__name__,
         }
 
+    def _is_tool_testable(self, tool_schema: dict) -> bool:
+        """Check if a tool can be tested with simple parameter generation.
+
+        Returns False if the tool has complex nested object parameters that
+        would require sophisticated parameter generation to satisfy validation.
+        """
+        input_schema = tool_schema.get("inputSchema", {})
+        properties = input_schema.get("properties", {})
+        required = input_schema.get("required", [])
+
+        for param_name in required:
+            param_def = properties.get(param_name, {})
+            # Check if this is a complex object with $ref
+            if "$ref" in param_def:
+                # Has $ref reference - too complex for smoke test
+                return False
+            # Check if it's an object type (which might have nested requirements)
+            if param_def.get("type") == "object":
+                # Check if it has properties with required fields
+                nested_props = param_def.get("properties", {})
+                nested_required = param_def.get("required", [])
+                if nested_required or nested_props:
+                    # Has nested structure - too complex
+                    return False
+
+        return True
+
     def _generate_reasonable_params(self, tool_schema: dict) -> dict:
         """Generate reasonable parameter values based on tool schema."""
         params = {}
@@ -208,13 +235,20 @@ class SmokeTestRunner:
 
         # Test 3+: Test individual tools with reasonable parameters
         tools = await self.client.list_tools()
-        tools_to_test = tools[:max_tools_to_test]  # Limit number of tools tested
 
-        for tool in tools_to_test:
+        # Filter to testable tools only
+        testable_tools = []
+        for tool in tools:
             tool_schema = {
-                "inputSchema": tool.inputSchema if hasattr(tool, "inputSchema") else {}
+                "inputSchema": tool.input_schema if hasattr(tool, "input_schema") else {}
             }
+            if self._is_tool_testable(tool_schema):
+                testable_tools.append((tool, tool_schema))
 
+        # Limit number of tools tested
+        tools_to_test = testable_tools[:max_tools_to_test]
+
+        for tool, tool_schema in tools_to_test:
             result = await self._run_test(
                 f"Tool: {tool.name}",
                 lambda t=tool, s=tool_schema: self.test_tool_with_reasonable_params(

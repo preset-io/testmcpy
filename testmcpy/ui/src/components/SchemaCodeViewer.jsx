@@ -7,22 +7,22 @@ import { FORMATS } from '../utils/formatConverters'
  * IDE-like code viewer with syntax highlighting and multi-format export
  * Displays JSON Schema parameters in various developer-friendly formats
  */
-function SchemaCodeViewer({ schema, toolName = 'tool' }) {
+function SchemaCodeViewer({ schema, toolName = 'tool', profile = null }) {
   const [selectedFormat, setSelectedFormat] = useState('json')
   const [code, setCode] = useState('')
   const [copied, setCopied] = useState(false)
   const [useActualValues, setUseActualValues] = useState(false)
 
-  // Update code when format, schema, or useActualValues changes
+  // Update code when format, schema, useActualValues, or profile changes
   useEffect(() => {
     const format = FORMATS.find(f => f.id === selectedFormat)
     if (format && schema) {
       // If format requires backend, fetch from API
       if (format.useBackend) {
-        fetchCodeFromBackend(format.id, schema, toolName)
-      } else if (selectedFormat === 'curl' && useActualValues) {
-        // For curl with actual values, use backend
-        fetchCodeFromBackend('curl', schema, toolName, true)
+        fetchCodeFromBackend(format.id, schema, toolName, false, profile)
+      } else if (selectedFormat === 'curl' && (useActualValues || profile)) {
+        // For curl with actual values or when profile is available, use backend
+        fetchCodeFromBackend('curl', schema, toolName, true, profile)
       } else {
         // Use frontend converter
         try {
@@ -34,9 +34,9 @@ function SchemaCodeViewer({ schema, toolName = 'tool' }) {
         }
       }
     }
-  }, [selectedFormat, schema, toolName, useActualValues])
+  }, [selectedFormat, schema, toolName, useActualValues, profile])
 
-  const fetchCodeFromBackend = async (formatId, schema, toolName, withActualValues = false) => {
+  const fetchCodeFromBackend = async (formatId, schema, toolName, withActualValues = false, profileId = null) => {
     try {
       setCode('// Loading...')
 
@@ -63,7 +63,8 @@ function SchemaCodeViewer({ schema, toolName = 'tool' }) {
           tool_name: toolName,
           format: formatId,
           mcp_url: mcpUrl,
-          auth_token: authToken
+          auth_token: authToken,
+          profile: profileId
         })
       })
 
