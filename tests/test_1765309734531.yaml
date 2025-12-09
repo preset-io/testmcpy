@@ -1,0 +1,34 @@
+version: "1.0"
+tests:
+  - name: test_1765309734531
+    prompt: "I have a set of questions about the data in this `preset sdx` MCP. Can you answer all these questions?
+
+- do we have a dataset about video game sales in this superset instance, what's the exact name of that dataset?
+  - how large is the dataset? provide an exact row count!
+  - what time period does it cover?
+  - what's the most sold video game of all time across categories according to this dataset?
+  - how many charts use this dataset, which ones?
+  - how many dashboard, by association use this dataset?
+  - who's the owner of the dataset? 
+- can you find the dataset that contains the world's population, and compute the 10 year from rate of Canada from 2005-2015? Your answer should be the exact number as a percentage, formatted like 23%, no decimal
+- which user created the most charts in this superset instance?
+- which user created the most charts? how many charts did they create?
+
+Please respond by repeating the question, and providing a direct answer. If you can't figure it out given the tools exposed to you, explain why you couldn't find it and a one-liner about what your tried."
+    evaluators:
+      - name: execution_successful
+      - name: was_mcp_tool_called
+        args:
+          tool_name: "list_datasets"
+      - name: tool_call_count
+        args:
+          expected_count: 3
+      - name: tool_called_with_parameters
+        args:
+          tool_name: "list_datasets"
+          parameters:
+            request: "{\"search\":\"video game\",\"page_size\":20}"
+          partial_match: true
+      - name: final_answer_contains
+        args:
+          expected_content: "I'll help you answer all these questions about the"

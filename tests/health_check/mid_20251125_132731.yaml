@@ -1,0 +1,63 @@
+version: "1.0"
+tests:
+  - name: test_basic_health_check
+    prompt: "Is the MCP service running? Please check the health status."
+    evaluators:
+      - name: execution_successful
+      - name: was_mcp_tool_called
+        args:
+          tool_name: "health_check"
+      - name: tool_response_contains
+        args:
+          content: "healthy"
+
+  - name: test_service_connectivity
+    prompt: "Can you verify that the Superset MCP service is up and responding? I need to confirm connectivity."
+    evaluators:
+      - name: execution_successful
+      - name: was_mcp_tool_called
+        args:
+          tool_name: "health_check"
+      - name: tool_response_contains
+        args:
+          content: "status"
+
+  - name: test_system_information_retrieval
+    prompt: "Get me the current system information and confirm what Python version and platform this service is running on."
+    evaluators:
+      - name: execution_successful
+      - name: was_mcp_tool_called
+        args:
+          tool_name: "health_check"
+      - name: tool_response_contains
+        args:
+          content: "python_version"
+      - name: tool_response_contains
+        args:
+          content: "platform"
+
+  - name: test_service_version_check
+    prompt: "What version of Superset is running in this MCP service? Please provide version information."
+    evaluators:
+      - name: execution_successful
+      - name: was_mcp_tool_called
+        args:
+          tool_name: "health_check"
+      - name: tool_response_contains
+        args:
+          content: "version"
+      - name: tool_response_contains
+        args:
+          content: "service"
+
+  - name: test_repeated_health_monitoring
+    prompt: "Check the health status of the service. I want to monitor if it's running consistently. Can you do that twice to ensure stability?"
+    evaluators:
+      - name: execution_successful
+      - name: was_mcp_tool_called
+        args:
+          tool_name: "health_check"
+      - name: tool_response_contains
+        args:
+          content: "timestamp"
+      - name: tool_response_json_valid
