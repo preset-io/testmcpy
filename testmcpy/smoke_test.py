@@ -8,7 +8,7 @@ on MCP servers to verify they're working correctly.
 import asyncio
 import json
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from testmcpy.src.mcp_client import MCPClient, MCPToolCall
@@ -251,9 +251,7 @@ class SmokeTestRunner:
         for tool, tool_schema in tools_to_test:
             result = await self._run_test(
                 f"Tool: {tool.name}",
-                lambda t=tool, s=tool_schema: self.test_tool_with_reasonable_params(
-                    t.name, s
-                ),
+                lambda t=tool, s=tool_schema: self.test_tool_with_reasonable_params(t.name, s),
             )
             self.results.append(result)
 
@@ -267,7 +265,7 @@ class SmokeTestRunner:
 
         return SmokeTestReport(
             server_url=self.client.base_url,
-            timestamp=datetime.utcnow().isoformat() + "Z",
+            timestamp=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             total_tests=len(self.results),
             passed=passed,
             failed=failed,

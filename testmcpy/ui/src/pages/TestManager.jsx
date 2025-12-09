@@ -17,6 +17,7 @@ import {
 import Editor from '@monaco-editor/react'
 import TestStatusIndicator from '../components/TestStatusIndicator'
 import TestResultPanel from '../components/TestResultPanel'
+import { useKeyboardShortcuts, useAnnounce } from '../hooks/useKeyboardShortcuts'
 
 // Parse YAML content to find test locations (line numbers)
 function parseTestLocations(content) {
@@ -95,6 +96,45 @@ function TestManager({ selectedProfiles = [] }) {
     loadMcpProfiles()
     loadLlmProfiles()
   }, [])
+
+  // Screen reader announcements
+  const announce = useAnnounce()
+
+  // Keyboard shortcut handlers
+  const handleRunTestsShortcut = useCallback((e) => {
+    if (selectedFile && !running) {
+      e.preventDefault()
+      runTests()
+      announce('Running tests')
+    }
+  }, [selectedFile, running])
+
+  const handleSaveShortcut = useCallback((e) => {
+    if (editMode && selectedFile) {
+      e.preventDefault()
+      saveTestFile()
+      announce('File saved')
+    }
+  }, [editMode, selectedFile])
+
+  const handleEscapeShortcut = useCallback((e) => {
+    if (showNewFileDialog) {
+      e.preventDefault()
+      setShowNewFileDialog(false)
+      setNewFileName('')
+    } else if (editMode) {
+      e.preventDefault()
+      setEditMode(false)
+      setFileContent(selectedFile?.content || '')
+    }
+  }, [showNewFileDialog, editMode, selectedFile])
+
+  // Register keyboard shortcuts
+  useKeyboardShortcuts({
+    'ctrl+shift+t': handleRunTestsShortcut,
+    'ctrl+s': handleSaveShortcut,
+    'escape': handleEscapeShortcut,
+  }, true)
 
   // Load previously selected test file after test data is loaded
   useEffect(() => {

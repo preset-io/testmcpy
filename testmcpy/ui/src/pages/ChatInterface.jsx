@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Send, Loader, Wrench, DollarSign, ChevronDown, ChevronRight, CheckCircle, FileText, Plus, Server, Trash2 } from 'lucide-react'
 import ReactJson from '@microlink/react-json-view'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { useKeyboardShortcuts, useAnnounce } from '../hooks/useKeyboardShortcuts'
 
 // JSON viewer component with IDE-like collapsible tree
 function JSONViewer({ data }) {
@@ -276,8 +277,48 @@ function ChatInterface({ selectedProfiles = [], selectedLlmProfile, llmProfiles 
     }
   }
 
+  // Screen reader announcements
+  const announce = useAnnounce()
+
+  // Announce new messages for screen readers
+  useEffect(() => {
+    if (messages.length > 0) {
+      const lastMessage = messages[messages.length - 1]
+      if (lastMessage.role === 'assistant') {
+        const preview = lastMessage.content.substring(0, 100)
+        announce(`New response: ${preview}${lastMessage.content.length > 100 ? '...' : ''}`)
+      }
+    }
+  }, [messages, announce])
+
+  // Keyboard shortcut handlers
+  const handleSendShortcut = useCallback((e) => {
+    e.preventDefault()
+    sendMessage()
+  }, [input, loading])
+
+  const handleClearShortcut = useCallback((e) => {
+    e.preventDefault()
+    if (messages.length > 0 && window.confirm('Clear chat history?')) {
+      clearChatHistory()
+      announce('Chat history cleared')
+    }
+  }, [messages, announce])
+
+  // Register keyboard shortcuts
+  useKeyboardShortcuts({
+    'ctrl+enter': handleSendShortcut,
+    'ctrl+shift+c': handleClearShortcut,
+  }, !loading)
+
   const handleKeyPress = (e) => {
+    // Enter without shift sends message
     if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      sendMessage()
+    }
+    // Cmd/Ctrl + Enter also sends message
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault()
       sendMessage()
     }
@@ -523,7 +564,7 @@ ${evaluators}
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-auto p-4 bg-background-subtle">
+      <div className="flex-1 overflow-auto p-4 bg-background-subtle" role="log" aria-live="polite" aria-label="Chat messages">
         {messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
@@ -868,25 +909,33 @@ ${evaluators}
       </div>
 
       {/* Input */}
-      <div className="p-3 border-t border-border bg-surface-elevated shadow-strong">
+      <div className="p-3 border-t border-border bg-surface-elevated shadow-strong" role="form" aria-label="Chat input">
         <div className="max-w-4xl mx-auto flex gap-4">
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={handleTextareaChange}
-            onKeyPress={handleKeyPress}
-            placeholder="Type your message... (Shift+Enter for new line)"
-            className="input flex-1 resize-none text-base overflow-y-auto"
-            rows={1}
-            disabled={loading}
-          />
+          <div className="flex-1 relative">
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={handleTextareaChange}
+              onKeyPress={handleKeyPress}
+              placeholder="Type your message..."
+              className="input w-full resize-none text-base overflow-y-auto pr-24"
+              rows={1}
+              disabled={loading}
+              aria-label="Message input"
+              aria-describedby="keyboard-hint"
+            />
+            <span id="keyboard-hint" className="absolute right-3 bottom-2 text-xs text-text-disabled pointer-events-none">
+              {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+Enter
+            </span>
+          </div>
           <button
             onClick={sendMessage}
             disabled={loading || !input.trim()}
             className="btn btn-primary h-fit self-end px-6"
+            aria-label={loading ? 'Sending message...' : 'Send message'}
           >
-            <Send size={20} />
-            <span>Send</span>
+            {loading ? <Loader size={20} className="animate-spin" /> : <Send size={20} />}
+            <span>{loading ? 'Sending...' : 'Send'}</span>
           </button>
         </div>
       </div>

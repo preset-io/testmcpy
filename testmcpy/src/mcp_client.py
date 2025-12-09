@@ -14,10 +14,30 @@ from typing import Any
 
 import httpx
 from fastmcp import Client
+from fastmcp.client.transports import StreamableHttpTransport
 from mcp.types import Tool as MCPToolDef
 
 from testmcpy.auth_debugger import AuthDebugger
 from testmcpy.config import get_config
+
+
+def create_insecure_httpx_factory():
+    """Create an httpx client factory that skips SSL verification."""
+
+    def factory(
+        headers: dict[str, str] | None = None,
+        timeout: httpx.Timeout | None = None,
+        auth: httpx.Auth | None = None,
+    ) -> httpx.AsyncClient:
+        return httpx.AsyncClient(
+            headers=headers,
+            timeout=timeout,
+            auth=auth,
+            verify=False,  # Skip SSL verification
+        )
+
+    return factory
+
 
 # Suppress MCP notification validation warnings
 logging.getLogger("root").setLevel(logging.ERROR)
@@ -48,7 +68,9 @@ class MCPConnectionError(MCPError):
     pass
 
 
-async def retry_with_backoff(func, *args, max_retries=MAX_RETRIES, timeout=DEFAULT_TIMEOUT, **kwargs):
+async def retry_with_backoff(
+    func, *args, max_retries=MAX_RETRIES, timeout=DEFAULT_TIMEOUT, **kwargs
+):
     """
     Retry an async function with exponential backoff.
 
@@ -73,14 +95,16 @@ async def retry_with_backoff(func, *args, max_retries=MAX_RETRIES, timeout=DEFAU
             # Apply timeout to the operation
             return await asyncio.wait_for(func(*args, **kwargs), timeout=timeout)
         except asyncio.TimeoutError as e:
-            last_exception = MCPTimeoutError(f"Operation timed out after {timeout}s (attempt {attempt + 1}/{max_retries})")
+            last_exception = MCPTimeoutError(
+                f"Operation timed out after {timeout}s (attempt {attempt + 1}/{max_retries})"
+            )
             if attempt < max_retries - 1:
-                delay = RETRY_DELAY * (BACKOFF_FACTOR ** attempt)
+                delay = RETRY_DELAY * (BACKOFF_FACTOR**attempt)
                 await asyncio.sleep(delay)
         except Exception as e:
             last_exception = e
             if attempt < max_retries - 1:
-                delay = RETRY_DELAY * (BACKOFF_FACTOR ** attempt)
+                delay = RETRY_DELAY * (BACKOFF_FACTOR**attempt)
                 await asyncio.sleep(delay)
             else:
                 break
@@ -156,7 +180,12 @@ class MCPClient:
         self.auth: BearerAuth | None = None  # Will be set in initialize()
 
     async def _fetch_jwt_token(
-        self, api_url: str, api_token: str, api_secret: str, debug: bool = False, timeout: float = DEFAULT_TIMEOUT
+        self,
+        api_url: str,
+        api_token: str,
+        api_secret: str,
+        debug: bool = False,
+        timeout: float = DEFAULT_TIMEOUT,
     ) -> str:
         """Fetch JWT token from API.
 
@@ -202,7 +231,7 @@ class MCPClient:
 
             # Check if SSL verification should be disabled
             verify_ssl = True
-            if self.auth_config and self.auth_config.get('insecure', False):
+            if self.auth_config and self.auth_config.get("insecure", False):
                 verify_ssl = False
 
             async with httpx.AsyncClient(verify=verify_ssl) as client:
@@ -210,11 +239,14 @@ class MCPClient:
                     response = await asyncio.wait_for(
                         client.post(
                             api_url,
-                            headers={"Content-Type": "application/json", "Accept": "application/json"},
+                            headers={
+                                "Content-Type": "application/json",
+                                "Accept": "application/json",
+                            },
                             json={"name": api_token, "secret": api_secret},
                             timeout=timeout,
                         ),
-                        timeout=timeout + 5.0  # Give extra buffer for connection
+                        timeout=timeout + 5.0,  # Give extra buffer for connection
                     )
                 except asyncio.TimeoutError:
                     raise MCPTimeoutError(f"JWT token request timed out after {timeout}s")
@@ -254,7 +286,10 @@ class MCPClient:
                 )
 
                 if not debug:
-                    print(f"  [Auth] JWT token fetched successfully (length: {len(token)})", file=sys.stderr)
+                    print(
+                        f"  [Auth] JWT token fetched successfully (length: {len(token)})",
+                        file=sys.stderr,
+                    )
 
                 debugger.summarize()
                 return token
@@ -264,8 +299,12 @@ class MCPClient:
         except httpx.HTTPError as e:
             error_info = {
                 "error": str(e),
-                "status_code": getattr(e.response, "status_code", "N/A") if hasattr(e, "response") else "N/A",
-                "response_body": getattr(e.response, "text", "N/A") if hasattr(e, "response") else "N/A",
+                "status_code": getattr(e.response, "status_code", "N/A")
+                if hasattr(e, "response")
+                else "N/A",
+                "response_body": getattr(e.response, "text", "N/A")
+                if hasattr(e, "response")
+                else "N/A",
             }
             debugger.log_step("ERROR: HTTP Request Failed", error_info, success=False)
             debugger.summarize()
@@ -344,7 +383,7 @@ class MCPClient:
                             headers={"Content-Type": "application/x-www-form-urlencoded"},
                             timeout=timeout,
                         ),
-                        timeout=timeout + 5.0  # Give extra buffer for connection
+                        timeout=timeout + 5.0,  # Give extra buffer for connection
                     )
                 except asyncio.TimeoutError:
                     raise MCPTimeoutError(f"OAuth token request timed out after {timeout}s")
@@ -380,7 +419,10 @@ class MCPClient:
                 )
 
                 if not debug:
-                    print(f"  [Auth] OAuth token fetched successfully (length: {len(token)})", file=sys.stderr)
+                    print(
+                        f"  [Auth] OAuth token fetched successfully (length: {len(token)})",
+                        file=sys.stderr,
+                    )
 
                 debugger.summarize()
                 return token
@@ -390,8 +432,12 @@ class MCPClient:
         except httpx.HTTPError as e:
             error_info = {
                 "error": str(e),
-                "status_code": getattr(e.response, "status_code", "N/A") if hasattr(e, "response") else "N/A",
-                "response_body": getattr(e.response, "text", "N/A") if hasattr(e, "response") else "N/A",
+                "status_code": getattr(e.response, "status_code", "N/A")
+                if hasattr(e, "response")
+                else "N/A",
+                "response_body": getattr(e.response, "text", "N/A")
+                if hasattr(e, "response")
+                else "N/A",
             }
             debugger.log_step("ERROR: HTTP Request Failed", error_info, success=False)
             debugger.summarize()
@@ -401,8 +447,7 @@ class MCPClient:
             debugger.summarize()
             raise MCPError(f"OAuth token fetch error: {e}")
 
-    async def \
-            _setup_auth(self) -> BearerAuth | None:
+    async def _setup_auth(self) -> BearerAuth | None:
         """Set up authentication based on config or provided auth dict.
 
         This method supports multiple authentication types:
@@ -439,20 +484,32 @@ class MCPClient:
                 api_secret = self.auth_config.get("api_secret")
 
                 if not all([api_url, api_token, api_secret]):
-                    raise MCPError("JWT auth requires 'api_url', 'api_token', and 'api_secret' fields")
+                    raise MCPError(
+                        "JWT auth requires 'api_url', 'api_token', and 'api_secret' fields"
+                    )
 
                 print("  [Auth] Using dynamic JWT authentication from parameter", file=sys.stderr)
                 token = await self._fetch_jwt_token(api_url, api_token, api_secret)
                 return BearerAuth(token=token)
 
             elif auth_type == "oauth":
+                oauth_auto_discover = self.auth_config.get("oauth_auto_discover", False)
+
+                if oauth_auto_discover:
+                    # Use RFC 8414 auto-discovery - the fastmcp Client handles this
+                    print("  [Auth] Using OAuth with auto-discovery", file=sys.stderr)
+                    # Return None - let the fastmcp Client handle OAuth discovery
+                    return None
+
                 client_id = self.auth_config.get("client_id")
                 client_secret = self.auth_config.get("client_secret")
                 token_url = self.auth_config.get("token_url")
                 scopes = self.auth_config.get("scopes", [])
 
                 if not all([client_id, client_secret, token_url]):
-                    raise MCPError("OAuth auth requires 'client_id', 'client_secret', and 'token_url' fields")
+                    raise MCPError(
+                        "OAuth auth requires 'client_id', 'client_secret', and 'token_url' fields (or enable oauth_auto_discover)"
+                    )
 
                 print("  [Auth] Using OAuth authentication from parameter", file=sys.stderr)
                 token = await self._fetch_oauth_token(client_id, client_secret, token_url, scopes)
@@ -495,7 +552,21 @@ class MCPClient:
             print(f"  [MCP] Connecting to MCP service at {self.base_url}", file=sys.stderr)
 
             try:
-                self.client = Client(self.base_url, auth=self.auth)
+                # Check if we need to skip SSL verification
+                insecure = self.auth_config.get("insecure", False) if self.auth_config else False
+
+                if insecure:
+                    print("  [MCP] SSL verification disabled (insecure mode)", file=sys.stderr)
+                    # Create transport with insecure httpx factory
+                    transport = StreamableHttpTransport(
+                        url=self.base_url,
+                        auth=self.auth,
+                        httpx_client_factory=create_insecure_httpx_factory(),
+                    )
+                    self.client = Client(transport, auth=self.auth)
+                else:
+                    self.client = Client(self.base_url, auth=self.auth)
+
                 await asyncio.wait_for(self.client.__aenter__(), timeout=timeout)
             except asyncio.TimeoutError:
                 raise MCPTimeoutError(f"MCP client connection timed out after {timeout}s")
@@ -512,7 +583,10 @@ class MCPClient:
                 raise MCPTimeoutError("MCP ping timed out")
             except Exception as e:
                 # Connection established but ping failed - still usable
-                print(f"  [MCP] Warning: Ping failed but connection may still work: {e}", file=sys.stderr)
+                print(
+                    f"  [MCP] Warning: Ping failed but connection may still work: {e}",
+                    file=sys.stderr,
+                )
                 return {"status": "connected_no_ping", "url": self.base_url, "warning": str(e)}
 
         except (MCPTimeoutError, MCPConnectionError):
@@ -523,11 +597,13 @@ class MCPClient:
             if self.client:
                 try:
                     await self.close()
-                except:
-                    pass
+                except Exception:
+                    pass  # Ignore cleanup errors during connection failure
             raise MCPConnectionError(f"Failed to initialize MCP client: {e}")
 
-    async def list_tools(self, force_refresh: bool = False, timeout: float = DEFAULT_TIMEOUT) -> list[MCPTool]:
+    async def list_tools(
+        self, force_refresh: bool = False, timeout: float = DEFAULT_TIMEOUT
+    ) -> list[MCPTool]:
         """List available MCP tools.
 
         Args:
@@ -549,10 +625,7 @@ class MCPClient:
 
         try:
             # Wrap in timeout
-            tools_response = await asyncio.wait_for(
-                self.client.list_tools(),
-                timeout=timeout
-            )
+            tools_response = await asyncio.wait_for(self.client.list_tools(), timeout=timeout)
             tools = []
 
             # Handle different response formats
@@ -584,7 +657,9 @@ class MCPClient:
         except Exception as e:
             raise MCPError(f"Failed to list tools: {e}")
 
-    async def call_tool(self, tool_call: MCPToolCall, timeout: float = DEFAULT_TIMEOUT) -> MCPToolResult:
+    async def call_tool(
+        self, tool_call: MCPToolCall, timeout: float = DEFAULT_TIMEOUT
+    ) -> MCPToolResult:
         """Execute an MCP tool call.
 
         This method never raises exceptions - all errors are returned as MCPToolResult with is_error=True.
@@ -608,8 +683,7 @@ class MCPClient:
         try:
             # Execute with timeout
             result = await asyncio.wait_for(
-                self.client.call_tool(tool_call.name, tool_call.arguments),
-                timeout=timeout
+                self.client.call_tool(tool_call.name, tool_call.arguments), timeout=timeout
             )
 
             return MCPToolResult(
@@ -726,7 +800,7 @@ class MCPClient:
             try:
                 await asyncio.wait_for(
                     self.client.__aexit__(None, None, None),
-                    timeout=5.0  # Don't wait too long on close
+                    timeout=5.0,  # Don't wait too long on close
                 )
             except asyncio.TimeoutError:
                 print("Warning: MCP client close timed out", file=sys.stderr)

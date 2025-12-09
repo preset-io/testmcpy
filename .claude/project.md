@@ -396,22 +396,22 @@ borderRadius: {
 4. ✅ Input area compression (ChatInterface.jsx)
 
 ### Medium Priority (Week 2)
-5. ⚠️ Schema viewer redesign (MCPExplorer.jsx)
-6. ⚠️ Test runner visual status (TestManager.jsx)
-7. ⚠️ Message container fixed width
+5. ✅ Schema viewer redesign (MCPExplorer.jsx) - ParameterCard + TypeBadge components
+6. ✅ Test runner visual status (TestManager.jsx) - TestStatusIndicator component
+7. ✅ Message container fixed width - ChatInterface uses max-w-3xl/max-w-2xl
 
 ### Lower Priority (Week 3)
-8. ⏳ IDE-style test markers
-9. ⏳ Live test output stream
-10. ⏳ Split view test results
+8. ✅ IDE-style test markers - Glyph margin decorations in Monaco editor
+9. ⏳ Live test output stream - Not yet implemented (requires WebSocket/SSE)
+10. ✅ Split view test results - TestResultPanel in sliding bottom panel
 
 ---
 
 ## Component Specifications
 
-### New Components to Create
+### Components Created ✅
 
-#### 1. `ParameterCard.jsx`
+#### 1. `ParameterCard.jsx` ✅ IMPLEMENTED
 ```jsx
 /**
  * Smart parameter display with type visualization
@@ -427,7 +427,7 @@ borderRadius: {
 />
 ```
 
-#### 2. `TypeBadge.jsx`
+#### 2. `TypeBadge.jsx` ✅ IMPLEMENTED
 ```jsx
 /**
  * Visual type indicator with icon and color coding
@@ -436,7 +436,7 @@ borderRadius: {
 <TypeBadge type="array" items="integer" />  // Yellow with "[]"
 ```
 
-#### 3. `TestStatusIndicator.jsx`
+#### 3. `TestStatusIndicator.jsx` ✅ IMPLEMENTED
 ```jsx
 /**
  * Progress bar and status for test execution
@@ -449,7 +449,7 @@ borderRadius: {
 />
 ```
 
-#### 4. `TestResultPanel.jsx`
+#### 4. `TestResultPanel.jsx` ✅ IMPLEMENTED
 ```jsx
 /**
  * Collapsible test result with full details
@@ -523,13 +523,65 @@ Since we can't access the agor repository, here are modern UI patterns to consid
 
 ---
 
+## Remaining Work
+
+### UI Features - COMPLETED ✅
+
+1. ✅ **Live test output stream** - SSE endpoint in `routers/tests.py` with `stream_test_output()`
+2. ✅ **Chat response streaming** - SSE endpoint in `routers/chat.py` with `stream_chat_response()`
+3. ✅ **Keyboard shortcuts** - `hooks/useKeyboardShortcuts.js`:
+   - Cmd/Ctrl+Enter to send chat messages
+   - Ctrl+Shift+C to clear chat
+   - Ctrl+Shift+T to run tests
+   - Ctrl+S to save in edit mode
+   - Escape to close dialogs
+4. ✅ **Accessibility improvements**:
+   - aria-live regions for messages
+   - useAnnounce() hook for screen readers
+   - role="log" on chat messages
+   - aria-label and aria-describedby on inputs
+
+### Backend Refactoring - COMPLETED ✅
+
+1. ✅ **Created modular router structure**:
+   - `server/models.py` - Unified Pydantic models & enums
+   - `server/state.py` - Global state & helper functions
+   - `server/routers/chat.py` - Chat with streaming
+   - `server/routers/auth.py` - Auth debugging
+   - `server/routers/tests.py` - Test running with streaming
+
+2. ✅ **Centralized timeout configuration** - `TimeoutConfig` class in `state.py`:
+   - DEFAULT_HTTP = 30.0
+   - MCP_CONNECT = 10.0
+   - MCP_TOOL_CALL = 60.0
+   - LLM_REQUEST = 120.0
+   - AUTH_DEBUG = 30.0
+   - SMOKE_TEST = 60.0
+
+3. ✅ **Consolidated AuthConfig types** - Single definition in `server/models.py`
+
+### Integration Steps (To Complete)
+
+To use the new routers in the main api.py:
+
+```python
+# In api.py, add:
+from testmcpy.server.routers import chat_router, auth_router, tests_router
+
+# Include routers
+app.include_router(chat_router)
+app.include_router(auth_router)
+app.include_router(tests_router)
+```
+
 ## Next Steps
 
-1. **Review this plan** with team
-2. **Create Figma mockups** for key changes (optional)
-3. **Start with Phase 1** (space optimization)
-4. **Iterate based on feedback**
-5. **Add to README** once stabilized
+1. ~~**Review this plan** with team~~ ✅ Plan reviewed
+2. ~~**Create Figma mockups** for key changes (optional)~~
+3. ~~**Start with Phase 1** (space optimization)~~ ✅ Completed
+4. ~~**Iterate based on feedback**~~ ✅ Phases 1-4 implemented
+5. **Add live streaming** if needed
+6. **Add to README** once stabilized
 
 ---
 
@@ -548,3 +600,288 @@ Since we can't access the agor repository, here are modern UI patterns to consid
 - Current codebase: `/Users/amin/github/preset-io/testmcpy/testmcpy/ui/src/`
 - Tailwind config: `/Users/amin/github/preset-io/testmcpy/testmcpy/ui/tailwind.config.js`
 - Design tokens: `/Users/amin/github/preset-io/testmcpy/testmcpy/ui/src/index.css`
+
+---
+
+# Code Review Findings (December 2025)
+
+## Recent Commit Review (1e6d0dd)
+
+### Summary
+The commit adds OAuth RFC 8414 auto-discovery, improved auth debugging with raw request/response capture, SSL insecure mode for self-signed certificates, and profile-based test running.
+
+### Key Changes Reviewed
+- `testmcpy/auth_debugger.py` - OAuth discovery, raw request/response logging
+- `testmcpy/mcp_profiles.py` - oauth_auto_discover flag, insecure SSL option
+- `testmcpy/server/api.py` - New endpoints for profile auth, auto-discovery support
+- `testmcpy/src/mcp_client.py` - Insecure httpx factory, transport configuration
+- `testmcpy/ui/src/pages/AuthDebugger.jsx` - Auto-discover UI toggle
+
+---
+
+## Python Code Quality Guidelines
+
+### Style Requirements
+
+1. **Line Length**: 100 characters max (configured in pyproject.toml)
+2. **Formatting**: ALWAYS run `ruff format` on changed files before committing
+3. **Imports**: Use absolute imports from `testmcpy.*`
+4. **Type Hints**: Use Python 3.10+ union syntax (`str | None` not `Optional[str]`)
+
+### Pre-Commit Checklist
+
+```bash
+# ALWAYS run before committing Python changes
+ruff format path/to/changed/files.py
+
+# Check for linting issues (but DON'T run on all files)
+ruff check path/to/changed/files.py
+```
+
+---
+
+## Security Best Practices
+
+### Authentication & Secrets
+
+1. **Never log secrets**: The `AuthDebugger._sanitize_data()` properly masks sensitive keys (`client_secret`, `api_secret`, `access_token`)
+2. **SSL Verification**: The `insecure` flag should ONLY be used for development with self-signed certs
+3. **MCP URL Protection**: `MCPURLFilter` class (in `llm_integration.py`) prevents MCP URLs from leaking to external APIs
+4. **Input Validation**: `ProfileCreateRequest` validates names with regex to prevent path traversal
+
+### Credential Handling
+
+```python
+# Good: Mask secrets in logs/display
+sanitized_keys = ["client_secret", "api_secret", "password", "token", "access_token"]
+if key in sanitized_keys:
+    display_value = value[:8] + "..."  # Show only prefix
+
+# Bad: Logging raw credentials
+print(f"Token: {token}")  # Never do this
+```
+
+---
+
+## Error Handling Patterns
+
+### Correct Pattern
+
+```python
+# Specific exception types
+try:
+    response = await client.post(url, ...)
+except httpx.HTTPError as e:
+    raise MCPError(f"HTTP error: {e}")
+except asyncio.TimeoutError:
+    raise MCPTimeoutError(f"Request timed out")
+except Exception as e:
+    # Log and re-raise with context
+    logger.error(f"Unexpected error: {e}")
+    raise MCPError(f"Operation failed: {e}")
+```
+
+### Anti-Pattern (Avoid)
+
+```python
+# Bad: Bare except silently ignores errors
+try:
+    ...
+except:  # DON'T DO THIS
+    pass
+```
+
+---
+
+## Issues to Address
+
+### High Priority
+
+1. ✅ **FIXED: Bare except in mcp_client.py:600-601**
+   ```python
+   # Was: except:
+   # Now: except Exception:
+   ```
+
+### Medium Priority
+
+2. **Hardcoded timeout values**: Centralize timeout configuration
+   - Multiple files use hardcoded `10.0`, `30.0` second timeouts
+   - Consider adding to config system
+
+3. ✅ **FIXED: Deprecated datetime usage** (`smoke_test.py:270`):
+   ```python
+   # Was: datetime.utcnow().isoformat()
+   # Now: datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+   ```
+
+### Low Priority
+
+4. **Large API file**: `server/api.py` is ~4000 lines. Consider splitting into:
+   - `api/profiles.py` - Profile management endpoints
+   - `api/tests.py` - Test running endpoints
+   - `api/auth.py` - Auth debugging endpoints
+   - `api/chat.py` - Chat/LLM endpoints
+
+5. **Duplicate type definitions**: `AuthConfig` defined in both `server/api.py` and `mcp_profiles.py`
+
+---
+
+## Architecture Overview
+
+### Key Components
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| MCP Client | `src/mcp_client.py` | FastMCP client wrapper with auth |
+| Auth Debugger | `auth_debugger.py` | OAuth/JWT/Bearer flow debugging |
+| API Server | `server/api.py` | FastAPI backend for web UI |
+| Profiles | `mcp_profiles.py` | MCP service profile config |
+| Config | `config.py` | Multi-source config management |
+| Smoke Tests | `smoke_test.py` | MCP server health checks |
+| Formatters | `formatters/*.py` | Code generation for clients |
+
+### Configuration Priority
+
+1. Command-line options (highest)
+2. Profile files (`.mcp_services.yaml`, `.llm_providers.yaml`)
+3. `.env` file in current directory
+4. `~/.testmcpy` (user config)
+5. Environment variables
+6. Built-in defaults (lowest)
+
+### Authentication Types
+
+| Type | Fields | Use Case |
+|------|--------|----------|
+| Bearer | `token` | Static tokens |
+| JWT | `api_url`, `api_token`, `api_secret` | Dynamic tokens via API |
+| OAuth | `client_id`, `client_secret`, `token_url` | Client credentials flow |
+| OAuth Auto | `oauth_auto_discover=true`, `mcp_url` | RFC 8414 discovery |
+
+---
+
+## Testing Guidelines
+
+### Running Tests
+
+```bash
+# Run all tests
+pytest
+
+# Run specific test file
+pytest tests/test_url_protection.py
+
+# Run with coverage
+pytest --cov=testmcpy
+
+# Run async tests
+pytest tests/test_mcp_client_auth.py -v
+```
+
+### Test Files
+
+| File | Coverage |
+|------|----------|
+| `test_url_protection.py` | MCP URL filtering security |
+| `test_mcp_client_auth.py` | Authentication flows |
+| `test_auth_flow_recorder.py` | Auth flow recording/replay |
+| `test_api_optimize_docs.py` | API endpoint tests |
+
+### Writing Async Tests
+
+```python
+import pytest
+
+@pytest.mark.asyncio
+async def test_async_function():
+    result = await async_function()
+    assert result is not None
+```
+
+---
+
+## React UI Guidelines
+
+### File Structure
+
+```
+testmcpy/ui/src/
+├── pages/           # Page components
+│   ├── AuthDebugger.jsx
+│   ├── MCPProfiles.jsx
+│   └── TestManager.jsx
+├── components/      # Reusable components
+└── App.jsx          # Main app with routing
+```
+
+### State Management
+
+- Use React hooks (`useState`, `useEffect`, `useCallback`, `useMemo`)
+- Fetch data from FastAPI backend at `/api/*` endpoints
+- Handle loading and error states in every async operation
+
+### Styling
+
+- Tailwind CSS classes
+- Custom theme tokens: `bg-surface`, `text-primary`, `border-border`
+- Dark mode by default
+
+---
+
+## API Endpoints Quick Reference
+
+### Profiles
+```
+GET    /api/mcp/profiles           - List all profiles
+POST   /api/mcp/profiles           - Create profile
+GET    /api/mcp/profiles/{id}      - Get profile
+PUT    /api/mcp/profiles/{id}      - Update profile
+DELETE /api/mcp/profiles/{id}      - Delete profile
+GET    /api/mcp/profiles/{id}/auth - Get unmasked auth config
+```
+
+### Tests
+```
+GET    /api/tests        - List test files
+POST   /api/tests        - Create test file
+POST   /api/tests/run    - Run tests
+```
+
+### Auth Debugging
+```
+POST   /api/debug-auth   - Debug authentication flow
+```
+
+### Chat
+```
+POST   /api/chat         - Send chat message with tool calling
+```
+
+---
+
+## Development Workflow
+
+### Before Committing
+
+1. Run `ruff format` on changed files
+2. Run `ruff check` on changed files (NOT all files)
+3. Run relevant tests
+4. Never include credentials in commits
+
+### Commit Message Format
+
+```
+type: short description
+
+[optional body]
+```
+
+Types: `fix:`, `feat:`, `chore:`, `release:`
+
+### Pull Requests
+
+- Follow PR checklist from CLAUDE.md
+- Ensure CI passes before merging
+- Include screenshots for UI changes
+- No internal Preset info in open source PRs
