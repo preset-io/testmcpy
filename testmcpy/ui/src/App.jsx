@@ -27,7 +27,6 @@ function AppContent() {
   const [config, setConfig] = useState({})
   const [selectedProfiles, setSelectedProfiles] = useState([])
   const [profiles, setProfiles] = useState([])
-  const [showProfilesModal, setShowProfilesModal] = useState(false)
   const [llmProfiles, setLlmProfiles] = useState([])
   const [selectedLlmProfile, setSelectedLlmProfile] = useState(null)
   const [apiReady, setApiReady] = useState(false)
@@ -295,12 +294,16 @@ function AppContent() {
 
           {/* Profile Selectors */}
           <div className="px-3 py-3 border-t border-border space-y-2">
-            {/* MCP Selector Widget */}
+            {/* MCP Selector Widget - navigates to MCP Profiles page */}
             <button
-              onClick={() => setShowProfilesModal(true)}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-all duration-200 bg-surface-elevated border border-border hover:bg-surface-hover"
+              onClick={() => navigate('/mcp-profiles')}
+              className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-all duration-200 ${
+                location.pathname === '/mcp-profiles'
+                  ? 'bg-primary/10 border border-primary text-primary'
+                  : 'bg-surface-elevated border border-border hover:bg-surface-hover'
+              }`}
             >
-              <Server size={16} className="text-primary flex-shrink-0" />
+              <Server size={16} className={location.pathname === '/mcp-profiles' ? 'text-primary' : 'text-primary'} />
               {sidebarOpen && (
                 <div className="flex-1 min-w-0 text-left">
                   <div className="text-xs font-semibold text-text-primary truncate">
@@ -384,45 +387,18 @@ function AppContent() {
             <Route path="/tests" element={<TestManager selectedProfiles={selectedProfiles} />} />
             <Route path="/auth-debugger" element={<AuthDebugger />} />
             <Route path="/config" element={<Configuration />} />
+            <Route path="/mcp-profiles" element={
+              <MCPProfiles
+                selectedProfiles={selectedProfiles}
+                onSelectProfiles={(newProfiles) => {
+                  setSelectedProfiles(newProfiles)
+                  localStorage.setItem('selectedMCPProfiles', JSON.stringify(newProfiles))
+                }}
+              />
+            } />
             <Route path="/llm-profiles" element={<LLMProfiles selectedProfile={selectedLlmProfile} onSelectProfile={setSelectedLlmProfile} />} />
           </Routes>
         </main>
-
-        {/* MCP Profiles Modal Overlay */}
-        {showProfilesModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-            <div className="w-full h-full max-w-6xl max-h-[90vh] m-4 bg-surface-elevated rounded-xl shadow-2xl border border-border overflow-hidden flex flex-col">
-              {/* Modal Header */}
-              <div className="flex items-center justify-between p-4 border-b border-border bg-surface-elevated">
-                <div>
-                  <h2 className="text-xl font-bold text-text-primary">MCP Server Selection</h2>
-                  <p className="text-sm text-text-secondary mt-1">Select MCP servers to use across the application</p>
-                </div>
-                <button
-                  onClick={() => setShowProfilesModal(false)}
-                  className="p-2 hover:bg-surface-hover rounded-lg transition-colors text-text-secondary hover:text-text-primary"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-
-              {/* Modal Content */}
-              <div className="flex-1 overflow-auto">
-                <MCPProfiles
-                  selectedProfiles={selectedProfiles}
-                  onSelectProfiles={(newProfiles) => {
-                    setSelectedProfiles(newProfiles)
-                    // Save to localStorage
-                    localStorage.setItem('selectedMCPProfiles', JSON.stringify(newProfiles))
-                    // Reload profiles to update the sidebar display
-                    loadProfiles()
-                  }}
-                  hideHeader={true}
-                />
-              </div>
-            </div>
-          </div>
-        )}
 
       </div>
   )
