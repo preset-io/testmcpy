@@ -956,17 +956,18 @@ Types: `fix:`, `feat:`, `chore:`, `release:`
 
 ## Priority Implementation Gaps
 
-### 1. CRITICAL: `response_includes` Evaluator
+### 1. ✅ CRITICAL: `response_includes` Evaluator - DONE
 ```yaml
-# Needed pattern
+# Now supported!
 evaluators:
   - type: response_includes
     content: "chart_id"
     case_sensitive: false
+    match_all: true  # or false for any-match
 ```
 
-### 2. HIGH: Gemini Model Support
-Add Google Gemini to LLM integration alongside Anthropic/OpenAI.
+### 2. ✅ HIGH: Gemini Model Support - DONE
+Added `GeminiProvider` with function calling. Use `provider: gemini` or `provider: google`.
 
 ### 3. HIGH: Test Versioning
 Track test changes over time with git-like history.
@@ -974,8 +975,14 @@ Track test changes over time with git-like history.
 ### 4. HIGH: More Test Coverage
 Need ~35 more tests to reach target of 50 tests on examples dataset.
 
-### 5. HIGH: Hallucination Detection
-Evaluator to detect when model returns data not present in tool results.
+### 5. ✅ HIGH: Hallucination Detection - DONE
+```yaml
+evaluators:
+  - type: no_hallucination
+    check_numbers: true
+    check_dates: true
+    strict: false
+```
 
 ### 6. MEDIUM: Multi-Turn Conversations
 Support for sequential test steps that share context.
@@ -987,22 +994,22 @@ SQLite or similar for historical result storage and analysis.
 
 ## Implementation Roadmap
 
-### Phase 1: Core Evaluators (Week 1)
-- [ ] Add `response_includes` evaluator
-- [ ] Add `no_hallucination` evaluator
+### Phase 1: Core Evaluators ✅ COMPLETE
+- [x] Add `response_includes` evaluator
+- [x] Add `no_hallucination` evaluator
 - [ ] Expand test coverage (+20 tests)
 
-### Phase 2: Model Support (Week 2)
-- [ ] Add Gemini model integration
-- [ ] Unify model interface for all providers
+### Phase 2: Model Support ✅ COMPLETE
+- [x] Add Gemini model integration
+- [x] Unify model interface for all providers
 - [ ] Add model comparison in reports
 
-### Phase 3: Infrastructure (Week 3)
+### Phase 3: Infrastructure (Next)
 - [ ] Add SQLite storage for results
 - [ ] Implement test versioning
 - [ ] Create historical dashboard
 
-### Phase 4: Advanced Features (Week 4)
+### Phase 4: Advanced Features
 - [ ] Multi-turn conversation support
 - [ ] Parameterized tests
 - [ ] CI/CD GitHub Actions template
