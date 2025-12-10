@@ -44,6 +44,7 @@ class LLMResult:
     token_usage: dict[str, int] | None = None
     cost: float = 0.0
     duration: float = 0.0
+    tti_ms: int | None = None  # Time to first token in milliseconds
     raw_response: Any | None = None
 
 
@@ -350,18 +351,26 @@ class OpenAIProvider(LLMProvider):
             # Estimate cost (GPT-4 pricing as example)
             cost = (token_usage["prompt"] * 0.03 + token_usage["completion"] * 0.06) / 1000
 
+            duration = time.time() - start_time
+            tti_ms = int(duration * 1000)  # Non-streaming: TTI = total duration
+
             return LLMResult(
                 response=message.get("content", ""),
                 tool_calls=tool_calls,
                 token_usage=token_usage,
                 cost=cost,
-                duration=time.time() - start_time,
+                duration=duration,
+                tti_ms=tti_ms,
                 raw_response=result,
             )
 
         except Exception as e:
+            duration = time.time() - start_time
             return LLMResult(
-                response=f"Error: {str(e)}", tool_calls=[], duration=time.time() - start_time
+                response=f"Error: {str(e)}",
+                tool_calls=[],
+                duration=duration,
+                tti_ms=int(duration * 1000),
             )
 
     async def close(self):
@@ -767,12 +776,17 @@ class AnthropicProvider(LLMProvider):
             # Estimate cost (Claude pricing)
             cost = (token_usage["prompt"] * 0.003 + token_usage["completion"] * 0.015) / 1000
 
+            duration = time.time() - start_time
+            # For non-streaming, TTI equals total duration (response arrives all at once)
+            tti_ms = int(duration * 1000)
+
             return LLMResult(
                 response=response_text,
                 tool_calls=tool_calls,
                 token_usage=token_usage,
                 cost=cost,
-                duration=time.time() - start_time,
+                duration=duration,
+                tti_ms=tti_ms,
                 raw_response=result,
             )
 
@@ -1371,21 +1385,27 @@ class GeminiProvider(LLMProvider):
             # Estimate cost (Gemini Pro pricing)
             cost = (token_usage["prompt"] * 0.00025 + token_usage["completion"] * 0.0005) / 1000
 
+            duration = time.time() - start_time
+            tti_ms = int(duration * 1000)  # Non-streaming: TTI = total duration
+
             return LLMResult(
                 response=response_text,
                 tool_calls=tool_calls,
                 token_usage=token_usage,
                 cost=cost,
-                duration=time.time() - start_time,
+                duration=duration,
+                tti_ms=tti_ms,
                 raw_response=result,
             )
 
         except Exception as e:
+            duration = time.time() - start_time
             error_details = f"Error Type: {type(e).__name__}\nError Message: {str(e)}"
             return LLMResult(
                 response=f"Error: {error_details}",
                 tool_calls=[],
-                duration=time.time() - start_time,
+                duration=duration,
+                tti_ms=int(duration * 1000),
             )
 
     async def close(self):
