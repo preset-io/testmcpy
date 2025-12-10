@@ -2032,7 +2032,8 @@ async def estimate_model_cost(request: CostEstimateRequest):
 class LLMTestRequest(BaseModel):
     provider: str
     model: str
-    api_key_env: str | None = None
+    api_key: str | None = None  # Direct API key
+    api_key_env: str | None = None  # Or env var name
     base_url: str | None = None
     timeout: int = 30
 
@@ -2046,9 +2047,14 @@ async def test_llm_provider(request: LLMTestRequest):
     start_time = time.time()
 
     try:
-        # Determine API key
+        # Determine API key - priority: direct > env var > default env var
         api_key = None
-        if request.api_key_env:
+
+        # 1. Direct API key provided
+        if request.api_key:
+            api_key = request.api_key
+        # 2. Custom env var name provided
+        elif request.api_key_env:
             api_key = os.environ.get(request.api_key_env)
             if not api_key:
                 return {
@@ -2056,8 +2062,8 @@ async def test_llm_provider(request: LLMTestRequest):
                     "error": f"Environment variable {request.api_key_env} not set",
                     "duration": time.time() - start_time,
                 }
+        # 3. Use default env vars
         else:
-            # Use default env vars
             env_var_map = {
                 "anthropic": "ANTHROPIC_API_KEY",
                 "openai": "OPENAI_API_KEY",
@@ -2070,7 +2076,7 @@ async def test_llm_provider(request: LLMTestRequest):
                 if not api_key:
                     return {
                         "success": False,
-                        "error": f"Environment variable {env_var} not set",
+                        "error": f"Environment variable {env_var} not set. Provide API key directly or set the env var.",
                         "duration": time.time() - start_time,
                     }
 
