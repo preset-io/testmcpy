@@ -793,14 +793,20 @@ class ToolCallSequence(BaseEvaluator):
                     passed=True,
                     score=1.0,
                     reason=f"Tools called in exact sequence: {' -> '.join(actual_sequence)}",
-                    details={"actual_sequence": actual_sequence, "expected_sequence": self.sequence},
+                    details={
+                        "actual_sequence": actual_sequence,
+                        "expected_sequence": self.sequence,
+                    },
                 )
             else:
                 return EvalResult(
                     passed=False,
                     score=0.0,
                     reason=f"Sequence mismatch. Expected: {' -> '.join(self.sequence)}, Got: {' -> '.join(actual_sequence)}",
-                    details={"actual_sequence": actual_sequence, "expected_sequence": self.sequence},
+                    details={
+                        "actual_sequence": actual_sequence,
+                        "expected_sequence": self.sequence,
+                    },
                 )
 
         # Non-strict mode: check if sequence appears in order
@@ -950,6 +956,249 @@ class SQLQueryValid(BaseEvaluator):
 # Composite evaluator for running multiple evaluations
 
 
+class ResponseIncludes(BaseEvaluator):
+    """Check if the response includes specific content (alias for FinalAnswerContains)."""
+
+    def __init__(
+        self,
+        content: str | list[str],
+        case_sensitive: bool = False,
+        match_all: bool = True,
+    ):
+        """
+        Check if response includes expected content.
+
+        Args:
+            content: String or list of strings that should appear in response
+            case_sensitive: Whether to match case-sensitively (default: False)
+            match_all: If True, all content items must match. If False, any match passes.
+        """
+        self.expected_content = content if isinstance(content, list) else [content]
+        self.case_sensitive = case_sensitive
+        self.match_all = match_all
+
+    @property
+    def name(self) -> str:
+        return "response_includes"
+
+    @property
+    def description(self) -> str:
+        return f"Checks if response includes: {', '.join(self.expected_content[:3])}{'...' if len(self.expected_content) > 3 else ''}"
+
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
+        response = context.get("response", "")
+
+        if not self.case_sensitive:
+            response = response.lower()
+
+        found = []
+        not_found = []
+
+        for content in self.expected_content:
+            check_content = content if self.case_sensitive else content.lower()
+            if check_content in response:
+                found.append(content)
+            else:
+                not_found.append(content)
+
+        score = len(found) / len(self.expected_content) if self.expected_content else 0.0
+
+        if self.match_all:
+            passed = score == 1.0
+            if passed:
+                return EvalResult(
+                    passed=True,
+                    score=score,
+                    reason="All expected content found in response",
+                    details={"found": found},
+                )
+            else:
+                return EvalResult(
+                    passed=False,
+                    score=score,
+                    reason=f"Missing content: {len(not_found)}/{len(self.expected_content)} items",
+                    details={"found": found, "not_found": not_found},
+                )
+        else:
+            # Any match passes
+            passed = len(found) > 0
+            if passed:
+                return EvalResult(
+                    passed=True,
+                    score=score,
+                    reason=f"Found {len(found)}/{len(self.expected_content)} expected items",
+                    details={"found": found, "not_found": not_found},
+                )
+            else:
+                return EvalResult(
+                    passed=False,
+                    score=0.0,
+                    reason="No expected content found in response",
+                    details={"not_found": not_found},
+                )
+
+
+class NoHallucination(BaseEvaluator):
+    """Check that the response doesn't contain hallucinated data not present in tool results."""
+
+    def __init__(
+        self,
+        check_numbers: bool = True,
+        check_names: bool = True,
+        check_dates: bool = True,
+        strict: bool = False,
+    ):
+        """
+        Check for hallucinations in response.
+
+        Args:
+            check_numbers: Verify numeric values in response appear in tool results
+            check_names: Verify names/identifiers in response appear in tool results
+            check_dates: Verify dates in response appear in tool results
+            strict: If True, any unverified data fails. If False, use heuristics.
+        """
+        self.check_numbers = check_numbers
+        self.check_names = check_names
+        self.check_dates = check_dates
+        self.strict = strict
+
+    @property
+    def name(self) -> str:
+        return "no_hallucination"
+
+    @property
+    def description(self) -> str:
+        return "Checks that response data is grounded in tool results"
+
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
+        response = context.get("response", "")
+        tool_results = context.get("tool_results", [])
+
+        if not tool_results:
+            # Can't verify without tool results - pass by default
+            return EvalResult(
+                passed=True,
+                score=0.5,
+                reason="No tool results to verify against",
+                details={"warning": "Unable to verify - no tool data available"},
+            )
+
+        # Collect all data from tool results
+        tool_data = self._extract_tool_data(tool_results)
+
+        # Extract claims from response
+        response_claims = self._extract_claims(response)
+
+        # Verify claims against tool data
+        verified = []
+        unverified = []
+        hallucinated = []
+
+        for claim_type, claim_value in response_claims:
+            if self._verify_claim(claim_type, claim_value, tool_data):
+                verified.append((claim_type, claim_value))
+            else:
+                if self.strict:
+                    hallucinated.append((claim_type, claim_value))
+                else:
+                    unverified.append((claim_type, claim_value))
+
+        total_claims = len(verified) + len(unverified) + len(hallucinated)
+
+        if total_claims == 0:
+            return EvalResult(
+                passed=True,
+                score=1.0,
+                reason="No verifiable claims found in response",
+                details={},
+            )
+
+        if hallucinated:
+            return EvalResult(
+                passed=False,
+                score=len(verified) / total_claims,
+                reason=f"Found {len(hallucinated)} hallucinated value(s)",
+                details={
+                    "hallucinated": [f"{t}: {v}" for t, v in hallucinated],
+                    "verified": [f"{t}: {v}" for t, v in verified],
+                },
+            )
+
+        # Score based on verified vs unverified
+        if self.strict and unverified:
+            score = len(verified) / total_claims
+            return EvalResult(
+                passed=False,
+                score=score,
+                reason=f"{len(unverified)} unverified claim(s) in strict mode",
+                details={
+                    "verified": [f"{t}: {v}" for t, v in verified],
+                    "unverified": [f"{t}: {v}" for t, v in unverified],
+                },
+            )
+
+        return EvalResult(
+            passed=True,
+            score=1.0 if not unverified else 0.8,
+            reason=f"Verified {len(verified)}/{total_claims} claims",
+            details={
+                "verified": [f"{t}: {v}" for t, v in verified],
+                "unverified": [f"{t}: {v}" for t, v in unverified] if unverified else None,
+            },
+        )
+
+    def _extract_tool_data(self, tool_results: list) -> dict[str, set]:
+        """Extract verifiable data from tool results."""
+        data = {"numbers": set(), "strings": set(), "dates": set()}
+
+        for result in tool_results:
+            content = getattr(result, "content", None) or str(result)
+            if isinstance(content, str):
+                # Extract numbers
+                numbers = re.findall(r"\b\d+(?:\.\d+)?\b", content)
+                data["numbers"].update(numbers)
+
+                # Extract potential identifiers/names (capitalized words, quoted strings)
+                names = re.findall(r'"([^"]+)"', content)
+                names.extend(re.findall(r"'([^']+)'", content))
+                data["strings"].update(names)
+
+                # Extract dates (various formats)
+                dates = re.findall(r"\d{4}-\d{2}-\d{2}", content)
+                dates.extend(re.findall(r"\d{2}/\d{2}/\d{4}", content))
+                data["dates"].update(dates)
+
+        return data
+
+    def _extract_claims(self, response: str) -> list[tuple[str, str]]:
+        """Extract verifiable claims from response."""
+        claims = []
+
+        if self.check_numbers:
+            # Extract significant numbers (skip small common numbers like 1, 2, 3)
+            numbers = re.findall(r"\b(\d{2,}(?:\.\d+)?)\b", response)
+            for num in numbers:
+                claims.append(("number", num))
+
+        if self.check_dates:
+            dates = re.findall(r"\d{4}-\d{2}-\d{2}", response)
+            dates.extend(re.findall(r"\d{2}/\d{2}/\d{4}", response))
+            for date in dates:
+                claims.append(("date", date))
+
+        return claims
+
+    def _verify_claim(self, claim_type: str, value: str, tool_data: dict[str, set]) -> bool:
+        """Check if a claim can be verified against tool data."""
+        if claim_type == "number":
+            return value in tool_data["numbers"]
+        elif claim_type == "date":
+            return value in tool_data["dates"]
+        elif claim_type == "string":
+            return value in tool_data["strings"]
+        return False
+
+
 class CompositeEvaluator(BaseEvaluator):
     """Run multiple evaluators and combine results."""
 
@@ -1031,6 +1280,8 @@ def create_evaluator(name: str, **kwargs) -> BaseEvaluator:
         "was_mcp_tool_called": WasMCPToolCalled,
         "execution_successful": ExecutionSuccessful,
         "final_answer_contains": FinalAnswerContains,
+        "response_includes": ResponseIncludes,  # More intuitive name
+        "no_hallucination": NoHallucination,
         "answer_contains_link": AnswerContainsLink,
         "within_time_limit": WithinTimeLimit,
         "token_usage_reasonable": TokenUsageReasonable,

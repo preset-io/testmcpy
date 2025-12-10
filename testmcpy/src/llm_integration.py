@@ -71,7 +71,11 @@ class LLMProvider(ABC):
 
     @abstractmethod
     async def generate_with_tools(
-        self, prompt: str, tools: list[dict[str, Any]], timeout: float = 30.0, messages: list[dict[str, Any]] | None = None
+        self,
+        prompt: str,
+        tools: list[dict[str, Any]],
+        timeout: float = 30.0,
+        messages: list[dict[str, Any]] | None = None,
     ) -> LLMResult:
         """Generate response with tool calling capability.
 
@@ -127,7 +131,11 @@ class OllamaProvider(LLMProvider):
             raise Exception(f"Failed to pull model {self.model}: {e}")
 
     async def generate_with_tools(
-        self, prompt: str, tools: list[dict[str, Any]], timeout: float = 30.0, messages: list[dict[str, Any]] | None = None
+        self,
+        prompt: str,
+        tools: list[dict[str, Any]],
+        timeout: float = 30.0,
+        messages: list[dict[str, Any]] | None = None,
     ) -> LLMResult:
         """Generate with Ollama's tool calling support."""
         start_time = time.time()
@@ -278,7 +286,11 @@ class OpenAIProvider(LLMProvider):
                 )
 
     async def generate_with_tools(
-        self, prompt: str, tools: list[dict[str, Any]], timeout: float = 30.0, messages: list[dict[str, Any]] | None = None
+        self,
+        prompt: str,
+        tools: list[dict[str, Any]],
+        timeout: float = 30.0,
+        messages: list[dict[str, Any]] | None = None,
     ) -> LLMResult:
         """Generate with OpenAI's function calling."""
         start_time = time.time()
@@ -380,7 +392,11 @@ class LocalModelProvider(LLMProvider):
             raise Exception(f"Failed to load local model {self.model}: {e}")
 
     async def generate_with_tools(
-        self, prompt: str, tools: list[dict[str, Any]], timeout: float = 30.0, messages: list[dict[str, Any]] | None = None
+        self,
+        prompt: str,
+        tools: list[dict[str, Any]],
+        timeout: float = 30.0,
+        messages: list[dict[str, Any]] | None = None,
     ) -> LLMResult:
         """Generate with local model."""
         start_time = time.time()
@@ -609,7 +625,11 @@ class AnthropicProvider(LLMProvider):
             # Continue without tools - the provider can still work for non-tool interactions
 
     async def generate_with_tools(
-        self, prompt: str, tools: list[dict[str, Any]], timeout: float = 30.0, messages: list[dict[str, Any]] | None = None
+        self,
+        prompt: str,
+        tools: list[dict[str, Any]],
+        timeout: float = 30.0,
+        messages: list[dict[str, Any]] | None = None,
     ) -> LLMResult:
         """Generate response with tool calling capability."""
         start_time = time.time()
@@ -667,7 +687,8 @@ class AnthropicProvider(LLMProvider):
                 # Use provided message history, but filter out messages with empty content
                 # Anthropic API requires all messages to have non-empty content
                 api_messages = [
-                    msg for msg in messages
+                    msg
+                    for msg in messages
                     if msg.get("content") and str(msg.get("content")).strip()
                 ]
                 # Only add new message if it's not already the last message
@@ -890,7 +911,11 @@ class ClaudeSDKProvider(LLMProvider):
         return sdk_tool
 
     async def generate_with_tools(
-        self, prompt: str, tools: list[dict[str, Any]], timeout: float = 30.0, messages: list[dict[str, Any]] | None = None
+        self,
+        prompt: str,
+        tools: list[dict[str, Any]],
+        timeout: float = 30.0,
+        messages: list[dict[str, Any]] | None = None,
     ) -> LLMResult:
         """Generate response using Claude Agent SDK."""
         start_time = time.time()
@@ -1080,7 +1105,11 @@ class ClaudeCodeProvider(LLMProvider):
             print("   The provider will work without MCP tools (direct API calls only)")
 
     async def generate_with_tools(
-        self, prompt: str, tools: list[dict[str, Any]], timeout: float = 30.0, messages: list[dict[str, Any]] | None = None
+        self,
+        prompt: str,
+        tools: list[dict[str, Any]],
+        timeout: float = 30.0,
+        messages: list[dict[str, Any]] | None = None,
     ) -> LLMResult:
         """Generate response using Claude Code CLI."""
         start_time = time.time()
@@ -1187,6 +1216,184 @@ User request: {prompt}"""
         await self.tool_discovery.close()
 
 
+class GeminiProvider(LLMProvider):
+    """Google Gemini API provider with tool calling support."""
+
+    def __init__(
+        self,
+        model: str,
+        api_key: str | None = None,
+        mcp_url: str | None = None,
+    ):
+        self.model = model
+        config = get_config()
+        self.api_key = (
+            api_key or config.get("GOOGLE_API_KEY", "") or config.get("GEMINI_API_KEY", "")
+        )
+        self.base_url = "https://generativelanguage.googleapis.com/v1beta"
+        self.client = httpx.AsyncClient(timeout=60.0)
+        if mcp_url is None:
+            mcp_url = config.get_mcp_url()
+        self.tool_discovery = ToolDiscoveryService(mcp_url)
+
+    async def initialize(self):
+        """Initialize Gemini provider."""
+        if not self.api_key:
+            raise ValueError(
+                "Google API key not provided. Set GOOGLE_API_KEY or GEMINI_API_KEY in ~/.testmcpy, .env, or environment."
+            )
+
+        # Try to pre-discover tools
+        try:
+            await self.tool_discovery.discover_tools()
+            print(f"✅ Successfully connected to MCP service at {self.tool_discovery.mcp_url}")
+        except Exception as e:
+            print(f"⚠️  Warning: Failed to initialize MCP tools: {e}")
+            print("   The provider will work without MCP tools")
+
+    async def generate_with_tools(
+        self,
+        prompt: str,
+        tools: list[dict[str, Any]],
+        timeout: float = 30.0,
+        messages: list[dict[str, Any]] | None = None,
+    ) -> LLMResult:
+        """Generate response with Gemini's function calling."""
+        start_time = time.time()
+
+        try:
+            # CRITICAL: Validate NO MCP URLs in request
+            if not MCPURLFilter.validate_request_data({"prompt": prompt, "tools": tools}):
+                raise Exception("SECURITY VIOLATION: MCP URLs detected in request data")
+
+            # Convert tools to Gemini format
+            gemini_tools = []
+            function_declarations = []
+
+            for tool in tools:
+                if "function" in tool:
+                    func = tool["function"]
+                else:
+                    func = tool
+
+                # Sanitize tool schema
+                sanitized = MCPURLFilter.sanitize_tool_schema(func)
+
+                # Get parameters schema
+                params = sanitized.get("parameters", sanitized.get("inputSchema", {}))
+                if "type" not in params:
+                    params["type"] = "object"
+
+                function_declarations.append(
+                    {
+                        "name": sanitized.get("name", ""),
+                        "description": sanitized.get("description", ""),
+                        "parameters": params,
+                    }
+                )
+
+            if function_declarations:
+                gemini_tools = [{"function_declarations": function_declarations}]
+
+            # Build request
+            contents = []
+
+            # Add message history if provided
+            if messages:
+                for msg in messages:
+                    if msg.get("content"):
+                        role = "user" if msg.get("role") == "user" else "model"
+                        contents.append({"role": role, "parts": [{"text": msg["content"]}]})
+
+            # Add current prompt
+            contents.append({"role": "user", "parts": [{"text": prompt}]})
+
+            request_data = {
+                "contents": contents,
+                "generationConfig": {
+                    "temperature": 0.1,
+                    "maxOutputTokens": 2048,
+                },
+            }
+
+            if gemini_tools:
+                request_data["tools"] = gemini_tools
+
+            # Final security check
+            if not MCPURLFilter.validate_request_data(request_data):
+                raise Exception("SECURITY VIOLATION: MCP URLs in final API request")
+
+            # Make API call
+            url = f"{self.base_url}/models/{self.model}:generateContent?key={self.api_key}"
+            response = await self.client.post(url, json=request_data, timeout=timeout)
+
+            if response.status_code != 200:
+                raise Exception(f"Gemini API error: {response.status_code} - {response.text}")
+
+            result = response.json()
+
+            # Extract response
+            response_text = ""
+            tool_calls = []
+
+            candidates = result.get("candidates", [])
+            if candidates:
+                content = candidates[0].get("content", {})
+                parts = content.get("parts", [])
+
+                for part in parts:
+                    if "text" in part:
+                        response_text += part["text"]
+                    elif "functionCall" in part:
+                        fc = part["functionCall"]
+                        tool_calls.append(
+                            {
+                                "name": fc.get("name", ""),
+                                "arguments": fc.get("args", {}),
+                            }
+                        )
+
+            # Execute tool calls locally
+            for tool_call in tool_calls:
+                try:
+                    await self.tool_discovery.execute_tool_call(tool_call)
+                except Exception:
+                    pass
+
+            # Extract usage metadata
+            usage_metadata = result.get("usageMetadata", {})
+            token_usage = {
+                "prompt": usage_metadata.get("promptTokenCount", 0),
+                "completion": usage_metadata.get("candidatesTokenCount", 0),
+                "total": usage_metadata.get("totalTokenCount", 0),
+            }
+
+            # Estimate cost (Gemini Pro pricing)
+            cost = (token_usage["prompt"] * 0.00025 + token_usage["completion"] * 0.0005) / 1000
+
+            return LLMResult(
+                response=response_text,
+                tool_calls=tool_calls,
+                token_usage=token_usage,
+                cost=cost,
+                duration=time.time() - start_time,
+                raw_response=result,
+            )
+
+        except Exception as e:
+            error_details = f"Error Type: {type(e).__name__}\nError Message: {str(e)}"
+            return LLMResult(
+                response=f"Error: {error_details}",
+                tool_calls=[],
+                duration=time.time() - start_time,
+            )
+
+    async def close(self):
+        """Close connections."""
+        await self.tool_discovery.close()
+        await self.client.aclose()
+
+
 # Factory function to create providers
 
 
@@ -1207,6 +1414,8 @@ def create_llm_provider(provider: str, model: str, **kwargs) -> LLMProvider:
         "openai": OpenAIProvider,
         "local": LocalModelProvider,
         "anthropic": AnthropicProvider,
+        "gemini": GeminiProvider,
+        "google": GeminiProvider,  # Alias
         "claude-sdk": ClaudeSDKProvider,
         "claude-cli": ClaudeCodeProvider,
     }
