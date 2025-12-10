@@ -294,30 +294,46 @@ function AppContent() {
 
           {/* Profile Selectors */}
           <div className="px-3 py-3 border-t border-border space-y-2">
-            {/* MCP Selector Widget - navigates to MCP Profiles page */}
+            {/* MCP Selector Widget with Connection Status */}
             <button
               onClick={() => navigate('/mcp-profiles')}
-              className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-all duration-200 ${
+              className={`w-full rounded-lg transition-all duration-200 ${
                 location.pathname === '/mcp-profiles'
-                  ? 'bg-primary/10 border border-primary text-primary'
-                  : 'bg-surface-elevated border border-border hover:bg-surface-hover'
+                  ? 'bg-primary/10 border border-primary'
+                  : selectedProfiles.length > 0
+                    ? 'bg-success/10 border border-success/30 hover:bg-success/20'
+                    : 'bg-surface-elevated border border-border hover:bg-surface-hover'
               }`}
             >
-              <Server size={16} className={location.pathname === '/mcp-profiles' ? 'text-primary' : 'text-primary'} />
-              {sidebarOpen && (
-                <div className="flex-1 min-w-0 text-left">
-                  <div className="text-xs font-semibold text-text-primary truncate">
-                    {getSelectedMCPDisplay().profile}
-                  </div>
-                  <div className="text-[10px] text-text-tertiary truncate">
-                    {getSelectedMCPDisplay().server}
-                  </div>
+              <div className="flex items-center gap-2 px-3 py-2">
+                <div className="relative flex-shrink-0">
+                  <Server size={16} className={location.pathname === '/mcp-profiles' ? 'text-primary' : 'text-primary'} />
+                  {selectedProfiles.length > 0 && (
+                    <CheckCircle2 size={10} className="absolute -bottom-1 -right-1 text-success bg-surface-elevated rounded-full" />
+                  )}
                 </div>
-              )}
-              {sidebarOpen && <ChevronRight size={14} className="text-text-tertiary flex-shrink-0" />}
+                {sidebarOpen && (
+                  <div className="flex-1 min-w-0 text-left">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-semibold text-text-primary truncate">
+                        {getSelectedMCPDisplay().profile}
+                      </span>
+                      {selectedProfiles.length > 0 && (
+                        <span className="text-[9px] px-1 py-0.5 rounded bg-success/20 text-success font-medium">
+                          Connected
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[10px] text-text-tertiary truncate">
+                      {getSelectedMCPDisplay().server}
+                    </div>
+                  </div>
+                )}
+                {sidebarOpen && <ChevronRight size={14} className="text-text-tertiary flex-shrink-0" />}
+              </div>
             </button>
 
-            {/* LLM Profile Selector Widget - navigates to LLM Profiles page */}
+            {/* LLM Profile Selector Widget */}
             <button
               onClick={() => navigate('/llm-profiles')}
               className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-all duration-200 ${
@@ -339,34 +355,6 @@ function AppContent() {
               )}
               {sidebarOpen && <ChevronRight size={14} className="text-text-tertiary flex-shrink-0" />}
             </button>
-          </div>
-
-          {/* Connection Status */}
-          <div className="px-3 pb-3 border-t border-border space-y-2">
-            {sidebarOpen ? (
-              <div className={`mt-2 rounded-lg p-2 space-y-1.5 ${
-                selectedProfiles.length > 0
-                  ? 'bg-success/10 border border-success/30'
-                  : 'bg-surface border border-border'
-              }`}>
-                <div className="flex items-center gap-1.5">
-                  <CheckCircle2 size={14} className={selectedProfiles.length > 0 ? 'text-success' : 'text-text-disabled'} />
-                  <div className={`text-xs font-semibold ${selectedProfiles.length > 0 ? 'text-success' : 'text-text-disabled'}`}>
-                    {selectedProfiles.length > 0 ? 'Connected' : 'Not Connected'}
-                  </div>
-                </div>
-                {selectedProfiles.length > 0 && (
-                  <div className="flex items-center gap-1.5 text-[10px] text-text-tertiary truncate">
-                    <Server size={10} className="flex-shrink-0" />
-                    <span className="truncate">{getSelectedMCPDisplay().profile}</span>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="mt-2 flex flex-col items-center gap-2 py-2">
-                <CheckCircle2 size={18} className={selectedProfiles.length > 0 ? 'text-success' : 'text-text-disabled'} />
-              </div>
-            )}
           </div>
 
           <div className="p-3 border-t border-border">
