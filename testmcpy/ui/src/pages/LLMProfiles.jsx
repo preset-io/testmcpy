@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import {
   Cpu, Check, AlertCircle, RefreshCw, ChevronDown, ChevronRight,
   Edit2, Trash2, Plus, Save, X, Copy, Download, Settings,
-  CheckCircle, XCircle, AlertTriangle, DollarSign, Zap
+  CheckCircle, XCircle, AlertTriangle, DollarSign, Zap, Play, Loader2
 } from 'lucide-react'
 
 // Toast notification component
@@ -407,6 +407,8 @@ function LLMProfiles({ selectedProfile, onSelectProfile, hideHeader = false }) {
   const [confirmDialog, setConfirmDialog] = useState(null)
   const [profileEditor, setProfileEditor] = useState(null)
   const [providerEditor, setProviderEditor] = useState(null)
+  const [testingProvider, setTestingProvider] = useState(null) // "profileId:providerIndex"
+  const [testResults, setTestResults] = useState({}) // { "profileId:providerIndex": { success, response, error, duration } }
 
   useEffect(() => {
     loadProfiles()
@@ -464,6 +466,43 @@ function LLMProfiles({ selectedProfile, onSelectProfile, hideHeader = false }) {
       newExpanded.add(profileId)
     }
     setExpandedProfiles(newExpanded)
+  }
+
+  // Test provider connection
+  const handleTestProvider = async (profileId, providerIndex, provider) => {
+    const testKey = `${profileId}:${providerIndex}`
+    setTestingProvider(testKey)
+    // Clear previous result for this provider
+    setTestResults(prev => ({ ...prev, [testKey]: null }))
+
+    try {
+      const res = await fetch('/api/llm/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: provider.provider,
+          model: provider.model,
+          api_key_env: provider.api_key_env || null,
+          base_url: provider.base_url || null,
+          timeout: provider.timeout || 30,
+        })
+      })
+      const data = await res.json()
+
+      setTestResults(prev => ({ ...prev, [testKey]: data }))
+
+      if (data.success) {
+        showToast(`Test passed: ${data.response?.substring(0, 50) || 'OK'}`)
+      } else {
+        showToast(data.error || 'Test failed', 'error')
+      }
+    } catch (error) {
+      const errorResult = { success: false, error: error.message }
+      setTestResults(prev => ({ ...prev, [testKey]: errorResult }))
+      showToast(`Test failed: ${error.message}`, 'error')
+    } finally {
+      setTestingProvider(null)
+    }
   }
 
   // Profile operations
@@ -909,6 +948,19 @@ function LLMProfiles({ selectedProfile, onSelectProfile, hideHeader = false }) {
                                 {/* Provider Actions */}
                                 <div className="flex items-center gap-1">
                                   <button
+                                    onClick={() => handleTestProvider(profile.profile_id, idx, provider)}
+                                    disabled={testingProvider === `${profile.profile_id}:${idx}`}
+                                    className="p-1 hover:bg-surface-elevated rounded transition-colors disabled:opacity-50"
+                                    title="Test provider connection"
+                                  >
+                                    {testingProvider === `${profile.profile_id}:${idx}` ? (
+                                      <Loader2 size={14} className="text-primary animate-spin" />
+                                    ) : (
+                                      <Play size={14} className="text-success" />
+                                    )}
+                                  </button>
+
+                                  <button
                                     onClick={() => setProviderEditor({ provider, profileId: profile.profile_id, providerIndex: idx })}
                                     className="p-1 hover:bg-surface-elevated rounded transition-colors"
                                     title="Edit provider"
@@ -958,6 +1010,41 @@ function LLMProfiles({ selectedProfile, onSelectProfile, hideHeader = false }) {
                                 {provider.timeout && (
                                   <div className="text-text-tertiary">
                                     Timeout: {provider.timeout}s
+                                  </div>
+                                )}
+
+                                {/* Test Result Display */}
+                                {testResults[`${profile.profile_id}:${idx}`] && (
+                                  <div className={`mt-2 p-2 rounded text-xs ${
+                                    testResults[`${profile.profile_id}:${idx}`].success
+                                      ? 'bg-success/10 border border-success/30'
+                                      : 'bg-error/10 border border-error/30'
+                                  }`}>
+                                    <div className="flex items-center gap-1.5">
+                                      {testResults[`${profile.profile_id}:${idx}`].success ? (
+                                        <CheckCircle size={12} className="text-success" />
+                                      ) : (
+                                        <XCircle size={12} className="text-error" />
+                                      )}
+                                      <span className={testResults[`${profile.profile_id}:${idx}`].success ? 'text-success' : 'text-error'}>
+                                        {testResults[`${profile.profile_id}:${idx}`].success ? 'Test passed' : 'Test failed'}
+                                      </span>
+                                      {testResults[`${profile.profile_id}:${idx}`].duration && (
+                                        <span className="text-text-tertiary ml-auto">
+                                          {testResults[`${profile.profile_id}:${idx}`].duration.toFixed(2)}s
+                                        </span>
+                                      )}
+                                    </div>
+                                    {testResults[`${profile.profile_id}:${idx}`].response && (
+                                      <div className="mt-1 text-text-secondary truncate">
+                                        Response: {testResults[`${profile.profile_id}:${idx}`].response}
+                                      </div>
+                                    )}
+                                    {testResults[`${profile.profile_id}:${idx}`].error && (
+                                      <div className="mt-1 text-error">
+                                        Error: {testResults[`${profile.profile_id}:${idx}`].error}
+                                      </div>
+                                    )}
                                   </div>
                                 )}
                               </div>
