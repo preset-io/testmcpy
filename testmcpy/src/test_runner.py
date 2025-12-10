@@ -63,8 +63,55 @@ class RateLimitTracker:
 
 
 @dataclass
+class TestStep:
+    """A single step in a multi-turn test."""
+
+    prompt: str
+    evaluators: list[dict[str, Any]] = field(default_factory=list)
+    name: str | None = None
+    timeout: float = 30.0
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "TestStep":
+        """Create TestStep from dictionary."""
+        return cls(
+            prompt=data["prompt"],
+            evaluators=data.get("evaluators", []),
+            name=data.get("name"),
+            timeout=data.get("timeout", 30.0),
+        )
+
+
+@dataclass
 class TestCase:
-    """Represents a single test case."""
+    """Represents a single test case.
+
+    For single-turn tests:
+        - Use `prompt` and `evaluators` directly
+
+    For multi-turn tests:
+        - Use `steps` array with sequential prompts
+        - Each step has its own evaluators
+        - Context is carried between steps
+
+    Example YAML (single-turn):
+        name: test_list_charts
+        prompt: "List all charts"
+        evaluators:
+          - name: was_mcp_tool_called
+            args: {tool_name: "list_charts"}
+
+    Example YAML (multi-turn):
+        name: test_create_and_view
+        steps:
+          - prompt: "Create a bar chart showing sales"
+            evaluators:
+              - name: was_chart_created
+          - prompt: "Now show me the chart data"
+            evaluators:
+              - name: response_includes
+                args: {content: "data"}
+    """
 
     name: str
     prompt: str
@@ -73,19 +120,52 @@ class TestCase:
     expected_tools: list[str] | None = None
     timeout: float = 30.0
     auth: dict[str, Any] | None = None
+    steps: list[TestStep] | None = None  # For multi-turn tests
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "TestCase":
         """Create TestCase from dictionary."""
+        # Parse steps if present
+        steps = None
+        if "steps" in data:
+            steps = [TestStep.from_dict(s) for s in data["steps"]]
+            # For multi-turn, use first step's prompt as default
+            prompt = data.get("prompt", steps[0].prompt if steps else "")
+            evaluators = data.get("evaluators", steps[0].evaluators if steps else [])
+        else:
+            prompt = data["prompt"]
+            evaluators = data.get("evaluators", [])
+
         return cls(
             name=data["name"],
-            prompt=data["prompt"],
-            evaluators=data.get("evaluators", []),
+            prompt=prompt,
+            evaluators=evaluators,
             metadata=data.get("metadata", {}),
             expected_tools=data.get("expected_tools"),
             timeout=data.get("timeout", 30.0),
             auth=data.get("auth"),
+            steps=steps,
         )
+
+    @property
+    def is_multi_turn(self) -> bool:
+        """Check if this is a multi-turn test."""
+        return self.steps is not None and len(self.steps) > 1
+
+
+@dataclass
+class StepResult:
+    """Result from a single step in a multi-turn test."""
+
+    step_index: int
+    step_name: str | None
+    prompt: str
+    passed: bool
+    response: str | None = None
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    evaluations: list[dict[str, Any]] = field(default_factory=list)
+    duration: float = 0.0
+    error: str | None = None
 
 
 @dataclass
@@ -104,6 +184,7 @@ class TestResult:
     cost: float = 0.0
     token_usage: dict[str, int] | None = None
     error: str | None = None
+    step_results: list[StepResult] | None = None  # For multi-turn tests
     auth_success: bool | None = None
     auth_token: str | None = None
     auth_error: str | None = None
@@ -515,6 +596,173 @@ class TestRunner:
                 except Exception:
                     pass  # Ignore cleanup errors
 
+    async def run_multi_turn_test(self, test_case: TestCase) -> TestResult:
+        """Run a multi-turn test with sequential steps sharing context."""
+        if not test_case.is_multi_turn:
+            return await self.run_test(test_case)
+
+        start_time = time.time()
+        step_results: list[StepResult] = []
+        all_tool_calls: list[dict] = []
+        all_tool_results: list[dict] = []
+        all_evaluations: list[dict] = []
+        conversation_history: list[dict] = []  # Maintains context
+        total_cost = 0.0
+        total_tokens = {"prompt": 0, "completion": 0, "total": 0}
+
+        try:
+            await self.initialize()
+
+            # Get MCP tools once
+            mcp_tools = await self.mcp_client.list_tools()
+            formatted_tools = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": tool.name,
+                        "description": tool.description,
+                        "parameters": tool.input_schema,
+                    },
+                }
+                for tool in mcp_tools
+            ]
+
+            overall_passed = True
+
+            for step_idx, step in enumerate(test_case.steps):
+                step_start = time.time()
+                step_name = step.name or f"step_{step_idx + 1}"
+
+                if self.verbose:
+                    print(f"  Step {step_idx + 1}/{len(test_case.steps)}: {step.prompt[:50]}...")
+
+                # Call LLM with conversation history
+                llm_result = await self._call_llm_with_rate_limiting(
+                    prompt=step.prompt,
+                    tools=formatted_tools,
+                    timeout=step.timeout,
+                    messages=conversation_history if conversation_history else None,
+                )
+
+                # Execute tool calls
+                tool_results = []
+                if llm_result.tool_calls:
+                    for tool_call in llm_result.tool_calls:
+                        mcp_tool_call = MCPToolCall(
+                            name=tool_call["name"],
+                            arguments=tool_call.get("arguments", {}),
+                        )
+                        result = await self.mcp_client.call_tool(mcp_tool_call)
+                        tool_results.append(result)
+
+                # Update conversation history
+                conversation_history.append({"role": "user", "content": step.prompt})
+                if llm_result.response:
+                    conversation_history.append(
+                        {"role": "assistant", "content": llm_result.response}
+                    )
+
+                # Run evaluators for this step
+                step_evaluations = []
+                step_passed = True
+
+                if step.evaluators:
+                    from testmcpy.evals.base_evaluators import create_evaluator
+
+                    context = {
+                        "prompt": step.prompt,
+                        "response": llm_result.response,
+                        "tool_calls": llm_result.tool_calls,
+                        "tool_results": tool_results,
+                        "conversation_history": conversation_history,
+                        "step_index": step_idx,
+                    }
+
+                    for eval_config in step.evaluators:
+                        eval_name = eval_config.get("name") or eval_config.get("type")
+                        eval_args = eval_config.get("args", {})
+                        try:
+                            evaluator = create_evaluator(eval_name, **eval_args)
+                            eval_result = evaluator.evaluate(context)
+                            step_evaluations.append(
+                                {
+                                    "evaluator": eval_name,
+                                    "passed": eval_result.passed,
+                                    "score": eval_result.score,
+                                    "reason": eval_result.reason,
+                                }
+                            )
+                            if not eval_result.passed:
+                                step_passed = False
+                        except Exception as e:
+                            step_evaluations.append(
+                                {
+                                    "evaluator": eval_name,
+                                    "passed": False,
+                                    "score": 0.0,
+                                    "reason": f"Evaluator error: {str(e)}",
+                                }
+                            )
+                            step_passed = False
+
+                # Track overall results
+                if not step_passed:
+                    overall_passed = False
+
+                all_tool_calls.extend(llm_result.tool_calls)
+                all_tool_results.extend(
+                    [r.to_dict() if hasattr(r, "to_dict") else str(r) for r in tool_results]
+                )
+                all_evaluations.extend(step_evaluations)
+                total_cost += llm_result.cost
+                if llm_result.token_usage:
+                    for k in total_tokens:
+                        total_tokens[k] += llm_result.token_usage.get(k, 0)
+
+                step_results.append(
+                    StepResult(
+                        step_index=step_idx,
+                        step_name=step_name,
+                        prompt=step.prompt,
+                        passed=step_passed,
+                        response=llm_result.response,
+                        tool_calls=llm_result.tool_calls,
+                        evaluations=step_evaluations,
+                        duration=time.time() - step_start,
+                    )
+                )
+
+            # Calculate overall score
+            total_evals = len(all_evaluations) if all_evaluations else 1
+            passed_evals = sum(1 for e in all_evaluations if e.get("passed"))
+            score = passed_evals / total_evals
+
+            return TestResult(
+                test_name=test_case.name,
+                passed=overall_passed,
+                score=score,
+                duration=time.time() - start_time,
+                reason=f"Multi-turn: {len(step_results)} steps, {passed_evals}/{total_evals} evaluations passed",
+                tool_calls=all_tool_calls,
+                tool_results=all_tool_results,
+                response=step_results[-1].response if step_results else None,
+                evaluations=all_evaluations,
+                cost=total_cost,
+                token_usage=total_tokens,
+                step_results=step_results,
+            )
+
+        except Exception as e:
+            return TestResult(
+                test_name=test_case.name,
+                passed=False,
+                score=0.0,
+                duration=time.time() - start_time,
+                error=str(e),
+                reason=f"Multi-turn test failed: {str(e)}",
+                step_results=step_results,
+            )
+
     async def run_tests(self, test_cases: list[TestCase]) -> list[TestResult]:
         """Run multiple test cases."""
         results = []
@@ -551,7 +799,11 @@ class TestRunner:
     ) -> TestResult:
         """Run a test with retry logic for rate limit failures."""
         for attempt in range(max_test_retries + 1):
-            result = await self.run_test(test_case)
+            # Use multi-turn runner for multi-step tests
+            if test_case.is_multi_turn:
+                result = await self.run_multi_turn_test(test_case)
+            else:
+                result = await self.run_test(test_case)
 
             # Check if this was a rate limit failure
             is_rate_limit_failure = (

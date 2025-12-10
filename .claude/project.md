@@ -999,11 +999,30 @@ evaluators:
       Score 0.0: Incorrect
 ```
 
-### 6. MEDIUM: Multi-Turn Conversations
+### 6. ✅ MEDIUM: Multi-Turn Conversations - DONE
 Support for sequential test steps that share context.
+```yaml
+# Multi-turn test example
+name: test_create_and_view
+steps:
+  - prompt: "Create a bar chart showing sales"
+    evaluators:
+      - type: tool_called
+        tool_name: create_chart
+  - prompt: "Now show me the chart data"
+    evaluators:
+      - type: response_includes
+        content: "data"
+```
 
-### 7. MEDIUM: Database for Metrics
-SQLite or similar for historical result storage and analysis.
+### 7. ✅ MEDIUM: Database for Metrics - DONE
+SQLite storage in `testmcpy/storage.py` with:
+- Test result storage with history
+- Test versioning with diff support
+- Pass rate analytics
+- Trend analysis by day/week/hour
+- Model comparison metrics
+- Failing test detection
 
 ---
 
@@ -1019,12 +1038,13 @@ SQLite or similar for historical result storage and analysis.
 - [x] Unify model interface for all providers
 - [ ] Add model comparison in reports
 
-### Phase 3: Infrastructure (Next)
-- [ ] Add SQLite storage for results
-- [ ] Implement test versioning
-- [ ] Create historical dashboard
+### Phase 3: Infrastructure ✅ COMPLETE
+- [x] Add SQLite storage for results (`testmcpy/storage.py`)
+- [x] Implement test versioning with diff support
+- [x] Add metrics API endpoints (`server/routers/metrics.py`)
+- [ ] Create historical dashboard (UI component pending)
 
-### Phase 4: Advanced Features
-- [ ] Multi-turn conversation support
+### Phase 4: Advanced Features ✅ COMPLETE
+- [x] Multi-turn conversation support (`TestStep`, `run_multi_turn_test`)
 - [ ] Parameterized tests
-- [ ] CI/CD GitHub Actions template
+- [x] CI/CD GitHub Actions template (`.github/workflows/mcp-tests.yml`)

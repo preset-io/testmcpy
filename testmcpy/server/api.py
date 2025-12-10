@@ -2547,6 +2547,38 @@ async def run_tests(request: TestRunRequest):
 
         results = await runner.run_tests(test_cases)
 
+        # Save results to storage for metrics tracking
+        try:
+            from testmcpy.storage import get_storage
+
+            storage = get_storage()
+
+            # Save test file version
+            with open(test_path) as f:
+                content = f.read()
+            version = storage.save_version(str(test_path), content)
+
+            # Save each result
+            for r in results:
+                storage.save_result(
+                    test_path=str(test_path),
+                    test_name=r.test_name,
+                    passed=r.passed,
+                    duration=r.duration,
+                    cost=r.cost,
+                    tokens_used=r.token_usage.get("total", 0) if r.token_usage else 0,
+                    model=model,
+                    provider=provider,
+                    error=r.error,
+                    evaluations=[
+                        e.to_dict() if hasattr(e, "to_dict") else e for e in (r.evaluations or [])
+                    ],
+                    version_id=version.id,
+                )
+        except Exception as storage_err:
+            # Don't fail the request if storage fails
+            print(f"Warning: Failed to save results to storage: {storage_err}")
+
         # Format results
         return {
             "summary": {

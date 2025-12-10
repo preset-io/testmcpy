@@ -3346,5 +3346,227 @@ def _print_smoke_test_table(report):
     console.print(table)
 
 
+@app.command()
+def metrics(
+    days: int = typer.Option(30, "--days", "-d", help="Number of days to analyze"),
+    test_path: str | None = typer.Option(None, "--test", "-t", help="Filter by test file"),
+    model: str | None = typer.Option(None, "--model", "-m", help="Filter by model"),
+    show_trends: bool = typer.Option(False, "--trends", help="Show daily trends"),
+    show_models: bool = typer.Option(False, "--models", help="Compare models"),
+    show_failing: bool = typer.Option(False, "--failing", help="Show frequently failing tests"),
+):
+    """
+    View test metrics and analytics.
+
+    Shows pass rates, trends, model comparisons, and identifies frequently failing tests.
+
+    Examples:
+        testmcpy metrics
+        testmcpy metrics --days 7 --trends
+        testmcpy metrics --models
+        testmcpy metrics --failing --days 14
+    """
+    from rich.table import Table
+
+    from testmcpy.storage import get_storage
+
+    storage = get_storage()
+
+    console.print(
+        Panel.fit(
+            "[bold cyan]Test Metrics & Analytics[/bold cyan]\n"
+            f"[dim]Analyzing last {days} days...[/dim]",
+            border_style="cyan",
+        )
+    )
+
+    # Summary stats
+    summary = storage.get_pass_rate(test_path=test_path, model=model, days=days)
+
+    console.print("\n[bold]Summary[/bold]")
+    summary_table = Table(show_header=False, box=None)
+    summary_table.add_column("Metric", style="cyan")
+    summary_table.add_column("Value", style="bold")
+
+    pass_rate_color = (
+        "green" if summary["pass_rate"] >= 80 else "yellow" if summary["pass_rate"] >= 50 else "red"
+    )
+    summary_table.add_row("Total Tests", str(summary["total"]))
+    summary_table.add_row("Passed", f"[green]{summary['passed']}[/green]")
+    summary_table.add_row("Failed", f"[red]{summary['failed']}[/red]")
+    summary_table.add_row(
+        "Pass Rate", f"[{pass_rate_color}]{summary['pass_rate']:.1f}%[/{pass_rate_color}]"
+    )
+    summary_table.add_row("Avg Duration", f"{summary['avg_duration']:.2f}s")
+    summary_table.add_row("Total Cost", f"${summary['total_cost']:.4f}")
+    summary_table.add_row("Total Tokens", f"{summary['total_tokens']:,}")
+
+    console.print(summary_table)
+
+    # Trends
+    if show_trends:
+        console.print("\n[bold]Daily Trends[/bold]")
+        trends = storage.get_trends(test_path=test_path, model=model, days=days)
+
+        if trends:
+            trend_table = Table(show_header=True, header_style="bold cyan")
+            trend_table.add_column("Date")
+            trend_table.add_column("Total", justify="right")
+            trend_table.add_column("Passed", justify="right")
+            trend_table.add_column("Failed", justify="right")
+            trend_table.add_column("Pass Rate", justify="right")
+            trend_table.add_column("Avg Duration", justify="right")
+
+            for t in trends[-14:]:  # Last 14 days
+                pr_color = (
+                    "green" if t["pass_rate"] >= 80 else "yellow" if t["pass_rate"] >= 50 else "red"
+                )
+                trend_table.add_row(
+                    t["period"],
+                    str(t["total"]),
+                    f"[green]{t['passed']}[/green]",
+                    f"[red]{t['failed']}[/red]" if t["failed"] > 0 else "0",
+                    f"[{pr_color}]{t['pass_rate']:.1f}%[/{pr_color}]",
+                    f"{t['avg_duration']:.2f}s",
+                )
+
+            console.print(trend_table)
+        else:
+            console.print("[dim]No trend data available[/dim]")
+
+    # Model comparison
+    if show_models:
+        console.print("\n[bold]Model Comparison[/bold]")
+        models = storage.get_model_comparison(days=days)
+
+        if models:
+            model_table = Table(show_header=True, header_style="bold cyan")
+            model_table.add_column("Model")
+            model_table.add_column("Provider")
+            model_table.add_column("Tests", justify="right")
+            model_table.add_column("Pass Rate", justify="right")
+            model_table.add_column("Avg Duration", justify="right")
+            model_table.add_column("Cost", justify="right")
+
+            for m in models:
+                pr_color = (
+                    "green" if m["pass_rate"] >= 80 else "yellow" if m["pass_rate"] >= 50 else "red"
+                )
+                model_table.add_row(
+                    m["model"],
+                    m["provider"],
+                    str(m["total"]),
+                    f"[{pr_color}]{m['pass_rate']:.1f}%[/{pr_color}]",
+                    f"{m['avg_duration']:.2f}s",
+                    f"${m['total_cost']:.4f}",
+                )
+
+            console.print(model_table)
+        else:
+            console.print("[dim]No model data available[/dim]")
+
+    # Failing tests
+    if show_failing:
+        console.print("\n[bold]Frequently Failing Tests[/bold]")
+        failing = storage.get_failing_tests(days=days, min_failures=2)
+
+        if failing:
+            fail_table = Table(show_header=True, header_style="bold cyan")
+            fail_table.add_column("Test")
+            fail_table.add_column("Failures", justify="right")
+            fail_table.add_column("Total", justify="right")
+            fail_table.add_column("Failure Rate", justify="right")
+            fail_table.add_column("Last Error")
+
+            for f in failing[:10]:  # Top 10
+                fail_table.add_row(
+                    f"{f['test_path']}:{f['test_name']}"[:50],
+                    f"[red]{f['failures']}[/red]",
+                    str(f["total"]),
+                    f"[red]{f['failure_rate']:.1f}%[/red]",
+                    (f["last_error"] or "")[:40],
+                )
+
+            console.print(fail_table)
+        else:
+            console.print("[green]No frequently failing tests found![/green]")
+
+
+@app.command()
+def versions(
+    test_path: str = typer.Argument(..., help="Path to test file"),
+    limit: int = typer.Option(10, "--limit", "-n", help="Number of versions to show"),
+    diff: str | None = typer.Option(
+        None, "--diff", help="Show diff between two versions (e.g., '1,2')"
+    ),
+):
+    """
+    View test file version history.
+
+    Shows version history and allows comparing versions.
+
+    Examples:
+        testmcpy versions tests/basic_test.yaml
+        testmcpy versions tests/basic_test.yaml --limit 5
+        testmcpy versions tests/basic_test.yaml --diff 1,2
+    """
+    from rich.table import Table
+    from rich.syntax import Syntax
+
+    from testmcpy.storage import get_storage
+
+    storage = get_storage()
+
+    if diff:
+        # Show diff between versions
+        try:
+            v1, v2 = map(int, diff.split(","))
+        except ValueError:
+            console.print("[red]Error:[/red] --diff expects format 'v1,v2' (e.g., '1,2')")
+            raise typer.Exit(1)
+
+        result = storage.diff_versions(test_path, v1, v2)
+
+        if "error" in result:
+            console.print(f"[red]Error:[/red] {result['error']}")
+            raise typer.Exit(1)
+
+        console.print(f"\n[bold]Diff: v{v1} → v{v2}[/bold]")
+        console.print(f"[dim]Hash: {result['v1_hash']} → {result['v2_hash']}[/dim]\n")
+
+        if result["diff"]:
+            console.print(Syntax(result["diff"], "diff", theme="monokai"))
+        else:
+            console.print("[green]No differences[/green]")
+
+    else:
+        # Show version history
+        versions_list = storage.get_versions(test_path, limit=limit)
+
+        if not versions_list:
+            console.print(f"[yellow]No versions found for {test_path}[/yellow]")
+            console.print("[dim]Versions are created when tests are run via the API.[/dim]")
+            raise typer.Exit(0)
+
+        console.print(f"\n[bold]Version History: {test_path}[/bold]\n")
+
+        table = Table(show_header=True, header_style="bold cyan")
+        table.add_column("Version", justify="right")
+        table.add_column("Hash")
+        table.add_column("Created")
+        table.add_column("Message")
+
+        for v in versions_list:
+            table.add_row(
+                f"v{v.version}",
+                v.content_hash,
+                v.created_at[:19].replace("T", " "),
+                v.message or "[dim]-[/dim]",
+            )
+
+        console.print(table)
+        console.print(f"\n[dim]Use --diff v1,v2 to compare versions[/dim]")
+
+
 if __name__ == "__main__":
     app()
