@@ -19,6 +19,7 @@ import ChatInterface from './pages/ChatInterface'
 import TestManager from './pages/TestManager'
 import Configuration from './pages/Configuration'
 import MCPProfiles from './pages/MCPProfiles'
+import LLMProfiles from './pages/LLMProfiles'
 import AuthDebugger from './pages/AuthDebugger'
 
 function AppContent() {
@@ -213,6 +214,7 @@ function AppContent() {
     { path: '/chat', label: 'Interact', icon: MessageSquare },
     { path: '/auth-debugger', label: 'Auth Debug', icon: Shield },
     { path: '/config', label: 'Config', icon: Settings },
+    { path: '/llm-profiles', label: 'LLM Profiles', icon: Cpu },
   ]
 
   if (!apiReady) {
@@ -380,6 +382,7 @@ function AppContent() {
             <Route path="/tests" element={<TestManager selectedProfiles={selectedProfiles} />} />
             <Route path="/auth-debugger" element={<AuthDebugger />} />
             <Route path="/config" element={<Configuration />} />
+            <Route path="/llm-profiles" element={<LLMProfiles selectedProfile={selectedLlmProfile} onSelectProfile={setSelectedLlmProfile} />} />
           </Routes>
         </main>
 
