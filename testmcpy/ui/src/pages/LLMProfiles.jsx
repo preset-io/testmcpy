@@ -3,7 +3,7 @@ import {
   Cpu, Check, AlertCircle, RefreshCw, ChevronDown, ChevronRight,
   Edit2, Trash2, Plus, Save, X, Copy, Download, Settings,
   CheckCircle, XCircle, AlertTriangle, DollarSign, Zap, Play, Loader2,
-  Eye, EyeOff, Key
+  Eye, EyeOff, Key, Star
 } from 'lucide-react'
 
 // Toast notification component
@@ -728,6 +728,39 @@ function LLMProfiles({ selectedProfile, onSelectProfile, hideHeader = false }) {
     }
   }
 
+  // Set a provider as default (quick action without opening modal)
+  const handleSetDefaultProvider = async (profileId, providerIndex) => {
+    try {
+      const currentProfile = profiles.find(p => p.profile_id === profileId)
+      // Set all providers to non-default, except the selected one
+      const updatedProviders = currentProfile.providers.map((p, idx) => ({
+        ...p,
+        default: idx === providerIndex
+      }))
+
+      const res = await fetch(`/api/llm/profiles/${profileId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: currentProfile.name,
+          description: currentProfile.description,
+          providers: updatedProviders
+        })
+      })
+      const data = await res.json()
+
+      if (data.success) {
+        await loadProfiles()
+        showToast(`${currentProfile.providers[providerIndex].name} set as default`)
+      } else {
+        showToast(data.detail || 'Failed to set default provider', 'error')
+      }
+    } catch (error) {
+      console.error('Failed to set default provider:', error)
+      showToast('Failed to set default provider', 'error')
+    }
+  }
+
   const handleDeleteProvider = async (profileId, providerIndex) => {
     try {
       const currentProfile = profiles.find(p => p.profile_id === profileId)
@@ -997,6 +1030,22 @@ function LLMProfiles({ selectedProfile, onSelectProfile, hideHeader = false }) {
 
                                 {/* Provider Actions */}
                                 <div className="flex items-center gap-1">
+                                  {/* Set as default button */}
+                                  {!provider.default && (
+                                    <button
+                                      onClick={() => handleSetDefaultProvider(profile.profile_id, idx)}
+                                      className="p-1 hover:bg-surface-elevated rounded transition-colors"
+                                      title="Set as default provider"
+                                    >
+                                      <Star size={14} className="text-text-tertiary hover:text-warning" />
+                                    </button>
+                                  )}
+                                  {provider.default && (
+                                    <span className="p-1" title="Default provider">
+                                      <Star size={14} className="text-warning fill-warning" />
+                                    </span>
+                                  )}
+
                                   <button
                                     onClick={() => handleTestProvider(profile.profile_id, idx, provider)}
                                     disabled={testingProvider === `${profile.profile_id}:${idx}`}

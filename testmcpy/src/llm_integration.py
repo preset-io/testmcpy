@@ -41,6 +41,7 @@ class LLMResult:
 
     response: str
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    thinking: str | None = None  # Extended thinking content (Claude 4 models)
     token_usage: dict[str, int] | None = None
     cost: float = 0.0
     duration: float = 0.0
@@ -683,12 +684,19 @@ class AnthropicProvider(LLMProvider):
                     }
                 )
 
-            # Prepare Anthropic API request with caching
+            # Check if model supports extended thinking (Claude 4 models)
+            supports_thinking = "claude-sonnet-4" in self.model or "claude-opus-4" in self.model
+
+            # Prepare Anthropic API request with caching and optional extended thinking
+            beta_features = ["prompt-caching-2024-07-31"]
+            if supports_thinking:
+                beta_features.append("interleaved-thinking-2025-05-14")
+
             headers = {
                 "Content-Type": "application/json",
                 "x-api-key": self.api_key,
                 "anthropic-version": "2023-06-01",
-                "anthropic-beta": "prompt-caching-2024-07-31",
+                "anthropic-beta": ",".join(beta_features),
             }
 
             # Build messages list - include history if provided, otherwise just current prompt
@@ -707,7 +715,14 @@ class AnthropicProvider(LLMProvider):
                 # No history, just the current prompt
                 api_messages = [{"role": "user", "content": prompt}]
 
-            api_request = {"model": self.model, "max_tokens": 1000, "messages": api_messages}
+            # Set max_tokens - higher for extended thinking models
+            max_tokens = 16000 if supports_thinking else 1000
+
+            api_request = {"model": self.model, "max_tokens": max_tokens, "messages": api_messages}
+
+            # Enable extended thinking for Claude 4 models
+            if supports_thinking:
+                api_request["thinking"] = {"type": "enabled", "budget_tokens": 10000}
 
             # Add system parameter if we have tools (not in messages array)
             if anthropic_tools:
@@ -738,13 +753,17 @@ class AnthropicProvider(LLMProvider):
 
             result = response.json()
 
-            # Extract response
+            # Extract response, thinking, and tool calls
             content = result.get("content", [])
             response_text = ""
+            thinking_text = ""
             tool_calls = []
 
             for item in content:
-                if item.get("type") == "text":
+                if item.get("type") == "thinking":
+                    # Extended thinking block
+                    thinking_text += item.get("thinking", "")
+                elif item.get("type") == "text":
                     response_text += item.get("text", "")
                 elif item.get("type") == "tool_use":
                     tool_calls.append(
@@ -783,6 +802,7 @@ class AnthropicProvider(LLMProvider):
             return LLMResult(
                 response=response_text,
                 tool_calls=tool_calls,
+                thinking=thinking_text if thinking_text else None,
                 token_usage=token_usage,
                 cost=cost,
                 duration=duration,
@@ -1438,6 +1458,7 @@ def create_llm_provider(provider: str, model: str, **kwargs) -> LLMProvider:
         "google": GeminiProvider,  # Alias
         "claude-sdk": ClaudeSDKProvider,
         "claude-cli": ClaudeCodeProvider,
+        "claude-code": ClaudeCodeProvider,  # Alias for claude-cli
     }
 
     if provider not in providers:

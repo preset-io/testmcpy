@@ -20,6 +20,7 @@ class LLMProviderConfig:
     name: str
     provider: str  # anthropic, openai, ollama, local, claude-sdk, claude-cli
     model: str
+    api_key: str | None = None  # Direct API key (stored in config)
     api_key_env: str | None = None  # Environment variable name for API key
     base_url: str | None = None  # For OpenAI-compatible APIs or Ollama
     timeout: int = 60
@@ -27,15 +28,21 @@ class LLMProviderConfig:
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
-        return {
+        result = {
             "name": self.name,
             "provider": self.provider,
             "model": self.model,
-            "api_key_env": self.api_key_env,
-            "base_url": self.base_url,
             "timeout": self.timeout,
             "default": self.default,
         }
+        # Only include non-None optional fields
+        if self.api_key:
+            result["api_key"] = self.api_key
+        if self.api_key_env:
+            result["api_key_env"] = self.api_key_env
+        if self.base_url:
+            result["base_url"] = self.base_url
+        return result
 
 
 @dataclass
@@ -105,6 +112,7 @@ class LLMProfileConfig:
                         name=provider_data.get("name", ""),
                         provider=provider_data.get("provider", "anthropic"),
                         model=provider_data.get("model", ""),
+                        api_key=provider_data.get("api_key"),
                         api_key_env=provider_data.get("api_key_env"),
                         base_url=provider_data.get("base_url"),
                         timeout=provider_data.get("timeout", 60),

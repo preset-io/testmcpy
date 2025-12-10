@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { Send, Loader, Wrench, DollarSign, ChevronDown, ChevronRight, CheckCircle, FileText, Plus, Server, Trash2 } from 'lucide-react'
+import { Send, Loader, Wrench, DollarSign, ChevronDown, ChevronRight, CheckCircle, FileText, Plus, Server, Trash2, Brain } from 'lucide-react'
 import ReactJson from '@microlink/react-json-view'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -86,6 +86,7 @@ function ChatInterface({ selectedProfiles = [], selectedLlmProfile, llmProfiles 
   const [evalResults, setEvalResults] = useState({})
   const [runningEval, setRunningEval] = useState(null)
   const [collapsedToolCalls, setCollapsedToolCalls] = useState({})
+  const [collapsedThinking, setCollapsedThinking] = useState({})
   const textareaRef = useRef(null)
   const [historySize, setHistorySize] = useState(10)  // Number of messages to keep in history
 
@@ -250,8 +251,9 @@ function ChatInterface({ selectedProfiles = [], selectedLlmProfile, llmProfiles 
 
       const assistantMessage = {
         role: 'assistant',
-        content: data.response,
+        content: data.response || '',
         tool_calls: data.tool_calls || [],
+        thinking: data.thinking || null,
         token_usage: data.token_usage,
         cost: data.cost,
         duration: data.duration,
@@ -284,7 +286,7 @@ function ChatInterface({ selectedProfiles = [], selectedLlmProfile, llmProfiles 
   useEffect(() => {
     if (messages.length > 0) {
       const lastMessage = messages[messages.length - 1]
-      if (lastMessage.role === 'assistant') {
+      if (lastMessage.role === 'assistant' && lastMessage.content) {
         const preview = lastMessage.content.substring(0, 100)
         announce(`New response: ${preview}${lastMessage.content.length > 100 ? '...' : ''}`)
       }
@@ -597,6 +599,28 @@ ${evaluators}
                 >
                   {message.role === 'assistant' ? (
                     <>
+                      {/* Extended Thinking Section */}
+                      {message.thinking && (
+                        <div className="mb-3">
+                          <button
+                            onClick={() => setCollapsedThinking(prev => ({ ...prev, [idx]: !prev[idx] }))}
+                            className="flex items-center gap-2 text-xs font-medium text-purple-400 hover:text-purple-300 transition-colors mb-2"
+                          >
+                            {collapsedThinking[idx] ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                            <Brain size={14} />
+                            <span>Thinking</span>
+                            <span className="text-white/40 font-normal">({message.thinking.length.toLocaleString()} chars)</span>
+                          </button>
+                          {!collapsedThinking[idx] && (
+                            <div className="bg-purple-900/20 border border-purple-500/30 rounded-lg p-3 text-sm text-white/80 max-h-64 overflow-y-auto">
+                              <div className="whitespace-pre-wrap font-mono text-xs leading-relaxed">
+                                {message.thinking}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       {message.tool_calls && message.tool_calls.length > 0 && (
                         <div className="mb-3 p-2 bg-primary/10 border border-primary/30 rounded-lg text-xs text-white/70">
                           <span className="font-semibold text-primary-light">Note:</span> The LLM's interpretation may be inaccurate.

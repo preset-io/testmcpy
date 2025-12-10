@@ -83,6 +83,7 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     response: str
     tool_calls: list[dict[str, Any]] = []
+    thinking: str | None = None  # Extended thinking content (Claude 4 models)
     token_usage: dict[str, int] | None = None
     cost: float = 0.0
     duration: float = 0.0
@@ -1798,11 +1799,12 @@ async def list_llm_profiles():
 
             providers_info = []
             for provider in profile.providers:
-                # Mask API keys in response
+                # Include API key (needed for testing) but also include api_key_env
                 provider_dict = {
                     "name": provider.name,
                     "provider": provider.provider,
                     "model": provider.model,
+                    "api_key": provider.api_key,  # Direct API key for testing
                     "api_key_env": provider.api_key_env,
                     "base_url": provider.base_url,
                     "timeout": provider.timeout,
@@ -1847,6 +1849,7 @@ async def create_llm_profile(profile_id: str, request: dict):
                 name=p.get("name"),
                 provider=p.get("provider"),
                 model=p.get("model"),
+                api_key=p.get("api_key"),  # Direct API key
                 api_key_env=p.get("api_key_env"),
                 base_url=p.get("base_url"),
                 timeout=p.get("timeout", 60),
@@ -1895,6 +1898,7 @@ async def update_llm_profile(profile_id: str, request: dict):
                 name=p.get("name"),
                 provider=p.get("provider"),
                 model=p.get("model"),
+                api_key=p.get("api_key"),  # Direct API key
                 api_key_env=p.get("api_key_env"),
                 base_url=p.get("base_url"),
                 timeout=p.get("timeout", 60),
@@ -2523,6 +2527,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
         return ChatResponse(
             response=clean_response,
             tool_calls=tool_calls_with_results,
+            thinking=result.thinking,
             token_usage=result.token_usage,
             cost=result.cost,
             duration=result.duration,

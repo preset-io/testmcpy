@@ -138,7 +138,7 @@ CLAUDE_MODELS: list[ModelInfo] = [
         id="claude-3-5-sonnet-20241022",
         name="Claude 3.5 Sonnet",
         provider=Provider.ANTHROPIC,
-        description="Previous generation balanced model",
+        description="Previous generation balanced model (deprecated - use Claude 4 Sonnet)",
         context_window=200_000,
         max_output_tokens=8192,
         input_price_per_1m=3.00,
@@ -150,6 +150,7 @@ CLAUDE_MODELS: list[ModelInfo] = [
             ModelCapability.LONG_CONTEXT,
         ],
         family="claude-3.5",
+        is_deprecated=True,
         aliases=["claude-3-5-sonnet", "claude-3.5-sonnet"],
     ),
 ]
