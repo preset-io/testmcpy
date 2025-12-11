@@ -7,7 +7,7 @@ capabilities with MCP (Model Context Protocol) services.
 
 __version__ = "0.1.0"
 
-from evals.base_evaluators import (
+from testmcpy.evals.base_evaluators import (
     BaseEvaluator,
     EvalResult,
     ExecutionSuccessful,
@@ -15,9 +15,9 @@ from evals.base_evaluators import (
     WasMCPToolCalled,
     create_evaluator,
 )
-from src.llm_integration import LLMProvider, create_llm_provider
+from testmcpy.src.llm_integration import LLMProvider, create_llm_provider
 from testmcpy.src.mcp_client import MCPClient, MCPTool, MCPToolCall, MCPToolResult
-from src.test_runner import TestCase, TestResult, TestRunner
+from testmcpy.src.test_runner import TestCase, TestResult, TestRunner
 
 __all__ = [
     "MCPClient",

@@ -73,21 +73,21 @@ async def validate_installation():
         results.append(("MCP Client", "✗", f"Import error: {e}"))
 
     try:
-        from src.llm_integration import create_llm_provider
+        from testmcpy.src.llm_integration import create_llm_provider
 
         results.append(("LLM Integration", "✓", "Available"))
     except ImportError as e:
         results.append(("LLM Integration", "✗", f"Import error: {e}"))
 
     try:
-        from src.test_runner import TestRunner
+        from testmcpy.src.test_runner import TestRunner
 
         results.append(("Test Runner", "✓", "Available"))
     except ImportError as e:
         results.append(("Test Runner", "✗", f"Import error: {e}"))
 
     try:
-        from evals.base_evaluators import create_evaluator
+        from testmcpy.evals.base_evaluators import create_evaluator
 
         results.append(("Evaluators", "✓", "Available"))
     except ImportError as e:
