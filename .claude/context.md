@@ -36,12 +36,28 @@ testmcpy/
 │   │   └── test_runner.py     # Test execution engine
 │   ├── evals/                  # Evaluation functions
 │   │   └── base_evaluators.py # Standard evaluators for test validation
-│   ├── server/                 # FastAPI web server
-│   │   └── api.py             # REST API endpoints including optimize-docs
+│   ├── server/                 # FastAPI web server (modular)
+│   │   ├── api.py             # Main FastAPI app (~700 lines, down from 4,400)
+│   │   └── routers/           # API route modules
+│   │       ├── auth.py        # Authentication flows and debugging
+│   │       ├── llm.py         # LLM provider management
+│   │       ├── mcp_profiles.py # MCP profile CRUD operations
+│   │       ├── test_profiles.py # Test profile management
+│   │       ├── tests.py       # Test execution endpoints
+│   │       └── tools.py       # MCP tool operations
+│   ├── cli/                    # CLI package (modular, ~100 lines main)
+│   │   ├── __init__.py        # CLI entry point, imports all commands
+│   │   ├── app.py             # Shared app setup (console, enums, defaults)
+│   │   └── commands/          # CLI command modules
+│   │       ├── mcp.py         # profiles, status, explore-cli
+│   │       ├── run.py         # research, run, generate, smoke-test
+│   │       ├── server.py      # init, setup, serve, config-cmd, config-mcp, doctor
+│   │       ├── tools.py       # tools, export
+│   │       └── tui.py         # dash, explore, chat, interact
+│   ├── tui/                    # Textual TUI components
 │   ├── ui/                     # React web interface
 │   ├── mcp_profiles.py         # MCP profile configuration management
-│   ├── config.py              # Multi-source configuration management
-│   └── cli.py                 # Main CLI interface
+│   └── config.py              # Multi-source configuration management
 ├── tests/                     # Test case definitions (YAML/JSON)
 ├── docs/                      # Documentation
 │   ├── logos/                # Brand assets (SVG, ASCII)
@@ -185,6 +201,36 @@ FastAPI-based REST API providing:
 - `parameter_value_in_range`: Check numeric parameters are within bounds
 - Support for nested parameter paths using dot notation
 - Comprehensive error messages for debugging
+
+### Codebase Modularization (December 2024)
+**Major refactoring for improved maintainability:**
+
+**API Server Modularization:**
+- Reduced `api.py` from 4,484 lines to ~700 lines
+- Extracted 6 router modules in `server/routers/`:
+  - `auth.py`: Authentication flows and debugging endpoints
+  - `llm.py`: LLM provider management (11 endpoints)
+  - `mcp_profiles.py`: MCP profile CRUD operations (14 endpoints)
+  - `test_profiles.py`: Test profile management (5 endpoints)
+  - `tests.py`: Test execution endpoints (12 endpoints)
+  - `tools.py`: MCP tool operations (5 endpoints)
+
+**CLI Modularization:**
+- Created `cli/` package with modular command structure
+- `cli/app.py`: Shared setup (console, enums, defaults)
+- `cli/commands/` directory with 5 command modules:
+  - `mcp.py`: profiles, status, explore-cli
+  - `run.py`: research, run, generate, smoke-test
+  - `server.py`: init, setup, serve, config-cmd, config-mcp, doctor
+  - `tools.py`: tools, export
+  - `tui.py`: dash, explore, chat, interact
+
+**Benefits:**
+- Easier navigation and code discovery
+- Better separation of concerns
+- Improved testability (can test modules independently)
+- Reduced merge conflicts when working on different features
+- Better LLM context utilization (smaller focused files)
 
 ## Common Workflows
 
