@@ -190,26 +190,3 @@ def chat(
         await llm.close()
 
     asyncio.run(chat_session())
-
-
-@app.command()
-def interact(
-    model: str = typer.Option(DEFAULT_MODEL, "--model", "-m", help="Model to use"),
-    provider: ModelProvider = typer.Option(
-        DEFAULT_PROVIDER, "--provider", "-p", help="Model provider"
-    ),
-    mcp_url: str | None = typer.Option(None, "--mcp-url", help="MCP service URL"),
-    profile: str | None = typer.Option(None, "--profile", help="MCP profile"),
-    no_mcp: bool = typer.Option(False, "--no-mcp", help="Interact without MCP tools"),
-):
-    """
-    Alias for 'chat' command. Use 'testmcpy chat' instead.
-    """
-    # Just call chat with the same args
-    chat(
-        profile=profile,
-        provider=provider,
-        model=model,
-        mcp_url=mcp_url,
-        no_mcp=no_mcp,
-    )
