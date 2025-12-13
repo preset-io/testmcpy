@@ -6,7 +6,6 @@ on MCP servers to verify they're working correctly.
 """
 
 import asyncio
-import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -132,19 +131,26 @@ class SmokeTestRunner:
     def _is_tool_testable(self, tool_schema: dict) -> bool:
         """Check if a tool can be tested with simple parameter generation.
 
-        Returns False if the tool has complex nested object parameters that
-        would require sophisticated parameter generation to satisfy validation.
+        Returns False if the tool has:
+        - Complex nested object parameters
+        - Required ID parameters (chart_id, dashboard_id, etc.) that need real values
+        - Required string parameters that can't have sensible defaults
         """
         input_schema = tool_schema.get("inputSchema", {})
         properties = input_schema.get("properties", {})
         required = input_schema.get("required", [])
 
+        # Common ID parameter patterns that need real values
+        id_param_patterns = ["_id", "id", "_uuid", "uuid", "_key", "key"]
+
         for param_name in required:
             param_def = properties.get(param_name, {})
+
             # Check if this is a complex object with $ref
             if "$ref" in param_def:
                 # Has $ref reference - too complex for smoke test
                 return False
+
             # Check if it's an object type (which might have nested requirements)
             if param_def.get("type") == "object":
                 # Check if it has properties with required fields
@@ -153,6 +159,28 @@ class SmokeTestRunner:
                 if nested_required or nested_props:
                     # Has nested structure - too complex
                     return False
+
+            # Check if it's a required string parameter that looks like an ID
+            if param_def.get("type") == "string":
+                param_lower = param_name.lower()
+                # Skip tools with required ID-like parameters
+                for pattern in id_param_patterns:
+                    if pattern in param_lower:
+                        return False
+                # Also skip required string params without defaults
+                # (they likely need specific values we can't guess)
+                if param_def.get("default") is None:
+                    # Check if description suggests it's a required identifier
+                    desc = param_def.get("description", "").lower()
+                    if any(word in desc for word in ["id", "identifier", "name", "key", "slug"]):
+                        return False
+
+            # Check for required integer parameters that look like IDs
+            if param_def.get("type") == "integer":
+                param_lower = param_name.lower()
+                for pattern in id_param_patterns:
+                    if pattern in param_lower:
+                        return False
 
         return True
 
