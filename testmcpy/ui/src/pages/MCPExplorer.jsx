@@ -965,6 +965,38 @@ function MCPExplorer({ selectedProfiles = [] }) {
                       )}
                     </div>
 
+                    {/* Output Schema */}
+                    {tool.output_schema && (
+                      <div>
+                        <h4 className="text-sm font-semibold text-text-secondary mb-3">
+                          Output Schema
+                        </h4>
+                        {tool.output_schema?.properties ? (
+                          <div className="space-y-2">
+                            {Object.entries(tool.output_schema.properties).map(
+                              ([param, info]) => (
+                                <ParameterCard
+                                  key={param}
+                                  name={param}
+                                  type={info.type}
+                                  required={tool.output_schema.required?.includes(param)}
+                                  description={info.description}
+                                  default={info.default}
+                                  enum={info.enum}
+                                  items={info.items}
+                                  properties={info.properties}
+                                />
+                              )
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-text-tertiary italic bg-surface-elevated border border-border rounded-lg p-4">
+                            Returns: {tool.output_schema.type || 'object'}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
                     {/* IDE-like Code Viewer for Export */}
                     {tool.input_schema && (
                       <div>
