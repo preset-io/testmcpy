@@ -604,10 +604,11 @@ ${evaluators}
                       {/* Model Indicator Pill */}
                       {message.model && (
                         <div className="mb-3 flex items-center gap-2">
+                          {/* Provider/Model Pill */}
                           <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border ${
                             message.provider === 'anthropic' || message.provider === 'claude-sdk' || message.provider === 'claude-cli'
                               ? 'bg-orange-500/10 text-orange-400 border-orange-500/30'
-                              : message.provider === 'openai'
+                              : message.provider === 'openai' || message.provider === 'codex-cli'
                               ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
                               : 'bg-blue-500/10 text-blue-400 border-blue-500/30'
                           }`}>
@@ -615,7 +616,7 @@ ${evaluators}
                               <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M17.59 6.91L12 12.5L6.41 6.91L5 8.33L12 15.33L19 8.33L17.59 6.91Z"/>
                               </svg>
-                            ) : message.provider === 'openai' ? (
+                            ) : message.provider === 'openai' || message.provider === 'codex-cli' ? (
                               <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M22.282 9.821a5.985 5.985 0 0 0-.516-4.91 6.046 6.046 0 0 0-6.51-2.9A6.065 6.065 0 0 0 4.981 4.18a5.985 5.985 0 0 0-3.998 2.9 6.046 6.046 0 0 0 .743 7.097 5.98 5.98 0 0 0 .51 4.911 6.051 6.051 0 0 0 6.515 2.9A5.985 5.985 0 0 0 13.26 24a6.056 6.056 0 0 0 5.772-4.206 5.99 5.99 0 0 0 3.997-2.9 6.056 6.056 0 0 0-.747-7.073zM13.26 22.43a4.476 4.476 0 0 1-2.876-1.04l.141-.081 4.779-2.758a.795.795 0 0 0 .392-.681v-6.737l2.02 1.168a.071.071 0 0 1 .038.052v5.583a4.504 4.504 0 0 1-4.494 4.494zM3.6 18.304a4.47 4.47 0 0 1-.535-3.014l.142.085 4.783 2.759a.771.771 0 0 0 .78 0l5.843-3.369v2.332a.08.08 0 0 1-.033.062L9.74 19.95a4.5 4.5 0 0 1-6.14-1.646zM2.34 7.896a4.485 4.485 0 0 1 2.366-1.973V11.6a.766.766 0 0 0 .388.676l5.815 3.355-2.02 1.168a.076.076 0 0 1-.071 0l-4.83-2.786A4.504 4.504 0 0 1 2.34 7.872zm16.597 3.855l-5.833-3.387L15.119 7.2a.076.076 0 0 1 .071 0l4.83 2.791a4.494 4.494 0 0 1-.676 8.105v-5.678a.79.79 0 0 0-.407-.667zm2.01-3.023l-.141-.085-4.774-2.782a.776.776 0 0 0-.785 0L9.409 9.23V6.897a.066.066 0 0 1 .028-.061l4.83-2.787a4.5 4.5 0 0 1 6.68 4.66zm-12.64 4.135l-2.02-1.164a.08.08 0 0 1-.038-.057V6.075a4.5 4.5 0 0 1 7.375-3.453l-.142.08L8.704 5.46a.795.795 0 0 0-.393.681zm1.097-2.365l2.602-1.5 2.607 1.5v2.999l-2.597 1.5-2.607-1.5z"/>
                               </svg>
@@ -624,6 +625,50 @@ ${evaluators}
                             )}
                             <span>{message.model}</span>
                           </span>
+                          {/* CLI/API/SDK Badge */}
+                          {message.provider && (
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium ${
+                              message.provider === 'claude-cli' || message.provider === 'codex-cli'
+                                ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                                : message.provider === 'claude-sdk'
+                                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                                : 'bg-slate-500/20 text-slate-300 border border-slate-500/30'
+                            }`}>
+                              {message.provider === 'claude-cli' ? (
+                                <>
+                                  <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <polyline points="4 17 10 11 4 5"></polyline>
+                                    <line x1="12" y1="19" x2="20" y2="19"></line>
+                                  </svg>
+                                  Claude CLI
+                                </>
+                              ) : message.provider === 'codex-cli' ? (
+                                <>
+                                  <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <polyline points="4 17 10 11 4 5"></polyline>
+                                    <line x1="12" y1="19" x2="20" y2="19"></line>
+                                  </svg>
+                                  Codex CLI
+                                </>
+                              ) : message.provider === 'claude-sdk' ? (
+                                <>
+                                  <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                                    <line x1="3" y1="9" x2="21" y2="9"></line>
+                                    <line x1="9" y1="21" x2="9" y2="9"></line>
+                                  </svg>
+                                  SDK
+                                </>
+                              ) : (
+                                <>
+                                  <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                                  </svg>
+                                  API
+                                </>
+                              )}
+                            </span>
+                          )}
                         </div>
                       )}
 
