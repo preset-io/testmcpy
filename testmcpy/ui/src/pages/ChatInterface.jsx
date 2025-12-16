@@ -358,6 +358,10 @@ function ChatInterface({ selectedProfiles = [], selectedLlmProfile, llmProfiles 
     setRunningEval(messageIndex)
 
     try {
+      // Use model/provider from the message if available, otherwise get current config
+      const model = assistantMessage.model || getLlmConfig().model
+      const provider = assistantMessage.provider || getLlmConfig().provider
+
       const res = await fetch('/api/eval/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -365,8 +369,8 @@ function ChatInterface({ selectedProfiles = [], selectedLlmProfile, llmProfiles 
           prompt: userMessage.content,
           response: assistantMessage.content,
           tool_calls: assistantMessage.tool_calls || [],
-          model: llmConfig.model,
-          provider: llmConfig.provider,
+          model: model,
+          provider: provider,
         }),
       })
 
