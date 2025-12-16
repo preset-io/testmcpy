@@ -1300,7 +1300,14 @@ class ClaudeSDKProvider(LLMProvider):
 
 
 class ClaudeCodeProvider(LLMProvider):
-    """Claude Code CLI provider via subprocess."""
+    """Claude Code CLI provider via subprocess with JSON output support.
+
+    This provider uses Claude Code's subscription (no API credits required).
+    It supports:
+    - Structured JSON output with tool calls, thinking, and usage stats
+    - Direct MCP server integration via Claude Code's native MCP support
+    - Extended thinking capture when available
+    """
 
     def __init__(
         self,
@@ -1308,18 +1315,22 @@ class ClaudeCodeProvider(LLMProvider):
         claude_cli_path: str | None = None,
         mcp_url: str | None = None,
         auth: dict[str, Any] | None = None,
+        output_format: str = "json",  # 'json' for structured, 'text' for plain
     ):
         self.model = model
         self.claude_cli_path = claude_cli_path or self._find_claude_cli()
+        self.output_format = output_format
         # Use MCP_URL and auth from default profile if not provided
         config = get_config()
         if mcp_url is None:
             mcp_url = config.get_mcp_url()
+        self.mcp_url = mcp_url
         if auth is None:
             # Get auth from default MCP server
             default_mcp = config.get_default_mcp_server()
             if default_mcp and default_mcp.auth:
                 auth = default_mcp.auth.to_dict()
+        self.auth_config = auth
         self.tool_discovery = ToolDiscoveryService(mcp_url, auth=auth)
 
     def _find_claude_cli(self) -> str:
@@ -1356,44 +1367,52 @@ class ClaudeCodeProvider(LLMProvider):
             )
             if result.returncode != 0:
                 raise Exception(f"Claude CLI error: {result.stderr}")
+            version = result.stdout.strip()
+            print(f"[ClaudeCode] CLI version: {version}")
         except subprocess.TimeoutExpired:
             raise Exception("Claude CLI timeout during initialization")
 
-        # Try to pre-discover tools, but don't fail if MCP service is unavailable
+        # Try to pre-discover tools for tool schema info
         try:
             await self.tool_discovery.discover_tools()
-            print(f"✅ Successfully connected to MCP service at {self.tool_discovery.mcp_url}")
+            print(f"[ClaudeCode] ✅ MCP service available at {self.tool_discovery.mcp_url}")
         except Exception as e:
-            print(f"⚠️  Warning: Failed to initialize MCP tools: {e}")
-            print(f"   MCP URL: {self.tool_discovery.mcp_url}")
-            print("   The provider will work without MCP tools (direct API calls only)")
+            print(f"[ClaudeCode] ⚠️  MCP tools not available: {e}")
 
     async def generate_with_tools(
         self,
         prompt: str,
         tools: list[dict[str, Any]],
-        timeout: float = 120.0,  # Longer timeout for Claude CLI with MCP tools
+        timeout: float = 120.0,
         messages: list[dict[str, Any]] | None = None,
     ) -> LLMResult:
-        """Generate response using Claude Code CLI."""
+        """Generate response using Claude Code CLI with JSON output."""
         start_time = time.time()
 
         try:
-            # Create tool-aware prompt template
-            enhanced_prompt = self._create_tool_prompt(prompt, tools)
-            print(f"[ClaudeCode] Running claude CLI with timeout={timeout}s")
             print(
-                f"[ClaudeCode] Command: {self.claude_cli_path} -p <prompt> --dangerously-skip-permissions"
+                f"[ClaudeCode] Running with timeout={timeout}s, output_format={self.output_format}"
             )
 
-            # Execute Claude CLI with tool permissions
-            # Use --dangerously-skip-permissions to bypass all permission checks
-            # Use DEVNULL for stdin to prevent hanging on input
-            process = await asyncio.create_subprocess_exec(
+            # Build command with JSON output for structured responses
+            cmd = [
                 self.claude_cli_path,
                 "-p",
-                enhanced_prompt,
+                prompt,
+                "--output-format",
+                self.output_format,
                 "--dangerously-skip-permissions",
+            ]
+
+            # Add model if specified
+            if self.model:
+                cmd.extend(["--model", self.model])
+
+            print(f"[ClaudeCode] Command: {' '.join(cmd[:3])} <prompt> {' '.join(cmd[4:])}")
+
+            # Execute Claude CLI
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
                 stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -1409,82 +1428,173 @@ class ClaudeCodeProvider(LLMProvider):
                 await process.wait()
                 raise Exception(f"Claude CLI timeout after {timeout}s")
 
+            stdout_text = stdout.decode().strip()
+            stderr_text = stderr.decode().strip()
+
+            if stderr_text:
+                print(f"[ClaudeCode] stderr: {stderr_text[:200]}...")
+
             if process.returncode != 0:
-                raise Exception(f"Claude CLI error: {stderr.decode()}")
+                raise Exception(f"Claude CLI error (exit {process.returncode}): {stderr_text}")
 
-            response_text = stdout.decode().strip()
-
-            # Parse tool calls from CLI output
-            tool_calls = self._parse_tool_calls(response_text)
-
-            # Execute tool calls locally
-            for tool_call in tool_calls:
-                try:
-                    result = await self.tool_discovery.execute_tool_call(tool_call)
-                    # Tool results are returned separately, not appended to response text
-                except Exception:
-                    pass  # Errors are handled by the tool execution
-
-            return LLMResult(
-                response=response_text,
-                tool_calls=tool_calls,
-                token_usage=None,  # CLI doesn't provide token counts
-                cost=0.0,  # CLI usage varies by subscription
-                duration=time.time() - start_time,
-                raw_response={"stdout": response_text},
-            )
+            # Parse response based on output format
+            if self.output_format == "json":
+                return self._parse_json_response(stdout_text, start_time)
+            else:
+                return self._parse_text_response(stdout_text, start_time)
 
         except Exception as e:
+            duration = time.time() - start_time
+            print(f"[ClaudeCode] ❌ Error: {type(e).__name__}: {str(e)}")
             return LLMResult(
-                response=f"Error: {str(e)}", tool_calls=[], duration=time.time() - start_time
+                response=f"Error: {str(e)}",
+                tool_calls=[],
+                duration=duration,
             )
 
-    def _create_tool_prompt(self, prompt: str, tools: list[dict[str, Any]]) -> str:
-        """Create enhanced prompt with tool descriptions."""
-        if not tools:
-            return prompt
-
-        tool_descriptions = []
-        for tool in tools:
-            name = tool.get("name", "unknown")
-            desc = tool.get("description", "")
-            params = tool.get("inputSchema", tool.get("parameters", {}))
-
-            tool_desc = f"**{name}**: {desc}"
-            if params.get("properties"):
-                param_list = ", ".join(params["properties"].keys())
-                tool_desc += f" (parameters: {param_list})"
-
-            tool_descriptions.append(tool_desc)
-
-        return f"""You have access to the following tools:
-
-{chr(10).join(tool_descriptions)}
-
-When you need to use a tool, format your response like this:
-TOOL_CALL: {{"name": "tool_name", "arguments": {{"param": "value"}}}}
-
-User request: {prompt}"""
-
-    def _parse_tool_calls(self, response: str) -> list[dict[str, Any]]:
-        """Parse tool calls from Claude CLI response."""
+    def _parse_json_response(self, output: str, start_time: float) -> LLMResult:
+        """Parse structured JSON output from Claude CLI."""
+        response_text = ""
+        thinking_text = ""
         tool_calls = []
+        token_usage = None
+        cost = 0.0
+        raw_data = None
 
-        # Look for TOOL_CALL: patterns
+        try:
+            # Claude CLI JSON output is a single JSON object or stream of JSON lines
+            # Try parsing as single JSON first
+            try:
+                data = json.loads(output)
+                raw_data = data
+            except json.JSONDecodeError:
+                # Try parsing as JSON lines (stream format)
+                lines = output.strip().split("\n")
+                data = None
+                for line in lines:
+                    if line.strip():
+                        try:
+                            data = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+
+            if data:
+                # Extract response text
+                if isinstance(data, dict):
+                    # Handle different JSON output formats from Claude CLI
+                    if "result" in data:
+                        response_text = data.get("result", "")
+                    elif "response" in data:
+                        response_text = data.get("response", "")
+                    elif "content" in data:
+                        content = data.get("content", [])
+                        if isinstance(content, list):
+                            for block in content:
+                                if isinstance(block, dict):
+                                    if block.get("type") == "text":
+                                        response_text += block.get("text", "")
+                                    elif block.get("type") == "thinking":
+                                        thinking_text += block.get("thinking", "")
+                                    elif block.get("type") == "tool_use":
+                                        tool_calls.append(
+                                            {
+                                                "id": block.get("id", ""),
+                                                "name": block.get("name", ""),
+                                                "arguments": block.get("input", {}),
+                                            }
+                                        )
+                        elif isinstance(content, str):
+                            response_text = content
+                    elif "message" in data:
+                        response_text = data.get("message", "")
+                    elif "text" in data:
+                        response_text = data.get("text", "")
+
+                    # Extract tool calls if present
+                    if "tool_calls" in data:
+                        for tc in data.get("tool_calls", []):
+                            tool_calls.append(
+                                {
+                                    "id": tc.get("id", ""),
+                                    "name": tc.get("name", ""),
+                                    "arguments": tc.get("arguments", tc.get("input", {})),
+                                }
+                            )
+
+                    # Extract usage stats if available
+                    if "usage" in data:
+                        usage = data.get("usage", {})
+                        token_usage = {
+                            "prompt": usage.get("input_tokens", 0),
+                            "completion": usage.get("output_tokens", 0),
+                            "total": usage.get("input_tokens", 0) + usage.get("output_tokens", 0),
+                        }
+
+                    # Extract cost if available
+                    if "cost" in data:
+                        cost = data.get("cost", 0.0)
+                    elif "total_cost" in data:
+                        cost = data.get("total_cost", 0.0)
+
+                    # Extract thinking if available
+                    if "thinking" in data and not thinking_text:
+                        thinking_text = data.get("thinking", "")
+
+            # Fallback if no structured data found
+            if not response_text and not tool_calls:
+                response_text = output
+
+            print(f"[ClaudeCode] Parsed: {len(response_text)} chars, {len(tool_calls)} tool calls")
+            if thinking_text:
+                print(f"[ClaudeCode] Thinking: {len(thinking_text)} chars")
+            if token_usage:
+                print(f"[ClaudeCode] Tokens: {token_usage.get('total', 0)}")
+
+        except Exception as e:
+            print(f"[ClaudeCode] JSON parse error: {e}")
+            response_text = output
+
+        duration = time.time() - start_time
+        return LLMResult(
+            response=response_text,
+            tool_calls=tool_calls,
+            thinking=thinking_text if thinking_text else None,
+            token_usage=token_usage,
+            cost=cost,
+            duration=duration,
+            tti_ms=int(duration * 1000),
+            raw_response=raw_data or {"stdout": output},
+        )
+
+    def _parse_text_response(self, output: str, start_time: float) -> LLMResult:
+        """Parse plain text output from Claude CLI."""
+        # Parse tool calls from text output (legacy format)
+        tool_calls = []
         tool_call_pattern = r"TOOL_CALL:\s*(\{[^}]+\}|\{[^}]*\{[^}]*\}[^}]*\})"
-        matches = re.findall(tool_call_pattern, response)
+        matches = re.findall(tool_call_pattern, output)
 
         for match in matches:
             try:
                 call_data = json.loads(match)
                 if "name" in call_data:
                     tool_calls.append(
-                        {"name": call_data["name"], "arguments": call_data.get("arguments", {})}
+                        {
+                            "name": call_data["name"],
+                            "arguments": call_data.get("arguments", {}),
+                        }
                     )
             except json.JSONDecodeError:
                 continue
 
-        return tool_calls
+        duration = time.time() - start_time
+        return LLMResult(
+            response=output,
+            tool_calls=tool_calls,
+            token_usage=None,
+            cost=0.0,
+            duration=duration,
+            raw_response={"stdout": output},
+        )
 
     async def close(self):
         """Close connections."""
