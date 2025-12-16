@@ -29,7 +29,7 @@ function MCPExplorer({ selectedProfiles = [] }) {
   const [batchMode, setBatchMode] = useState(false)
   const [toolTests, setToolTests] = useState({}) // Map of tool name -> test info
   const [runningTests, setRunningTests] = useState(new Set()) // Set of tool names currently running tests
-  const [viewMode, setViewMode] = useState(() => localStorage.getItem('explorerViewMode') || 'list') // 'list' or 'grid'
+  const [viewMode, setViewMode] = useState(() => localStorage.getItem('explorerViewMode') || 'grid') // 'list' or 'grid'
 
   // Smoke test state
   const [smokeTestReport, setSmokeTestReport] = useState(null)
@@ -715,70 +715,135 @@ function MCPExplorer({ selectedProfiles = [] }) {
                 {filterTools().map((tool, idx) => {
                   const safeName = sanitizeToolName(tool.name)
                   const testInfo = toolTests[safeName]
-                  const paramCount = tool.input_schema?.properties ? Object.keys(tool.input_schema.properties).length : 0
+                  const params = tool.input_schema?.properties || {}
+                  const paramNames = Object.keys(params)
+                  const requiredParams = tool.input_schema?.required || []
+                  const paramCount = paramNames.length
+                  const hasTests = testInfo && testInfo.count > 0
+
                   return (
                     <div
                       key={idx}
-                      className="bg-surface border border-border rounded-xl p-4 hover:border-primary/50 hover:shadow-md transition-all cursor-pointer group"
+                      className="relative bg-gradient-to-br from-surface to-surface-elevated border border-border rounded-xl overflow-hidden hover:border-primary/50 hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 cursor-pointer group"
                       onClick={() => setSelectedToolForDebug(tool)}
                     >
-                      <div className="flex items-start justify-between mb-2">
-                        <h3 className="font-semibold text-text-primary text-sm truncate flex-1" title={tool.name}>
-                          {tool.name}
-                        </h3>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            copyToClipboard(tool.name, `grid-${tool.name}`)
-                          }}
-                          className="p-1 hover:bg-surface-hover rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                          title="Copy name"
-                        >
-                          {copiedId === `grid-${tool.name}` ? (
-                            <Check size={12} className="text-success" />
-                          ) : (
-                            <Copy size={12} className="text-text-tertiary" />
-                          )}
-                        </button>
-                      </div>
-                      <p className="text-text-secondary text-xs line-clamp-3 mb-3 min-h-[3rem]">
-                        {tool.description.split('\n')[0]}
-                      </p>
-                      <div className="flex items-center justify-between text-[10px]">
-                        <div className="flex items-center gap-2">
-                          {paramCount > 0 && (
-                            <span className="px-1.5 py-0.5 bg-surface-elevated rounded text-text-tertiary">
-                              {paramCount} param{paramCount !== 1 ? 's' : ''}
-                            </span>
-                          )}
-                          {testInfo && testInfo.count > 0 && (
-                            <span className="px-1.5 py-0.5 bg-primary/10 rounded text-primary flex items-center gap-1">
-                              <TestTube2 size={10} />
-                              {testInfo.count}
-                            </span>
-                          )}
+                      {/* Top accent bar */}
+                      <div className={`h-1 w-full ${hasTests ? 'bg-gradient-to-r from-primary to-primary/50' : 'bg-gradient-to-r from-border to-transparent'}`} />
+
+                      <div className="p-4">
+                        {/* Header */}
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-bold text-text-primary text-sm truncate group-hover:text-primary transition-colors" title={tool.name}>
+                              {tool.name}
+                            </h3>
+                          </div>
+                          <div className="flex items-center gap-1 ml-2">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                copyToClipboard(tool.name, `grid-${tool.name}`)
+                              }}
+                              className="p-1.5 hover:bg-surface-hover rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                              title="Copy name"
+                            >
+                              {copiedId === `grid-${tool.name}` ? (
+                                <Check size={14} className="text-success" />
+                              ) : (
+                                <Copy size={14} className="text-text-tertiary" />
+                              )}
+                            </button>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setSelectedToolForGeneration(tool)
-                            }}
-                            className="p-1 hover:bg-primary/10 rounded text-text-tertiary hover:text-primary"
-                            title="Generate tests"
-                          >
-                            <Sparkles size={12} />
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              navigate('/chat', { state: { tool, profile: activeProfile } })
-                            }}
-                            className="p-1 hover:bg-primary/10 rounded text-text-tertiary hover:text-primary"
-                            title="Chat with tool"
-                          >
-                            <MessageSquare size={12} />
-                          </button>
+
+                        {/* Description */}
+                        <p className="text-text-secondary text-xs line-clamp-2 mb-4 leading-relaxed">
+                          {tool.description.split('\n')[0]}
+                        </p>
+
+                        {/* Parameters preview */}
+                        {paramCount > 0 && (
+                          <div className="mb-4">
+                            <div className="text-[10px] uppercase tracking-wider text-text-tertiary mb-1.5 font-medium">Parameters</div>
+                            <div className="flex flex-wrap gap-1">
+                              {paramNames.slice(0, 4).map((param) => (
+                                <span
+                                  key={param}
+                                  className={`px-1.5 py-0.5 text-[10px] rounded font-mono ${
+                                    requiredParams.includes(param)
+                                      ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                      : 'bg-surface-elevated text-text-tertiary border border-border'
+                                  }`}
+                                  title={requiredParams.includes(param) ? 'Required' : 'Optional'}
+                                >
+                                  {param}
+                                </span>
+                              ))}
+                              {paramNames.length > 4 && (
+                                <span className="px-1.5 py-0.5 text-[10px] rounded bg-surface-elevated text-text-tertiary">
+                                  +{paramNames.length - 4}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Stats row */}
+                        <div className="flex items-center justify-between pt-3 border-t border-border/50">
+                          <div className="flex items-center gap-2">
+                            {paramCount > 0 && (
+                              <div className="flex items-center gap-1 text-[10px] text-text-tertiary">
+                                <Code2 size={10} />
+                                <span>{paramCount}</span>
+                              </div>
+                            )}
+                            {requiredParams.length > 0 && (
+                              <div className="flex items-center gap-1 text-[10px] text-amber-400" title="Required parameters">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                                <span>{requiredParams.length} req</span>
+                              </div>
+                            )}
+                            {hasTests && (
+                              <div className="flex items-center gap-1 text-[10px] text-primary" title={`${testInfo.count} test file(s)`}>
+                                <TestTube2 size={10} />
+                                <span>{testInfo.count}</span>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Action buttons */}
+                          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setSelectedToolForGeneration(tool)
+                              }}
+                              className="p-1.5 hover:bg-primary/10 rounded-lg text-text-tertiary hover:text-primary transition-colors"
+                              title="Generate tests"
+                            >
+                              <Sparkles size={14} />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                navigate('/chat', { state: { tool, profile: activeProfile } })
+                              }}
+                              className="p-1.5 hover:bg-primary/10 rounded-lg text-text-tertiary hover:text-primary transition-colors"
+                              title="Chat with tool"
+                            >
+                              <MessageSquare size={14} />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setSelectedToolForDebug(tool)
+                              }}
+                              className="p-1.5 hover:bg-primary/10 rounded-lg text-text-tertiary hover:text-primary transition-colors"
+                              title="Debug tool"
+                            >
+                              <Bug size={14} />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
