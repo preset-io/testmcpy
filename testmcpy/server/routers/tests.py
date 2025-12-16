@@ -862,10 +862,20 @@ Generate {config_for_level["count"]} tests now in YAML format:"""
         # Extract YAML from response
         yaml_content = test_gen_result.response
 
-        # Try to extract YAML from code blocks
-        yaml_match = re.search(r"```(?:yaml)?\n([\s\S]*?)\n```", yaml_content)
+        # Try to extract YAML from code blocks (handles various formats)
+        yaml_match = re.search(r"```(?:yaml)?\s*([\s\S]*?)\s*```", yaml_content)
         if yaml_match:
-            yaml_content = yaml_match.group(1)
+            yaml_content = yaml_match.group(1).strip()
+        else:
+            # Fallback: strip leading/trailing markdown fences manually
+            yaml_content = yaml_content.strip()
+            if yaml_content.startswith("```yaml"):
+                yaml_content = yaml_content[7:]
+            elif yaml_content.startswith("```"):
+                yaml_content = yaml_content[3:]
+            if yaml_content.endswith("```"):
+                yaml_content = yaml_content[:-3]
+            yaml_content = yaml_content.strip()
 
         # Validate YAML
         try:
