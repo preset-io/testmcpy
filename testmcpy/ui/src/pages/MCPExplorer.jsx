@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { ChevronDown, ChevronRight, Copy, Check, EyeOff, Sparkles, Code2, Search, Command, HelpCircle, CheckSquare, Square, MessageSquare, Wand2, TestTube2, Play, Clock, Bug, AlertCircle, GitCompare } from 'lucide-react'
+import { ChevronDown, ChevronRight, Copy, Check, EyeOff, Sparkles, Code2, Search, Command, HelpCircle, CheckSquare, Square, MessageSquare, Wand2, TestTube2, Play, Clock, Bug, AlertCircle, GitCompare, LayoutList, LayoutGrid } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import ParameterCard from '../components/ParameterCard'
 import TestGenerationModal from '../components/TestGenerationModal'
@@ -29,6 +29,7 @@ function MCPExplorer({ selectedProfiles = [] }) {
   const [batchMode, setBatchMode] = useState(false)
   const [toolTests, setToolTests] = useState({}) // Map of tool name -> test info
   const [runningTests, setRunningTests] = useState(new Set()) // Set of tool names currently running tests
+  const [viewMode, setViewMode] = useState(() => localStorage.getItem('explorerViewMode') || 'list') // 'list' or 'grid'
 
   // Smoke test state
   const [smokeTestReport, setSmokeTestReport] = useState(null)
@@ -364,6 +365,13 @@ function MCPExplorer({ selectedProfiles = [] }) {
     }
   }
 
+  // Toggle view mode between list and grid
+  const toggleViewMode = () => {
+    const newMode = viewMode === 'list' ? 'grid' : 'list'
+    setViewMode(newMode)
+    localStorage.setItem('explorerViewMode', newMode)
+  }
+
   // Fuzzy filter tools/resources/prompts
   const filterTools = () => {
     if (!searchQuery.trim()) return tools
@@ -640,6 +648,29 @@ function MCPExplorer({ selectedProfiles = [] }) {
               Compare
             </button>
           </div>
+          <div className="flex items-center gap-2">
+            {/* View Mode Toggle */}
+            {activeTab === 'tools' && (
+              <div className="flex items-center border border-border rounded-lg overflow-hidden">
+                <button
+                  onClick={() => { setViewMode('list'); localStorage.setItem('explorerViewMode', 'list') }}
+                  className={`p-1.5 ${viewMode === 'list' ? 'bg-primary/10 text-primary' : 'text-text-tertiary hover:text-text-secondary hover:bg-surface-hover'}`}
+                  title="List view"
+                >
+                  <LayoutList size={16} />
+                </button>
+                <button
+                  onClick={() => { setViewMode('grid'); localStorage.setItem('explorerViewMode', 'grid') }}
+                  className={`p-1.5 ${viewMode === 'grid' ? 'bg-primary/10 text-primary' : 'text-text-tertiary hover:text-text-secondary hover:bg-surface-hover'}`}
+                  title="Grid view"
+                >
+                  <LayoutGrid size={16} />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center justify-end mt-2">
           {batchMode && activeTab === 'tools' && (
             <div className="flex gap-2 mb-2">
               <button
@@ -670,19 +701,101 @@ function MCPExplorer({ selectedProfiles = [] }) {
       {/* Content */}
       <div className="flex-1 overflow-auto p-4 bg-background-subtle">
         {activeTab === 'tools' && (
-          <div className="max-w-5xl mx-auto space-y-4">
+          <>
             {filterTools().length === 0 && searchQuery && (
               <div className="text-center py-20">
                 <div className="text-text-tertiary text-lg">No tools found matching "{searchQuery}"</div>
                 <p className="text-text-disabled text-sm mt-2">Try a different search term</p>
               </div>
             )}
-            {filterTools().map((tool, idx) => (
-              <div key={idx} className="card-hover">
-                <div
-                  className="flex items-start justify-between cursor-pointer group"
-                  onClick={() => !batchMode && toggleTool(tool.name)}
-                >
+
+            {/* Grid View */}
+            {viewMode === 'grid' && filterTools().length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 max-w-7xl mx-auto">
+                {filterTools().map((tool, idx) => {
+                  const safeName = sanitizeToolName(tool.name)
+                  const testInfo = toolTests[safeName]
+                  const paramCount = tool.input_schema?.properties ? Object.keys(tool.input_schema.properties).length : 0
+                  return (
+                    <div
+                      key={idx}
+                      className="bg-surface border border-border rounded-xl p-4 hover:border-primary/50 hover:shadow-md transition-all cursor-pointer group"
+                      onClick={() => setSelectedToolForDebug(tool)}
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <h3 className="font-semibold text-text-primary text-sm truncate flex-1" title={tool.name}>
+                          {tool.name}
+                        </h3>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            copyToClipboard(tool.name, `grid-${tool.name}`)
+                          }}
+                          className="p-1 hover:bg-surface-hover rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Copy name"
+                        >
+                          {copiedId === `grid-${tool.name}` ? (
+                            <Check size={12} className="text-success" />
+                          ) : (
+                            <Copy size={12} className="text-text-tertiary" />
+                          )}
+                        </button>
+                      </div>
+                      <p className="text-text-secondary text-xs line-clamp-3 mb-3 min-h-[3rem]">
+                        {tool.description.split('\n')[0]}
+                      </p>
+                      <div className="flex items-center justify-between text-[10px]">
+                        <div className="flex items-center gap-2">
+                          {paramCount > 0 && (
+                            <span className="px-1.5 py-0.5 bg-surface-elevated rounded text-text-tertiary">
+                              {paramCount} param{paramCount !== 1 ? 's' : ''}
+                            </span>
+                          )}
+                          {testInfo && testInfo.count > 0 && (
+                            <span className="px-1.5 py-0.5 bg-primary/10 rounded text-primary flex items-center gap-1">
+                              <TestTube2 size={10} />
+                              {testInfo.count}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setSelectedToolForGeneration(tool)
+                            }}
+                            className="p-1 hover:bg-primary/10 rounded text-text-tertiary hover:text-primary"
+                            title="Generate tests"
+                          >
+                            <Sparkles size={12} />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              navigate('/chat', { state: { tool, profile: activeProfile } })
+                            }}
+                            className="p-1 hover:bg-primary/10 rounded text-text-tertiary hover:text-primary"
+                            title="Chat with tool"
+                          >
+                            <MessageSquare size={12} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* List View */}
+            {viewMode === 'list' && filterTools().length > 0 && (
+              <div className="max-w-5xl mx-auto space-y-4">
+                {filterTools().map((tool, idx) => (
+                  <div key={idx} className="card-hover">
+                    <div
+                      className="flex items-start justify-between cursor-pointer group"
+                      onClick={() => !batchMode && toggleTool(tool.name)}
+                    >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3">
                       {batchMode && (
@@ -1034,7 +1147,9 @@ function MCPExplorer({ selectedProfiles = [] }) {
                 )}
               </div>
             ))}
-          </div>
+              </div>
+            )}
+          </>
         )}
 
         {activeTab === 'resources' && (
