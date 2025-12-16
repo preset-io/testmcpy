@@ -941,7 +941,7 @@ ${evaluators}
                                       return parseJsonStrings(call.result)
                                     })()}
                                     theme="monokai"
-                                    collapsed={false}
+                                    collapsed={3}
                                     displayDataTypes={false}
                                     displayObjectSize={true}
                                     enableClipboard={true}
