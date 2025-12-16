@@ -153,18 +153,27 @@ function AppContent() {
 
   const getSelectedLLMDisplay = () => {
     if (!selectedLlmProfile) {
-      return { name: 'No LLM Selected', model: 'Click to configure' }
+      return { providerName: 'No LLM Selected', profileName: 'Click to configure', isCliTool: false }
     }
 
     const profile = llmProfiles.find(p => p.profile_id === selectedLlmProfile)
     if (!profile) {
-      return { name: 'Loading...', model: '' }
+      return { providerName: 'Loading...', profileName: '', isCliTool: false }
     }
 
     const defaultProvider = profile.providers?.find(p => p.default) || profile.providers?.[0]
+    const providerType = defaultProvider?.provider || ''
+    const isCliTool = ['claude-cli', 'codex-cli', 'claude-code', 'codex'].includes(providerType)
+    const isSdk = providerType === 'claude-sdk'
+    const isApi = ['anthropic', 'openai', 'gemini', 'google'].includes(providerType)
+
     return {
-      name: profile.name,
-      model: defaultProvider?.model || 'No model'
+      providerName: defaultProvider?.name || defaultProvider?.model || 'No provider',
+      profileName: profile.name,
+      isCliTool,
+      isSdk,
+      isApi,
+      providerType
     }
   }
 
@@ -345,11 +354,22 @@ function AppContent() {
               <Cpu size={16} className={location.pathname === '/llm-profiles' ? 'text-primary' : 'text-success'} />
               {sidebarOpen && (
                 <div className="flex-1 min-w-0 text-left">
-                  <div className="text-xs font-semibold text-text-primary truncate">
-                    {getSelectedLLMDisplay().name}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-semibold text-text-primary truncate">
+                      {getSelectedLLMDisplay().providerName}
+                    </span>
+                    {getSelectedLLMDisplay().isCliTool && (
+                      <span className="px-1 py-0.5 text-[9px] bg-amber-500/20 text-amber-400 rounded flex-shrink-0">CLI</span>
+                    )}
+                    {getSelectedLLMDisplay().isSdk && (
+                      <span className="px-1 py-0.5 text-[9px] bg-cyan-500/20 text-cyan-400 rounded flex-shrink-0">SDK</span>
+                    )}
+                    {getSelectedLLMDisplay().isApi && (
+                      <span className="px-1 py-0.5 text-[9px] bg-emerald-500/20 text-emerald-400 rounded flex-shrink-0">API</span>
+                    )}
                   </div>
                   <div className="text-[10px] text-text-tertiary truncate">
-                    {getSelectedLLMDisplay().model}
+                    {getSelectedLLMDisplay().profileName}
                   </div>
                 </div>
               )}
