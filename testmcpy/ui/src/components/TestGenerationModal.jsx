@@ -24,38 +24,45 @@ function TestGenerationModal({ tool, onClose, onSuccess }) {
       const data = await res.json()
       setLlmProfiles(data.profiles || [])
 
-      // Get saved selections from localStorage (same keys as TestManager)
-      const savedProfile = localStorage.getItem('selectedLLMProfileForTests')
-      const savedProvider = localStorage.getItem('selectedLLMProviderForTests')
-
-      if (savedProfile && data.profiles?.find(p => p.profile_id === savedProfile)) {
-        setSelectedProfile(savedProfile)
-        if (savedProvider) {
-          setSelectedProvider(savedProvider)
-        } else {
-          // Set default provider from the profile
-          const profile = data.profiles.find(p => p.profile_id === savedProfile)
-          if (profile?.providers?.length > 0) {
-            const defaultProv = profile.providers.find(p => p.default) || profile.providers[0]
-            setSelectedProvider(`${defaultProv.provider}:${defaultProv.model}`)
-          }
-        }
-      } else if (data.default && data.profiles?.find(p => p.profile_id === data.default)) {
-        // Use default profile
-        setSelectedProfile(data.default)
-        const profile = data.profiles.find(p => p.profile_id === data.default)
+      // Helper to set provider from profile
+      const setProviderFromProfile = (profile) => {
         if (profile?.providers?.length > 0) {
           const defaultProv = profile.providers.find(p => p.default) || profile.providers[0]
           setSelectedProvider(`${defaultProv.provider}:${defaultProv.model}`)
         }
+      }
+
+      // Priority order for selecting profile:
+      // 1. Test-specific saved selection (from TestManager)
+      // 2. Global LLM profile selection (from sidebar)
+      // 3. API default
+      // 4. First available profile
+
+      const savedTestProfile = localStorage.getItem('selectedLLMProfileForTests')
+      const savedTestProvider = localStorage.getItem('selectedLLMProviderForTests')
+      const globalProfile = localStorage.getItem('selectedLLMProfile') // Global sidebar selection
+
+      if (savedTestProfile && data.profiles?.find(p => p.profile_id === savedTestProfile)) {
+        // Use test-specific selection
+        setSelectedProfile(savedTestProfile)
+        if (savedTestProvider) {
+          setSelectedProvider(savedTestProvider)
+        } else {
+          setProviderFromProfile(data.profiles.find(p => p.profile_id === savedTestProfile))
+        }
+      } else if (globalProfile && data.profiles?.find(p => p.profile_id === globalProfile)) {
+        // Use global sidebar selection
+        setSelectedProfile(globalProfile)
+        setProviderFromProfile(data.profiles.find(p => p.profile_id === globalProfile))
+      } else if (data.default && data.profiles?.find(p => p.profile_id === data.default)) {
+        // Use API default
+        setSelectedProfile(data.default)
+        setProviderFromProfile(data.profiles.find(p => p.profile_id === data.default))
       } else if (data.profiles?.length > 0) {
         // Fallback to first profile
         const firstProfile = data.profiles[0]
         setSelectedProfile(firstProfile.profile_id)
-        if (firstProfile.providers?.length > 0) {
-          const defaultProv = firstProfile.providers.find(p => p.default) || firstProfile.providers[0]
-          setSelectedProvider(`${defaultProv.provider}:${defaultProv.model}`)
-        }
+        setProviderFromProfile(firstProfile)
       }
     } catch (error) {
       console.error('Failed to load LLM profiles:', error)
