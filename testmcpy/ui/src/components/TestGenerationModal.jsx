@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { X, Loader, CheckCircle, AlertCircle, Sparkles, ChevronDown, Settings } from 'lucide-react'
+import { X, Loader, CheckCircle, AlertCircle, Sparkles } from 'lucide-react'
 
 function TestGenerationModal({ tool, onClose, onSuccess }) {
   const [step, setStep] = useState('configure') // 'configure', 'analyzing', 'generating', 'success', 'error'
@@ -13,7 +13,6 @@ function TestGenerationModal({ tool, onClose, onSuccess }) {
   const [llmProfiles, setLlmProfiles] = useState([])
   const [selectedProfile, setSelectedProfile] = useState(null)
   const [selectedProvider, setSelectedProvider] = useState(null) // format: "provider:model"
-  const [showOverride, setShowOverride] = useState(false)
 
   useEffect(() => {
     loadLlmProfiles()
@@ -202,98 +201,68 @@ function TestGenerationModal({ tool, onClose, onSuccess }) {
         <div className="flex-1 overflow-auto p-6">
           {step === 'configure' && (
             <div className="space-y-6">
-              {/* LLM Configuration - Using saved profile */}
+              {/* LLM Configuration */}
               <div>
-                <div className="flex items-center justify-between mb-3">
-                  <label className="text-sm font-semibold text-text-primary">
-                    LLM Configuration
-                  </label>
-                  <button
-                    onClick={() => setShowOverride(!showOverride)}
-                    className="text-xs text-text-tertiary hover:text-text-secondary flex items-center gap-1"
-                  >
-                    <Settings size={12} />
-                    {showOverride ? 'Hide options' : 'Change provider'}
-                  </button>
-                </div>
-
-                {/* Current selection display */}
-                <div className="bg-surface-elevated border border-border rounded-lg p-4">
-                  {providerInfo ? (
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-text-primary">{providerInfo.name}</span>
-                          {providerInfo.isCliTool && (
-                            <span className="px-1.5 py-0.5 text-xs bg-amber-500/20 text-amber-400 rounded">CLI</span>
-                          )}
-                          {providerInfo.isSdk && (
-                            <span className="px-1.5 py-0.5 text-xs bg-cyan-500/20 text-cyan-400 rounded">SDK</span>
-                          )}
-                          {providerInfo.isApi && (
-                            <span className="px-1.5 py-0.5 text-xs bg-emerald-500/20 text-emerald-400 rounded">API</span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="text-xs text-text-tertiary">
-                        {currentProfile?.name || 'Default Profile'}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-text-tertiary text-sm">No LLM provider configured</div>
-                  )}
-
-                  {providerInfo?.isApi && (
-                    <p className="text-xs text-text-tertiary mt-2">
-                      This will use API credits. Consider using a CLI tool to avoid API costs.
-                    </p>
-                  )}
-                  {providerInfo?.isCliTool && (
-                    <p className="text-xs text-success mt-2">
-                      Using CLI tool - no API credits required.
-                    </p>
-                  )}
-                </div>
-
-                {/* Override options */}
-                {showOverride && (
-                  <div className="mt-3 p-4 bg-surface-elevated border border-border rounded-lg space-y-3">
-                    <div>
-                      <label className="block text-xs text-text-secondary mb-1.5">LLM Profile</label>
-                      <select
-                        value={selectedProfile || ''}
-                        onChange={(e) => handleProfileChange(e.target.value)}
-                        className="input text-sm w-full"
-                      >
-                        {llmProfiles.map((profile) => (
-                          <option key={profile.profile_id} value={profile.profile_id}>
-                            {profile.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-text-secondary mb-1.5">Provider / Model</label>
-                      <select
-                        value={selectedProvider || ''}
-                        onChange={(e) => handleProviderChange(e.target.value)}
-                        className="input text-sm w-full"
-                      >
-                        {currentProfile?.providers?.map((prov) => {
-                          const provKey = `${prov.provider}:${prov.model}`
-                          const isCliTool = ['claude-cli', 'codex-cli', 'claude-code', 'codex'].includes(prov.provider)
-                          const isSdk = prov.provider === 'claude-sdk'
-                          const isApi = ['anthropic', 'openai', 'gemini', 'google'].includes(prov.provider)
-                          return (
-                            <option key={provKey} value={provKey}>
-                              {prov.name || prov.model} ({prov.provider}) {isCliTool ? '[CLI]' : isSdk ? '[SDK]' : isApi ? '[API]' : ''}
-                            </option>
-                          )
-                        })}
-                      </select>
-                    </div>
+                <label className="block text-sm font-semibold text-text-primary mb-3">
+                  LLM Provider
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-text-secondary mb-1.5">Profile</label>
+                    <select
+                      value={selectedProfile || ''}
+                      onChange={(e) => handleProfileChange(e.target.value)}
+                      className="input text-sm w-full"
+                    >
+                      {llmProfiles.map((profile) => (
+                        <option key={profile.profile_id} value={profile.profile_id}>
+                          {profile.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                )}
+                  <div>
+                    <label className="block text-xs text-text-secondary mb-1.5">Provider / Model</label>
+                    <select
+                      value={selectedProvider || ''}
+                      onChange={(e) => handleProviderChange(e.target.value)}
+                      className="input text-sm w-full"
+                    >
+                      {currentProfile?.providers?.map((prov) => {
+                        const provKey = `${prov.provider}:${prov.model}`
+                        const isCliTool = ['claude-cli', 'codex-cli', 'claude-code', 'codex'].includes(prov.provider)
+                        const isSdk = prov.provider === 'claude-sdk'
+                        const isApi = ['anthropic', 'openai', 'gemini', 'google'].includes(prov.provider)
+                        return (
+                          <option key={provKey} value={provKey}>
+                            {prov.name || prov.model} ({prov.provider}) {isCliTool ? '[CLI]' : isSdk ? '[SDK]' : isApi ? '[API]' : ''}
+                          </option>
+                        )
+                      })}
+                    </select>
+                  </div>
+                </div>
+                {/* Status indicator */}
+                <div className="mt-2">
+                  {providerInfo?.isCliTool && (
+                    <p className="text-xs text-success flex items-center gap-1">
+                      <CheckCircle size={12} />
+                      Using CLI tool - no API credits required
+                    </p>
+                  )}
+                  {providerInfo?.isSdk && (
+                    <p className="text-xs text-amber-400 flex items-center gap-1">
+                      <AlertCircle size={12} />
+                      SDK uses API credits
+                    </p>
+                  )}
+                  {providerInfo?.isApi && (
+                    <p className="text-xs text-amber-400 flex items-center gap-1">
+                      <AlertCircle size={12} />
+                      API provider uses credits
+                    </p>
+                  )}
+                </div>
               </div>
 
               {/* Coverage Level Selection */}
