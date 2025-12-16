@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { X, Loader, CheckCircle, AlertCircle, Sparkles } from 'lucide-react'
+import { X, Loader, CheckCircle, AlertCircle, Sparkles, ChevronDown, Settings } from 'lucide-react'
 
 function TestGenerationModal({ tool, onClose, onSuccess }) {
   const [step, setStep] = useState('configure') // 'configure', 'analyzing', 'generating', 'success', 'error'
@@ -8,21 +8,88 @@ function TestGenerationModal({ tool, onClose, onSuccess }) {
   const [analysis, setAnalysis] = useState(null)
   const [generatedFile, setGeneratedFile] = useState(null)
   const [error, setError] = useState(null)
-  const [models, setModels] = useState({})
-  const [selectedProvider, setSelectedProvider] = useState('anthropic')
-  const [selectedModel, setSelectedModel] = useState('claude-haiku-4-5')
+
+  // LLM Profile state
+  const [llmProfiles, setLlmProfiles] = useState([])
+  const [selectedProfile, setSelectedProfile] = useState(null)
+  const [selectedProvider, setSelectedProvider] = useState(null) // format: "provider:model"
+  const [showOverride, setShowOverride] = useState(false)
 
   useEffect(() => {
-    loadModels()
+    loadLlmProfiles()
   }, [])
 
-  const loadModels = async () => {
+  const loadLlmProfiles = async () => {
     try {
-      const res = await fetch('/api/models')
+      const res = await fetch('/api/llm/profiles')
       const data = await res.json()
-      setModels(data)
+      setLlmProfiles(data.profiles || [])
+
+      // Get saved selections from localStorage (same keys as TestManager)
+      const savedProfile = localStorage.getItem('selectedLLMProfileForTests')
+      const savedProvider = localStorage.getItem('selectedLLMProviderForTests')
+
+      if (savedProfile && data.profiles?.find(p => p.profile_id === savedProfile)) {
+        setSelectedProfile(savedProfile)
+        if (savedProvider) {
+          setSelectedProvider(savedProvider)
+        } else {
+          // Set default provider from the profile
+          const profile = data.profiles.find(p => p.profile_id === savedProfile)
+          if (profile?.providers?.length > 0) {
+            const defaultProv = profile.providers.find(p => p.default) || profile.providers[0]
+            setSelectedProvider(`${defaultProv.provider}:${defaultProv.model}`)
+          }
+        }
+      } else if (data.default && data.profiles?.find(p => p.profile_id === data.default)) {
+        // Use default profile
+        setSelectedProfile(data.default)
+        const profile = data.profiles.find(p => p.profile_id === data.default)
+        if (profile?.providers?.length > 0) {
+          const defaultProv = profile.providers.find(p => p.default) || profile.providers[0]
+          setSelectedProvider(`${defaultProv.provider}:${defaultProv.model}`)
+        }
+      } else if (data.profiles?.length > 0) {
+        // Fallback to first profile
+        const firstProfile = data.profiles[0]
+        setSelectedProfile(firstProfile.profile_id)
+        if (firstProfile.providers?.length > 0) {
+          const defaultProv = firstProfile.providers.find(p => p.default) || firstProfile.providers[0]
+          setSelectedProvider(`${defaultProv.provider}:${defaultProv.model}`)
+        }
+      }
     } catch (error) {
-      console.error('Failed to load models:', error)
+      console.error('Failed to load LLM profiles:', error)
+    }
+  }
+
+  const handleProfileChange = (profileId) => {
+    setSelectedProfile(profileId)
+    // Set default provider for the new profile
+    const profile = llmProfiles.find(p => p.profile_id === profileId)
+    if (profile?.providers?.length > 0) {
+      const defaultProv = profile.providers.find(p => p.default) || profile.providers[0]
+      setSelectedProvider(`${defaultProv.provider}:${defaultProv.model}`)
+    }
+  }
+
+  const handleProviderChange = (providerKey) => {
+    setSelectedProvider(providerKey)
+  }
+
+  // Get the current provider config for display
+  const getCurrentProviderInfo = () => {
+    if (!selectedProvider) return null
+    const [provider, model] = selectedProvider.split(':')
+    const profile = llmProfiles.find(p => p.profile_id === selectedProfile)
+    const providerInfo = profile?.providers?.find(p => `${p.provider}:${p.model}` === selectedProvider)
+    return {
+      provider,
+      model,
+      name: providerInfo?.name || model,
+      isCliTool: ['claude-cli', 'codex-cli', 'claude-code', 'codex'].includes(provider),
+      isSdk: provider === 'claude-sdk',
+      isApi: ['anthropic', 'openai', 'gemini', 'google'].includes(provider),
     }
   }
 
@@ -48,6 +115,14 @@ function TestGenerationModal({ tool, onClose, onSuccess }) {
   ]
 
   const handleGenerate = async () => {
+    if (!selectedProvider) {
+      setError('No LLM provider selected')
+      setStep('error')
+      return
+    }
+
+    const [provider, model] = selectedProvider.split(':')
+
     try {
       setStep('analyzing')
       setError(null)
@@ -61,8 +136,8 @@ function TestGenerationModal({ tool, onClose, onSuccess }) {
           tool_schema: tool.input_schema,
           coverage_level: coverageLevel,
           custom_instructions: customInstructions || null,
-          model: selectedModel,
-          provider: selectedProvider,
+          model: model,
+          provider: provider,
         }),
       })
 
@@ -95,6 +170,9 @@ function TestGenerationModal({ tool, onClose, onSuccess }) {
     onClose()
   }
 
+  const providerInfo = getCurrentProviderInfo()
+  const currentProfile = llmProfiles.find(p => p.profile_id === selectedProfile)
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-surface border border-border rounded-xl shadow-strong max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
@@ -124,6 +202,100 @@ function TestGenerationModal({ tool, onClose, onSuccess }) {
         <div className="flex-1 overflow-auto p-6">
           {step === 'configure' && (
             <div className="space-y-6">
+              {/* LLM Configuration - Using saved profile */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <label className="text-sm font-semibold text-text-primary">
+                    LLM Configuration
+                  </label>
+                  <button
+                    onClick={() => setShowOverride(!showOverride)}
+                    className="text-xs text-text-tertiary hover:text-text-secondary flex items-center gap-1"
+                  >
+                    <Settings size={12} />
+                    {showOverride ? 'Hide options' : 'Change provider'}
+                  </button>
+                </div>
+
+                {/* Current selection display */}
+                <div className="bg-surface-elevated border border-border rounded-lg p-4">
+                  {providerInfo ? (
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-text-primary">{providerInfo.name}</span>
+                          {providerInfo.isCliTool && (
+                            <span className="px-1.5 py-0.5 text-xs bg-amber-500/20 text-amber-400 rounded">CLI</span>
+                          )}
+                          {providerInfo.isSdk && (
+                            <span className="px-1.5 py-0.5 text-xs bg-cyan-500/20 text-cyan-400 rounded">SDK</span>
+                          )}
+                          {providerInfo.isApi && (
+                            <span className="px-1.5 py-0.5 text-xs bg-emerald-500/20 text-emerald-400 rounded">API</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-xs text-text-tertiary">
+                        {currentProfile?.name || 'Default Profile'}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-text-tertiary text-sm">No LLM provider configured</div>
+                  )}
+
+                  {providerInfo?.isApi && (
+                    <p className="text-xs text-text-tertiary mt-2">
+                      This will use API credits. Consider using a CLI tool to avoid API costs.
+                    </p>
+                  )}
+                  {providerInfo?.isCliTool && (
+                    <p className="text-xs text-success mt-2">
+                      Using CLI tool - no API credits required.
+                    </p>
+                  )}
+                </div>
+
+                {/* Override options */}
+                {showOverride && (
+                  <div className="mt-3 p-4 bg-surface-elevated border border-border rounded-lg space-y-3">
+                    <div>
+                      <label className="block text-xs text-text-secondary mb-1.5">LLM Profile</label>
+                      <select
+                        value={selectedProfile || ''}
+                        onChange={(e) => handleProfileChange(e.target.value)}
+                        className="input text-sm w-full"
+                      >
+                        {llmProfiles.map((profile) => (
+                          <option key={profile.profile_id} value={profile.profile_id}>
+                            {profile.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-text-secondary mb-1.5">Provider / Model</label>
+                      <select
+                        value={selectedProvider || ''}
+                        onChange={(e) => handleProviderChange(e.target.value)}
+                        className="input text-sm w-full"
+                      >
+                        {currentProfile?.providers?.map((prov) => {
+                          const provKey = `${prov.provider}:${prov.model}`
+                          const isCliTool = ['claude-cli', 'codex-cli', 'claude-code', 'codex'].includes(prov.provider)
+                          const isSdk = prov.provider === 'claude-sdk'
+                          const isApi = ['anthropic', 'openai', 'gemini', 'google'].includes(prov.provider)
+                          return (
+                            <option key={provKey} value={provKey}>
+                              {prov.name || prov.model} ({prov.provider}) {isCliTool ? '[CLI]' : isSdk ? '[SDK]' : isApi ? '[API]' : ''}
+                            </option>
+                          )
+                        })}
+                      </select>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Coverage Level Selection */}
               <div>
                 <label className="block text-sm font-semibold text-text-primary mb-3">
@@ -156,49 +328,6 @@ function TestGenerationModal({ tool, onClose, onSuccess }) {
                       </div>
                     </button>
                   ))}
-                </div>
-              </div>
-
-              {/* Model Selection */}
-              <div>
-                <label className="block text-sm font-semibold text-text-primary mb-3">
-                  Model Configuration
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs text-text-secondary mb-1.5">Provider</label>
-                    <select
-                      value={selectedProvider}
-                      onChange={(e) => {
-                        setSelectedProvider(e.target.value)
-                        const providerModels = models[e.target.value]
-                        if (providerModels && providerModels.length > 0) {
-                          setSelectedModel(providerModels[0].id)
-                        }
-                      }}
-                      className="input text-sm w-full"
-                    >
-                      {Object.keys(models).map((provider) => (
-                        <option key={provider} value={provider}>
-                          {provider}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-text-secondary mb-1.5">Model</label>
-                    <select
-                      value={selectedModel}
-                      onChange={(e) => setSelectedModel(e.target.value)}
-                      className="input text-sm w-full"
-                    >
-                      {(models[selectedProvider] || []).map((model) => (
-                        <option key={model.id} value={model.id}>
-                          {model.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
                 </div>
               </div>
 
@@ -247,10 +376,15 @@ function TestGenerationModal({ tool, onClose, onSuccess }) {
           {step === 'analyzing' && (
             <div className="flex flex-col items-center justify-center py-12">
               <Loader className="w-12 h-12 text-primary animate-spin mb-4" />
-              <h3 className="text-lg font-semibold text-text-primary mb-2">Analyzing Tool...</h3>
+              <h3 className="text-lg font-semibold text-text-primary mb-2">Generating Tests...</h3>
               <p className="text-text-secondary text-center max-w-md">
-                The LLM is analyzing the tool schema and generating test strategies
+                Using <span className="font-medium">{providerInfo?.name || 'LLM'}</span> to analyze the tool and generate test cases
               </p>
+              {providerInfo?.isCliTool && (
+                <p className="text-xs text-text-tertiary mt-2">
+                  Running via CLI - this may take a moment
+                </p>
+              )}
             </div>
           )}
 
@@ -319,7 +453,7 @@ function TestGenerationModal({ tool, onClose, onSuccess }) {
                 <AlertCircle size={32} className="text-error" />
               </div>
               <h3 className="text-lg font-semibold text-text-primary mb-2">Generation Failed</h3>
-              <p className="text-text-secondary text-center max-w-md mb-4">{error}</p>
+              <p className="text-text-secondary text-center max-w-md mb-4 whitespace-pre-wrap">{error}</p>
               <button
                 onClick={() => setStep('configure')}
                 className="btn btn-secondary text-sm"
@@ -337,7 +471,11 @@ function TestGenerationModal({ tool, onClose, onSuccess }) {
               <button onClick={handleClose} className="btn btn-secondary">
                 Cancel
               </button>
-              <button onClick={handleGenerate} className="btn btn-primary">
+              <button
+                onClick={handleGenerate}
+                className="btn btn-primary"
+                disabled={!selectedProvider}
+              >
                 <Sparkles size={16} />
                 <span>Generate Tests</span>
               </button>
