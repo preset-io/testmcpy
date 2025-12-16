@@ -1,147 +1,80 @@
 # MCP Service Configuration Profiles
-# Copy to .mcp_services.yaml and customize for your services
 #
-# NEW: Each profile can now contain MULTIPLE MCP servers!
-# This allows you to:
-# - Group MCPs by environment (dev/staging/prod)
-# - Group MCPs by workflow (data-pipeline, analytics, etc.)
-# - Mix different MCP servers in one profile for your use case
+# Copy to .mcp_services.yaml and customize for your services.
+#
+# Authentication Types:
+#   - jwt: JWT token from API (for Preset cloud)
+#   - bearer: Static bearer token
+#   - oauth: OAuth2 client credentials
+#   - none: No authentication
 #
 # Security Notes:
-# - Keep secrets in environment variables (referenced with ${VAR_NAME})
-# - Add .mcp_services.yaml to .gitignore if it contains sensitive data
-# - For team sharing, use .mcp_services.yaml.example with ${} placeholders
+#   - Keep secrets in environment variables (referenced with ${VAR_NAME})
+#   - Add .mcp_services.yaml to .gitignore if it contains sensitive data
 
 # Default profile (used when no --profile specified)
-default: local-dev
+default: sandbox
 
 # Profile definitions
 profiles:
-  # Profile for local development with multiple MCPs
-  local-dev:
-    name: "Local Development"
-    description: "Local MCP servers for development"
+  # Sandbox environment for development/testing
+  sandbox:
+    name: Sandbox Environment
+    description: Sandbox servers for integration testing
     mcps:
-      - name: "Superset MCP"
-        mcp_url: "http://localhost:5008/mcp/"
-        auth:
-          type: "bearer"
-          token: "your-bearer-token-here"
+    - name: Preset Sandbox
+      mcp_url: https://your-workspace.us1a.app-sdx.preset.io/mcp
+      auth:
+        type: jwt
+        api_url: https://api.app-sdx.preset.io/v1/auth/
+        api_token: ${SANDBOX_API_TOKEN}
+        api_secret: ${SANDBOX_API_SECRET}
 
-      - name: "Database MCP"
-        mcp_url: "http://localhost:5009/mcp/"
-        auth:
-          type: "none"
-
-      - name: "AI Assistant MCP"
-        mcp_url: "http://localhost:5010/mcp/"
-        auth:
-          type: "bearer"
-          token: "${AI_MCP_TOKEN}"
-
-  # Single MCP profile (backward compatible)
-  local-simple:
-    name: "Local Simple"
-    description: "Single MCP server for testing"
-    mcps:
-      - name: "Superset Local"
-        mcp_url: "http://localhost:5008/mcp/"
-        auth:
-          type: "none"
-
-  # Profile for staging with different MCPs
+  # Staging environment
   staging:
-    name: "Staging Environment"
-    description: "Staging servers for integration testing"
+    name: Staging Environment
+    description: Staging servers for integration testing
     mcps:
-      - name: "Superset Staging"
-        mcp_url: "https://staging.example.com/mcp/"
-        auth:
-          type: "jwt"
-          api_url: "https://staging.example.com/v1/auth/"
-          api_token: "${STAGING_API_TOKEN}"
-          api_secret: "${STAGING_API_SECRET}"
+    - name: Preset Staging
+      mcp_url: https://your-workspace.us1a.app-stg.preset.io/mcp
+      auth:
+        type: jwt
+        api_url: https://api.app-stg.preset.io/v1/auth/
+        api_token: ${STAGING_API_TOKEN}
+        api_secret: ${STAGING_API_SECRET}
 
-      - name: "Analytics MCP"
-        mcp_url: "https://analytics-staging.example.com/mcp/"
-        auth:
-          type: "bearer"
-          token: "${ANALYTICS_STAGING_TOKEN}"
-
-  # Profile for production
+  # Production environment
   prod:
-    name: "Production"
-    description: "Production MCP servers"
+    name: Production
+    description: Production MCP servers
     mcps:
-      - name: "Superset Production"
-        mcp_url: "https://api.example.com/mcp/"
-        auth:
-          type: "jwt"
-          api_url: "https://api.example.com/v1/auth/"
-          api_token: "${PROD_API_TOKEN}"
-          api_secret: "${PROD_API_SECRET}"
+    - name: Preset Production
+      mcp_url: https://your-workspace.us1a.app.preset.io/mcp
+      auth:
+        type: jwt
+        api_url: https://api.app.preset.io/v1/auth/
+        api_token: ${PROD_API_TOKEN}
+        api_secret: ${PROD_API_SECRET}
 
-      - name: "Analytics Production"
-        mcp_url: "https://analytics.example.com/mcp/"
-        auth:
-          type: "oauth"
-          client_id: "${PROD_ANALYTICS_CLIENT_ID}"
-          client_secret: "${PROD_ANALYTICS_CLIENT_SECRET}"
-          token_url: "https://analytics.example.com/oauth/token"
-          scopes: ["mcp:read", "mcp:write"]
-
-  # Custom workflow profile - mix of different MCPs
-  data-pipeline:
-    name: "Data Pipeline Testing"
-    description: "MCPs needed for data pipeline workflows"
+  # Local development (no auth)
+  local-dev:
+    name: Local Development
+    description: Local MCP servers for development
     mcps:
-      - name: "Superset Local"
-        mcp_url: "http://localhost:5008/mcp/"
-        auth:
-          type: "none"
+    - name: Superset Local
+      mcp_url: http://localhost:8088/mcp
+      auth:
+        type: none
 
-      - name: "Airbyte MCP"
-        mcp_url: "https://airbyte.example.com/mcp/"
-        auth:
-          type: "bearer"
-          token: "${AIRBYTE_TOKEN}"
-
-      - name: "DBT MCP"
-        mcp_url: "https://dbt.example.com/mcp/"
-        auth:
-          type: "oauth"
-          client_id: "${DBT_CLIENT_ID}"
-          client_secret: "${DBT_CLIENT_SECRET}"
-          token_url: "https://dbt.example.com/oauth/token"
-          scopes: ["dbt:read", "dbt:execute"]
-
-  # Customer-specific profile
-  customer-acme:
-    name: "Acme Corp"
-    description: "Acme customer deployment"
-    mcps:
-      - name: "Acme Superset"
-        mcp_url: "https://acme.example.com/mcp/"
-        auth:
-          type: "bearer"
-          token: "${ACME_MCP_TOKEN}"
-
-      - name: "Acme Data Lake"
-        mcp_url: "https://acme-data.example.com/mcp/"
-        auth:
-          type: "bearer"
-          token: "${ACME_DATA_TOKEN}"
-
-# Optional: Global settings applied to all profiles
 global:
-  # Default timeout for requests (seconds)
   timeout: 30
-
-  # Rate limiting
   rate_limit:
     requests_per_minute: 60
 
-  # Retry configuration
-  retry:
-    max_attempts: 3
-    backoff_multiplier: 2
+# To get API credentials for Preset:
+# 1. Go to your Preset workspace settings
+# 2. Navigate to API Keys section
+# 3. Create a new API key pair (token + secret)
+# 4. Set environment variables:
+#    export SANDBOX_API_TOKEN=your-api-token
+#    export SANDBOX_API_SECRET=your-api-secret

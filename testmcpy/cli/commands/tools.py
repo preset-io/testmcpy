@@ -31,26 +31,43 @@ def tools(
     This command connects to the MCP service and displays all available tools
     with their descriptions and parameter schemas in a readable format.
     """
-    # Load config with profile if specified
-    effective_mcp_url = mcp_url or DEFAULT_MCP_URL
+    # Load config with profile if specified, or use default profile
+    from testmcpy.mcp_profiles import get_profile_config
+
+    profile_config = get_profile_config()
+    effective_mcp_url = mcp_url
     auth_config = None
+    effective_profile = profile
 
+    # Get profile - either specified or default
     if profile:
-        from testmcpy.mcp_profiles import get_profile_config
-
-        profile_config = get_profile_config()
         prof = profile_config.get_profile(profile)
-        if prof and prof.mcps:
-            mcp_server = prof.mcps[0]
-            effective_mcp_url = mcp_url or mcp_server.mcp_url
-            auth_config = mcp_server.auth.to_dict() if mcp_server.auth else None
+    else:
+        # Use default profile if available
+        default_profile_id = profile_config.default_profile
+        if default_profile_id:
+            prof = profile_config.get_profile(default_profile_id)
+            effective_profile = default_profile_id
+        else:
+            prof = None
+
+    # Extract MCP URL and auth from profile
+    if prof and prof.mcps:
+        mcp_server = prof.mcps[0]
+        effective_mcp_url = mcp_url or mcp_server.mcp_url
+        auth_config = mcp_server.auth.to_dict() if mcp_server.auth else None
+    else:
+        effective_mcp_url = mcp_url or DEFAULT_MCP_URL
 
     async def list_tools():
         from testmcpy.src.mcp_client import MCPClient
 
         console.print(
             Panel.fit(
-                f"[bold cyan]MCP Tools Explorer[/bold cyan]\nService: {effective_mcp_url}",
+                f"[bold cyan]MCP Tools Explorer[/bold cyan]\n"
+                f"Service: {effective_mcp_url}\n"
+                f"Profile: {effective_profile or 'none'}\n"
+                f"Auth: {auth_config.get('type', 'none') if auth_config else 'none'}",
                 border_style="cyan",
             )
         )
@@ -271,20 +288,31 @@ def export(
         testmcpy export search --format protobuf --profile production
     """
     from testmcpy.formatters import FORMATS
+    from testmcpy.mcp_profiles import get_profile_config
 
-    # Load config with profile if specified
-    effective_mcp_url = mcp_url or DEFAULT_MCP_URL
+    # Load config with profile if specified, or use default profile
+    profile_config = get_profile_config()
+    effective_mcp_url = mcp_url
     auth_config = None
 
+    # Get profile - either specified or default
     if profile:
-        from testmcpy.mcp_profiles import get_profile_config
-
-        profile_config = get_profile_config()
         prof = profile_config.get_profile(profile)
-        if prof and prof.mcps:
-            mcp_server = prof.mcps[0]
-            effective_mcp_url = mcp_url or mcp_server.mcp_url
-            auth_config = mcp_server.auth.to_dict() if mcp_server.auth else None
+    else:
+        # Use default profile if available
+        default_profile_id = profile_config.default_profile
+        if default_profile_id:
+            prof = profile_config.get_profile(default_profile_id)
+        else:
+            prof = None
+
+    # Extract MCP URL and auth from profile
+    if prof and prof.mcps:
+        mcp_server = prof.mcps[0]
+        effective_mcp_url = mcp_url or mcp_server.mcp_url
+        auth_config = mcp_server.auth.to_dict() if mcp_server.auth else None
+    else:
+        effective_mcp_url = mcp_url or DEFAULT_MCP_URL
 
     # Validate format
     if format not in FORMATS:

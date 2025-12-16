@@ -806,6 +806,17 @@ async def test_mcp_connection(profile_id: str, mcp_index: int):
 
             await test_client.close()
 
+            # Clear cached client for this MCP to force fresh JWT token on next request
+            mcp_clients = get_mcp_clients()
+            cache_key = f"{profile_id}:{mcp_config['name']}"
+            old_client = mcp_clients.pop(cache_key, None)
+            if old_client:
+                try:
+                    await old_client.close()
+                    print(f"Cleared cached client '{cache_key}' after successful test")
+                except Exception as e:
+                    print(f"Warning: Failed to close old cached client '{cache_key}': {e}")
+
             return {
                 "success": True,
                 "status": "connected",

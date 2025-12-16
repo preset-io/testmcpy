@@ -47,19 +47,33 @@ def chat(
         testmcpy chat --model claude-sonnet-4-20250514  # Use specific model
         testmcpy chat --no-mcp                 # Chat without MCP tools
     """
-    # Load config with profile if specified
-    effective_mcp_url = mcp_url or DEFAULT_MCP_URL
+    # Load config with profile if specified, or use default profile
+    from testmcpy.mcp_profiles import get_profile_config
+
+    profile_config = get_profile_config()
+    effective_mcp_url = mcp_url
     auth_config = None
+    effective_profile = profile
 
+    # Get profile - either specified or default
     if profile:
-        from testmcpy.mcp_profiles import get_profile_config
-
-        profile_config = get_profile_config()
         prof = profile_config.get_profile(profile)
-        if prof and prof.mcps:
-            mcp_server = prof.mcps[0]
-            effective_mcp_url = mcp_url or mcp_server.mcp_url
-            auth_config = mcp_server.auth.to_dict() if mcp_server.auth else None
+    else:
+        # Use default profile if available
+        default_profile_id = profile_config.default_profile
+        if default_profile_id:
+            prof = profile_config.get_profile(default_profile_id)
+            effective_profile = default_profile_id
+        else:
+            prof = None
+
+    # Extract MCP URL and auth from profile
+    if prof and prof.mcps:
+        mcp_server = prof.mcps[0]
+        effective_mcp_url = mcp_url or mcp_server.mcp_url
+        auth_config = mcp_server.auth.to_dict() if mcp_server.auth else None
+    else:
+        effective_mcp_url = mcp_url or DEFAULT_MCP_URL
 
     if no_mcp:
         console.print(
@@ -77,7 +91,8 @@ def chat(
                 f"[bold cyan]Chat with {model}[/bold cyan]\n"
                 f"Provider: {provider.value}\n"
                 f"MCP: {effective_mcp_url}\n"
-                f"Profile: {profile or 'default'}\n\n"
+                f"Profile: {effective_profile or 'none'}\n"
+                f"Auth: {auth_config.get('type', 'none') if auth_config else 'none'}\n\n"
                 "[dim]Type your message and press Enter. "
                 "Type 'exit' or 'quit' to end session.[/dim]",
                 border_style="cyan",
