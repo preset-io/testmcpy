@@ -16,6 +16,18 @@ from testmcpy.src.mcp_client import MCPClient, MCPToolCall
 from testmcpy.src.test_runner import TestCase, TestRunner
 
 
+def strip_mcp_prefix(tool_name: str) -> str:
+    """Strip MCP namespace prefix from tool name.
+
+    LLM providers may return tool names like 'mcp__testmcpy__list_charts'
+    but the MCP server expects just 'list_charts'.
+    """
+    if "__" in tool_name:
+        # Get the last part after the final __
+        return tool_name.rsplit("__", 1)[-1]
+    return tool_name
+
+
 class ConnectionManager:
     """Manage WebSocket connections."""
 
@@ -127,9 +139,10 @@ async def handle_chat_websocket(websocket: WebSocket, mcp_client: MCPClient):
                                 websocket,
                             )
 
-                            # Execute tool
+                            # Execute tool - strip MCP prefix if present
+                            actual_tool_name = strip_mcp_prefix(tool_call["name"])
                             mcp_tool_call = MCPToolCall(
-                                name=tool_call["name"],
+                                name=actual_tool_name,
                                 arguments=tool_call.get("arguments", {}),
                                 id=tool_call.get("id", "unknown"),
                             )

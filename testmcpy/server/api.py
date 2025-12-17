@@ -29,6 +29,7 @@ from testmcpy.server.routers import results as results_router
 from testmcpy.server.routers import test_profiles as test_profiles_router
 from testmcpy.server.routers import tests as tests_router
 from testmcpy.server.routers import tools as tools_router
+from testmcpy.server.websocket import strip_mcp_prefix
 from testmcpy.src.llm_integration import create_llm_provider
 from testmcpy.src.mcp_client import MCPClient, MCPToolCall
 
@@ -737,14 +738,16 @@ async def chat(request: ChatRequest) -> ChatResponse:
         tool_calls_with_results = []
         if result.tool_calls:
             for tool_call in result.tool_calls:
+                # Strip MCP prefix from tool name if present (e.g., mcp__testmcpy__list_charts -> list_charts)
+                actual_tool_name = strip_mcp_prefix(tool_call["name"])
                 mcp_tool_call = MCPToolCall(
-                    name=tool_call["name"],
+                    name=actual_tool_name,
                     arguments=tool_call.get("arguments", {}),
                     id=tool_call.get("id", "unknown"),
                 )
 
-                # Find the appropriate client for this tool
-                tool_info = tool_to_client.get(tool_call["name"])
+                # Find the appropriate client for this tool (using stripped name)
+                tool_info = tool_to_client.get(actual_tool_name)
                 if not tool_info:
                     # Tool not found in any client
                     tool_call_with_result = {
