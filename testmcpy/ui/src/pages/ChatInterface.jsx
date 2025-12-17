@@ -470,14 +470,9 @@ ${params}
       }
     }
 
-    // Add content check if response has meaningful content
-    if (assistantMessage.content && assistantMessage.content.length > 10) {
-      const snippet = assistantMessage.content.substring(0, 50).replace(/"/g, '\\"').replace(/\n/g, ' ')
-      evaluators += `
-      - name: final_answer_contains
-        args:
-          expected_content: "${snippet}"`
-    }
+    // Note: We don't auto-add final_answer_contains because exact text matching is too brittle.
+    // Users can manually add content-based evaluators if needed.
+    // Tool-based tests are validated by execution_successful and was_mcp_tool_called.
 
     const testContent = `version: "1.0"
 tests:
