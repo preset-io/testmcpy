@@ -337,16 +337,39 @@ async def handle_test_websocket(websocket: WebSocket):
                     if total_cost > 0:
                         await send_log(f"💰 Total cost: ${total_cost:.4f}")
 
+                    results_list = [r.to_dict() for r in all_results]
+                    summary = {
+                        "total": len(all_results),
+                        "passed": passed,
+                        "failed": failed,
+                        "total_cost": total_cost,
+                    }
+
+                    # Save results to history
+                    try:
+                        from testmcpy.server.routers.results import save_test_run
+
+                        save_data = {
+                            "test_file": str(test_path.relative_to(config.tests_dir))
+                            if str(test_path).startswith(str(config.tests_dir))
+                            else test_path.name,
+                            "test_file_path": str(test_path),
+                            "provider": provider,
+                            "model": model,
+                            "mcp_profile": effective_profile,
+                            "results": results_list,
+                            "summary": summary,
+                        }
+                        save_result = await save_test_run(save_data)
+                        await send_log(f"💾 Results saved: {save_result.get('run_id')}")
+                    except Exception as save_err:
+                        await send_log(f"⚠️ Failed to save results: {save_err}")
+
                     await manager.send_message(
                         {
                             "type": "all_complete",
-                            "summary": {
-                                "total": len(all_results),
-                                "passed": passed,
-                                "failed": failed,
-                                "total_cost": total_cost,
-                            },
-                            "results": [r.to_dict() for r in all_results],
+                            "summary": summary,
+                            "results": results_list,
                         },
                         websocket,
                     )

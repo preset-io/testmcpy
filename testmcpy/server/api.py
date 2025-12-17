@@ -25,6 +25,7 @@ from testmcpy.mcp_profiles import load_profile
 from testmcpy.server.routers import auth as auth_router
 from testmcpy.server.routers import llm as llm_router
 from testmcpy.server.routers import mcp_profiles as mcp_profiles_router
+from testmcpy.server.routers import results as results_router
 from testmcpy.server.routers import test_profiles as test_profiles_router
 from testmcpy.server.routers import tests as tests_router
 from testmcpy.server.routers import tools as tools_router
@@ -314,6 +315,7 @@ app.exception_handler(Exception)(global_exception_handler)
 app.include_router(auth_router.router)
 app.include_router(llm_router.router)
 app.include_router(mcp_profiles_router.router)
+app.include_router(results_router.router)
 app.include_router(test_profiles_router.router)
 app.include_router(tests_router.router)
 app.include_router(tools_router.router)

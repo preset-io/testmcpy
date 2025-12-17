@@ -14,6 +14,10 @@ import {
   ChevronDown,
   Loader2,
   Terminal,
+  History,
+  TrendingUp,
+  Clock,
+  DollarSign,
 } from 'lucide-react'
 import Editor from '@monaco-editor/react'
 import TestStatusIndicator from '../components/TestStatusIndicator'
@@ -1002,9 +1006,9 @@ tests:
         </div>
       </div>
 
-      <div className="flex-1 flex">
-        {/* File List */}
-        <div className="w-80 border-r border-border flex flex-col bg-surface-elevated">
+      <div className="flex-1 flex overflow-hidden min-h-0">
+        {/* File List Sidebar */}
+        <div className="w-80 flex-shrink-0 border-r border-border flex flex-col bg-surface-elevated overflow-hidden">
           <div className="p-4 border-b border-border">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-text-primary">Test Files</h2>
@@ -1165,14 +1169,14 @@ tests:
             </div>
           )}
         </div>
-      </div>
+        </div>  {/* End sidebar */}
 
-      {/* Editor & Results */}
-      <div className="flex-1 flex flex-col">
+        {/* Editor & Results - inside main flex container, sibling to sidebar */}
+        <div className="flex-1 flex flex-col overflow-hidden min-h-0">
         {selectedFile ? (
           <>
-            {/* Editor Header */}
-            <div className="border-b border-border bg-surface-elevated">
+            {/* Editor Header - fixed height, won't shrink */}
+            <div className="flex-shrink-0 border-b border-border bg-surface-elevated">
               {/* Top row: File info and edit controls */}
               <div className="px-4 py-3 flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -1272,7 +1276,7 @@ tests:
             </div>
 
             {/* Split view: Editor + Bottom Panel */}
-            <div className="flex-1 flex flex-col overflow-hidden relative">
+            <div className="flex-1 flex flex-col overflow-hidden relative min-h-0">
               {/* Editor area - always takes remaining space */}
               <div className="flex-1 overflow-hidden min-h-0">
                 <Editor
