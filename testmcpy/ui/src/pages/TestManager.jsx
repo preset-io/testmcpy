@@ -111,6 +111,7 @@ function TestManager({ selectedProfiles = [] }) {
   const [resultsHistory, setResultsHistory] = useState([])
   const [showHistory, setShowHistory] = useState(false)
   const [selectedHistoryRun, setSelectedHistoryRun] = useState(null)
+  const [bottomPanelTab, setBottomPanelTab] = useState('logs') // 'logs' or 'results'
 
   useEffect(() => {
     loadTestFiles()
@@ -838,6 +839,7 @@ tests:
               status: 'completed'
             }))
             setRunning(false)
+            setBottomPanelTab('results') // Switch to results tab
             // Refresh history after test completes
             if (selectedFile) {
               const testFile = selectedFile.relative_path || selectedFile.filename
@@ -1348,11 +1350,11 @@ tests:
                     {/* Logs Tab */}
                     <button
                       className={`px-3 py-2 text-xs font-medium flex items-center gap-2 border-b-2 transition-colors ${
-                        !testResults || running
+                        bottomPanelTab === 'logs'
                           ? 'border-primary text-primary'
                           : 'border-transparent text-text-tertiary hover:text-text-secondary'
                       }`}
-                      onClick={() => testResults && setTestResults(null)}
+                      onClick={() => setBottomPanelTab('logs')}
                     >
                       <Terminal size={12} />
                       <span>Logs</span>
@@ -1362,9 +1364,14 @@ tests:
                       )}
                     </button>
                     {/* Results Tab */}
-                    {testResults && !running && (
+                    {testResults && (
                       <button
-                        className="px-3 py-2 text-xs font-medium flex items-center gap-2 border-b-2 border-primary text-primary"
+                        className={`px-3 py-2 text-xs font-medium flex items-center gap-2 border-b-2 transition-colors ${
+                          bottomPanelTab === 'results'
+                            ? 'border-primary text-primary'
+                            : 'border-transparent text-text-tertiary hover:text-text-secondary'
+                        }`}
+                        onClick={() => setBottomPanelTab('results')}
                       >
                         <CheckCircle size={12} />
                         <span>Results</span>
@@ -1378,7 +1385,7 @@ tests:
                     {/* Spacer */}
                     <div className="flex-1" />
                     {/* Clear/Close buttons */}
-                    {!running && streamingLogs.length > 0 && !testResults && (
+                    {bottomPanelTab === 'logs' && !running && streamingLogs.length > 0 && (
                       <button
                         onClick={() => setStreamingLogs([])}
                         className="px-2 py-1 text-xs text-text-tertiary hover:text-text-primary hover:bg-surface-hover rounded transition-colors"
@@ -1386,21 +1393,19 @@ tests:
                         Clear
                       </button>
                     )}
-                    {testResults && !running && (
-                      <button
-                        onClick={() => { setTestResults(null); setStreamingLogs([]); }}
-                        className="p-1.5 text-text-tertiary hover:text-text-primary hover:bg-surface-hover rounded transition-colors"
-                        title="Close panel"
-                      >
-                        <X size={14} />
-                      </button>
-                    )}
+                    <button
+                      onClick={() => { setTestResults(null); setStreamingLogs([]); setBottomPanelTab('logs'); }}
+                      className="p-1.5 text-text-tertiary hover:text-text-primary hover:bg-surface-hover rounded transition-colors"
+                      title="Close panel"
+                    >
+                      <X size={14} />
+                    </button>
                   </div>
 
                   {/* Panel Content */}
                   <div className="flex-1 overflow-hidden">
-                    {/* Show Results if available and not running, otherwise show Logs */}
-                    {testResults && !running ? (
+                    {/* Show content based on selected tab */}
+                    {bottomPanelTab === 'results' && testResults ? (
                       /* Results Content */
                       <div className="h-full flex flex-col">
                         {/* Results Summary Bar */}
