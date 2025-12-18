@@ -1,6 +1,5 @@
 """Python client code generator for MCP tool calls."""
 
-import json
 from typing import Any
 
 from .base import SchemaFormatter, generate_example
@@ -9,7 +8,13 @@ from .base import SchemaFormatter, generate_example
 class PythonClientFormatter(SchemaFormatter):
     """Generates Python client code for calling MCP tools."""
 
-    def __init__(self, schema: dict[str, Any], tool_name: str = "tool_name", mcp_url: str | None = None, auth_token: str | None = None):
+    def __init__(
+        self,
+        schema: dict[str, Any],
+        tool_name: str = "tool_name",
+        mcp_url: str | None = None,
+        auth_token: str | None = None,
+    ):
         super().__init__(schema, tool_name)
         self.mcp_url = mcp_url or "http://localhost:8000/mcp"
         self.auth_token = auth_token or "your_auth_token"
@@ -23,7 +28,11 @@ class PythonClientFormatter(SchemaFormatter):
         args_str = self._format_args(example_args, indent=1)
 
         # Prepare auth header comment based on whether auth token is provided
-        auth_comment = "" if self.auth_token and self.auth_token != "your_auth_token" else "  # Replace with your auth token if needed"
+        auth_comment = (
+            ""
+            if self.auth_token and self.auth_token != "your_auth_token"
+            else "  # Replace with your auth token if needed"
+        )
 
         return f'''#!/usr/bin/env python3
 """
@@ -81,8 +90,9 @@ if __name__ == "__main__":
     def _safe_name(self, name: str) -> str:
         """Convert tool name to safe Python identifier."""
         import re
+
         # Replace non-alphanumeric characters with underscore
-        safe = re.sub(r'[^a-zA-Z0-9_]', '_', name)
+        safe = re.sub(r"[^a-zA-Z0-9_]", "_", name)
         # Ensure it doesn't start with a number
         if safe and safe[0].isdigit():
             safe = f"tool_{safe}"
@@ -126,7 +136,12 @@ if __name__ == "__main__":
             return repr(value)
 
 
-def to_python_client(schema: dict[str, Any], tool_name: str = "tool_name", mcp_url: str | None = None, auth_token: str | None = None) -> str:
+def to_python_client(
+    schema: dict[str, Any],
+    tool_name: str = "tool_name",
+    mcp_url: str | None = None,
+    auth_token: str | None = None,
+) -> str:
     """
     Generate Python client code for calling an MCP tool.
 

@@ -402,7 +402,7 @@ class ToolComparator:
             executions1 = []
             executions2 = []
 
-            for i in range(self.config.iterations):
+            for _ in range(self.config.iterations):
                 # Execute on both sources
                 result1 = await self._execute_tool_once(
                     self.client1, self.config.tool_name, self.config.tool_params

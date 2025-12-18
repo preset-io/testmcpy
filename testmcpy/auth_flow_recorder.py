@@ -12,10 +12,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
-import httpx
 from rich.console import Console
 from rich.panel import Panel
-from rich.syntax import Syntax
 from rich.table import Table
 from rich.tree import Tree
 
@@ -242,7 +240,7 @@ class AuthFlowRecorder:
                 # Remove the file and create directory instead
                 testmcpy_dir.unlink()
             self.storage_dir.mkdir(parents=True, exist_ok=True)
-        except OSError as e:
+        except OSError:
             # Fall back to temp directory if home directory fails
             import tempfile
 

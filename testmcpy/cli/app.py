@@ -5,16 +5,16 @@ import warnings
 # Suppress deprecation warnings before any other imports
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-import logging
-from enum import Enum
+import logging  # noqa: E402
+from enum import Enum  # noqa: E402
+from pathlib import Path  # noqa: E402
 
-import typer
-from dotenv import load_dotenv
-from pathlib import Path
-from rich.console import Console
+import typer  # noqa: E402
+from dotenv import load_dotenv  # noqa: E402
+from rich.console import Console  # noqa: E402
 
-from testmcpy import __version__
-from testmcpy.config import get_config
+from testmcpy import __version__  # noqa: E402
+from testmcpy.config import get_config  # noqa: E402
 
 # Suppress MCP notification validation warnings
 logging.getLogger().setLevel(logging.ERROR)

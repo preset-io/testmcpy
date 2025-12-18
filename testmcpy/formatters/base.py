@@ -76,7 +76,7 @@ def resolve_property(prop: dict[str, Any], schema: dict[str, Any]) -> dict[str, 
         resolved = resolve_ref(prop["$ref"], schema)
         if resolved:
             # Merge any additional properties from the reference with the resolved definition
-            ref = prop.pop("$ref")
+            prop.pop("$ref")
             resolved = resolved.copy()
             resolved.update(prop)
             prop = resolved

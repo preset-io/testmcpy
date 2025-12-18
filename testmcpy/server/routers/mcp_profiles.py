@@ -2,8 +2,8 @@
 
 import copy
 import re
-import shutil
 from pathlib import Path
+
 import yaml
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, field_validator

@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from testmcpy.config import get_config
 from testmcpy.mcp_profiles import load_profile
-from testmcpy.server.state import get_mcp_clients, get_default_mcp_client
+from testmcpy.server.state import get_default_mcp_client, get_mcp_clients
 from testmcpy.src.llm_integration import create_llm_provider
 from testmcpy.src.mcp_client import MCPClient
 

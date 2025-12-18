@@ -5,7 +5,6 @@ Manages multiple LLM provider configurations with profile-based organization.
 Similar to MCP profiles, allows users to define different LLM setups for different environments.
 """
 
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any

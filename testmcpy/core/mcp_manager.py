@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-from testmcpy.mcp_profiles import MCPProfile, load_profile, get_profile_config
+from testmcpy.mcp_profiles import MCPProfile, get_profile_config, load_profile
 from testmcpy.src.mcp_client import MCPClient
 
 

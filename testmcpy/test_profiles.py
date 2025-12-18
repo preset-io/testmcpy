@@ -5,7 +5,6 @@ Manages test suite configurations with profile-based organization.
 Allows users to define different test setups for different scenarios.
 """
 
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any

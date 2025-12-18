@@ -258,8 +258,9 @@ class ChatSession:
         Returns:
             Path to created test file
         """
-        import yaml
         from pathlib import Path
+
+        import yaml
 
         if not self.messages:
             raise ValueError("No messages to save")
@@ -354,6 +355,7 @@ class ChatSession:
             Serialized conversation
         """
         import json
+
         import yaml
 
         data = {

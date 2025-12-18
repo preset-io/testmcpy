@@ -243,7 +243,7 @@ def save_mcp_yaml(config_data: dict[str, Any]):
 
         # Step 5: Validate the written YAML can be read back
         try:
-            with open(temp_path, "r", encoding="utf-8") as f:
+            with open(temp_path, encoding="utf-8") as f:
                 yaml.safe_load(f)
         except Exception as e:
             # Clean up invalid temp file

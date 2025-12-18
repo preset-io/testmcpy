@@ -338,7 +338,6 @@ async def generate_tests_stream(request: GenerateTestsRequest):
         output_file = None
         test_count = 0
         total_cost = 0.0
-        success = False
         error_msg = None
 
         def send_log(message: str, log_type: str = "log"):
@@ -610,7 +609,6 @@ tests:"""
             await llm_provider.close()
 
             total_cost = test_gen_result.cost + analysis_result.cost
-            success = True
             yield send_log(f"✅ Complete! Total cost: ${total_cost:.4f}")
 
             # Save generation log

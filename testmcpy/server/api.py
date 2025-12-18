@@ -9,31 +9,31 @@ warnings.filterwarnings("ignore", category=DeprecationWarning, module="websocket
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="websockets.legacy")
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="uvicorn")
 
-from contextlib import asynccontextmanager
-from datetime import datetime
-from enum import Enum
-from pathlib import Path
-from typing import Any
+from contextlib import asynccontextmanager  # noqa: E402
+from datetime import datetime  # noqa: E402
+from enum import Enum  # noqa: E402
+from pathlib import Path  # noqa: E402
+from typing import Any  # noqa: E402
 
-from fastapi import FastAPI, HTTPException, Query, WebSocket
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from fastapi import FastAPI, HTTPException, Query, WebSocket  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.responses import FileResponse  # noqa: E402
+from pydantic import BaseModel, Field  # noqa: E402
 
-from testmcpy.config import get_config
-from testmcpy.mcp_profiles import load_profile
-from testmcpy.server.routers import auth as auth_router
-from testmcpy.server.routers import generation_logs as generation_logs_router
-from testmcpy.server.routers import llm as llm_router
-from testmcpy.server.routers import mcp_profiles as mcp_profiles_router
-from testmcpy.server.routers import results as results_router
-from testmcpy.server.routers import smoke_reports as smoke_reports_router
-from testmcpy.server.routers import test_profiles as test_profiles_router
-from testmcpy.server.routers import tests as tests_router
-from testmcpy.server.routers import tools as tools_router
-from testmcpy.server.websocket import strip_mcp_prefix
-from testmcpy.src.llm_integration import create_llm_provider
-from testmcpy.src.mcp_client import MCPClient, MCPToolCall
+from testmcpy.config import get_config  # noqa: E402
+from testmcpy.mcp_profiles import load_profile  # noqa: E402
+from testmcpy.server.routers import auth as auth_router  # noqa: E402
+from testmcpy.server.routers import generation_logs as generation_logs_router  # noqa: E402
+from testmcpy.server.routers import llm as llm_router  # noqa: E402
+from testmcpy.server.routers import mcp_profiles as mcp_profiles_router  # noqa: E402
+from testmcpy.server.routers import results as results_router  # noqa: E402
+from testmcpy.server.routers import smoke_reports as smoke_reports_router  # noqa: E402
+from testmcpy.server.routers import test_profiles as test_profiles_router  # noqa: E402
+from testmcpy.server.routers import tests as tests_router  # noqa: E402
+from testmcpy.server.routers import tools as tools_router  # noqa: E402
+from testmcpy.server.websocket import strip_mcp_prefix  # noqa: E402
+from testmcpy.src.llm_integration import create_llm_provider  # noqa: E402
+from testmcpy.src.mcp_client import MCPClient, MCPToolCall  # noqa: E402
 
 
 # Enums for validation
@@ -283,7 +283,7 @@ app.add_middleware(
 )
 
 # Add middleware to set CSP headers for ngrok compatibility
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
 
 
 class CSPMiddleware(BaseHTTPMiddleware):
@@ -310,7 +310,7 @@ app.add_middleware(CSPMiddleware)
 
 # Global Exception Handlers - Never let the server crash
 
-from testmcpy.error_handlers import global_exception_handler
+from testmcpy.error_handlers import global_exception_handler  # noqa: E402
 
 app.exception_handler(Exception)(global_exception_handler)
 
@@ -826,7 +826,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
 
 
 # WebSocket endpoint for streaming test execution
-from testmcpy.server.websocket import handle_test_websocket
+from testmcpy.server.websocket import handle_test_websocket  # noqa: E402
 
 
 @app.websocket("/ws/tests")

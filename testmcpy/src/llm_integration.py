@@ -1734,7 +1734,6 @@ class ClaudeCodeProvider(LLMProvider):
                         }
 
                         cost = event.get("cost_usd", 0.0)
-                        duration_ms = event.get("duration_ms", 0)
 
                         logs.append(
                             f"[ClaudeCode] 📊 Result: {token_usage['total']} tokens, ${cost:.4f}"
@@ -1748,7 +1747,7 @@ class ClaudeCodeProvider(LLMProvider):
                             logs.append(f"[ClaudeCode] ℹ️ System: {str(system_msg)[:100]}")
                             print(f"[ClaudeCode] ℹ️ System: {str(system_msg)[:100]}")
 
-                except json.JSONDecodeError as e:
+                except json.JSONDecodeError:
                     # Not valid JSON - might be plain text output
                     logs.append(f"[ClaudeCode] ⚠️ Non-JSON line {line_num + 1}: {line[:50]}...")
                     print(f"[ClaudeCode] ⚠️ Non-JSON line {line_num + 1}: {line[:50]}...")

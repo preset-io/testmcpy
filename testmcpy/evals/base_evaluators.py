@@ -1317,9 +1317,7 @@ Score 0.0: Does not meet criteria at all"""
 
     async def _async_evaluate(self, context: dict[str, Any]) -> EvalResult:
         """Async evaluation using LLM."""
-        import httpx
         import json
-        import os
 
         prompt = context.get("prompt", "")
         response = context.get("response", "")
@@ -1440,8 +1438,9 @@ Respond in this exact JSON format:
 
     async def _call_llm(self, prompt: str) -> str:
         """Call LLM API for judging."""
-        import httpx
         import os
+
+        import httpx
 
         # Get config
         try:
