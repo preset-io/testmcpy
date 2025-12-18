@@ -1,14 +1,15 @@
 name: Publish to PyPI
 
 on:
-  push:
-    tags:
-      - 'v*'  # Trigger on version tags like v0.1.0
+  release:
+    types: [published]  # Trigger on GitHub releases
 
 jobs:
   publish:
     runs-on: ubuntu-latest
-    
+    permissions:
+      contents: write  # Needed to push Homebrew formula updates
+
     steps:
     - uses: actions/checkout@v4
     
@@ -37,25 +38,30 @@ jobs:
     - name: Download from PyPI and calculate SHA256
       run: |
         VERSION=${GITHUB_REF#refs/tags/v}
-        curl -sL -o "testmcpy-${VERSION}.tar.gz" "https://files.pythonhosted.org/packages/source/t/testmcpy/testmcpy-${VERSION}.tar.gz"
-        SHA256=$(sha256sum "testmcpy-${VERSION}.tar.gz" | awk '{print $1}')
-        echo "SHA256=${SHA256}" >> $GITHUB_ENV
-        echo "VERSION=${VERSION}" >> $GITHUB_ENV
-    
+        echo "Waiting for PyPI to make package available..."
+        sleep 5
+        curl -sL -o "testmcpy-${VERSION}.tar.gz" "https://files.pythonhosted.org/packages/source/t/testmcpy/testmcpy-${VERSION}.tar.gz" || true
+
+        if [ -f "testmcpy-${VERSION}.tar.gz" ] && [ -s "testmcpy-${VERSION}.tar.gz" ]; then
+          SHA256=$(sha256sum "testmcpy-${VERSION}.tar.gz" | awk '{print $1}')
+          echo "SHA256=${SHA256}" >> $GITHUB_ENV
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "FORMULA_UPDATE=true" >> $GITHUB_ENV
+        else
+          echo "FORMULA_UPDATE=false" >> $GITHUB_ENV
+          echo "⚠️ Could not download from PyPI yet. Homebrew formula update skipped."
+        fi
+
     - name: Update Homebrew formula
+      if: env.FORMULA_UPDATE == 'true'
       run: |
         sed -i "s/sha256 \".*\"/sha256 \"${SHA256}\"/" Formula/testmcpy.rb
-        sed -i "s/testmcpy-[0-9]\+\.[0-9]\+\.[0-9]\+\.tar\.gz/testmcpy-${VERSION}.tar.gz/" Formula/testmcpy.rb
-    
-    - name: Commit formula update
+
+    - name: Commit and push formula update
+      if: env.FORMULA_UPDATE == 'true'
       run: |
         git config --local user.email "github-actions[bot]@users.noreply.github.com"
         git config --local user.name "github-actions[bot]"
         git add Formula/testmcpy.rb
         git commit -m "Update Homebrew formula SHA256 for v${VERSION}" || echo "No changes to commit"
-    
-    - name: Push changes
-      uses: ad-m/github-push-action@master
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        branch: ${{ github.ref }}
+        git push origin HEAD:main || echo "No changes to push"

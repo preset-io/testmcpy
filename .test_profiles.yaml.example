@@ -1,0 +1,138 @@
+# Test Profile Configuration for MCP Tool Testing
+# Copy to .test_profiles.yaml and customize for your MCP testing scenarios
+#
+# This allows you to define different test configurations for:
+# - Tool discovery and availability testing
+# - Tool execution and parameter validation
+# - Authentication flow testing
+# - Multi-tool workflow testing
+# - Performance and reliability testing
+
+# Default profile (used when no --test-profile specified)
+default: basic
+
+# Profile definitions
+profiles:
+  # Basic MCP tool testing
+  basic:
+    name: "Basic Tool Tests"
+    description: "Essential MCP tool functionality tests"
+    test_configs:
+      - name: "Tool Discovery"
+        description: "Verify tools are discoverable and callable"
+        tests_dir: "tests/tools"
+        evaluators:
+          - "execution_successful"
+          - "was_mcp_tool_called"
+          - "tool_calls_match"
+        timeout: 30
+        parallel: true
+        max_retries: 1
+        default: true
+
+  # Tool parameter validation
+  validation:
+    name: "Parameter Validation"
+    description: "Test tool parameter handling and validation"
+    test_configs:
+      - name: "Parameter Tests"
+        description: "Validate tool accepts correct parameters"
+        tests_dir: "tests/validation"
+        evaluators:
+          - "execution_successful"
+          - "was_mcp_tool_called"
+          - "exact_match"
+          - "json_match"
+        timeout: 45
+        parallel: true
+        max_retries: 1
+        default: true
+
+  # Authentication testing
+  auth:
+    name: "Authentication Tests"
+    description: "Test MCP authentication flows"
+    test_configs:
+      - name: "Auth Flows"
+        description: "Verify authentication mechanisms work"
+        tests_dir: "tests/auth"
+        evaluators:
+          - "execution_successful"
+          - "was_mcp_tool_called"
+        timeout: 60
+        parallel: false
+        max_retries: 2
+        default: true
+
+  # Multi-tool workflow testing
+  workflows:
+    name: "Workflow Tests"
+    description: "Test complex multi-tool interactions"
+    test_configs:
+      - name: "Multi-Tool Scenarios"
+        description: "Test chained tool calls and workflows"
+        tests_dir: "tests/workflows"
+        evaluators:
+          - "execution_successful"
+          - "was_mcp_tool_called"
+          - "tool_calls_match"
+          - "semantic_similarity"
+        timeout: 120
+        parallel: false
+        max_retries: 1
+        default: true
+
+  # Error handling and edge cases
+  edge_cases:
+    name: "Edge Case Tests"
+    description: "Test error handling and edge cases"
+    test_configs:
+      - name: "Error Scenarios"
+        description: "Verify proper error handling"
+        tests_dir: "tests/edge_cases"
+        evaluators:
+          - "execution_successful"
+          - "contains"
+          - "exact_match"
+        timeout: 60
+        parallel: true
+        max_retries: 0
+        default: true
+
+  # Comprehensive testing
+  comprehensive:
+    name: "Full Test Suite"
+    description: "All MCP tool tests"
+    test_configs:
+      - name: "Complete Suite"
+        description: "Run all test categories"
+        tests_dir: "tests"
+        evaluators:
+          - "execution_successful"
+          - "was_mcp_tool_called"
+          - "tool_calls_match"
+          - "exact_match"
+          - "contains"
+          - "semantic_similarity"
+          - "json_match"
+        timeout: 180
+        parallel: true
+        max_retries: 2
+        default: true
+
+# Optional: Global settings for all profiles
+global:
+  # Default test directory
+  default_tests_dir: "tests"
+
+  # Report settings
+  reports_dir: "reports"
+  keep_reports: 30  # days
+
+  # Parallel execution settings
+  max_parallel_tests: 5
+
+  # Default evaluators if not specified
+  default_evaluators:
+    - "exact_match"
+    - "contains"

@@ -59,23 +59,85 @@ testmcpy tools --mcp-url https://your-mcp-server.com/mcp
 
 ## Configuration
 
-Create a `.env` file in your project directory:
+### Quick Setup (Recommended)
+
+Use the interactive setup wizard to create configuration files:
 
 ```bash
-# Default model to use for testing
-DEFAULT_MODEL=claude-sonnet-4-5
+testmcpy setup
+```
 
-# Default provider (anthropic, ollama, openai, local, claude-sdk)
-DEFAULT_PROVIDER=anthropic
+This will guide you through:
+- **LLM Provider setup**: Choose between Claude (Anthropic), GPT-4 (OpenAI), or local Ollama models
+- **MCP Service setup**: Configure your MCP server URL and authentication
+- **API Key management**: Automatically detects keys from environment (ANTHROPIC_API_KEY, OPENAI_API_KEY) and saves them to `.llm_providers.yaml`
 
-# MCP service URL
-MCP_URL=http://localhost:5008/mcp/
+The setup command creates two YAML files in your current directory with all necessary configuration.
 
-# Anthropic/Claude API key (required for anthropic and claude-sdk providers)
-ANTHROPIC_API_KEY=your-api-key-here
+### LLM Provider Configuration (.llm_providers.yaml)
 
-# MCP Authentication (optional - for authenticated MCP servers)
-MCP_AUTH_TOKEN=your-bearer-token-here
+The setup command creates `.llm_providers.yaml` in your project directory to configure LLM models and providers:
+
+```yaml
+default: prod
+
+profiles:
+  prod:
+    name: "Production"
+    description: "High-quality models for production use"
+    providers:
+      - name: "Claude claude-sonnet-4-5"
+        provider: "anthropic"
+        model: "claude-sonnet-4-5"
+        api_key: "your-anthropic-api-key-here"  # API key stored directly
+        timeout: 60
+        default: true
+```
+
+You can also reference environment variables using `api_key: "${ANTHROPIC_API_KEY}"` syntax.
+
+See `.llm_providers.yaml.example` for more examples including Ollama, OpenAI, and multiple profiles.
+
+### MCP Server Configuration (.mcp_services.yaml)
+
+The setup command creates `.mcp_services.yaml` in your project directory for MCP server profiles:
+
+```yaml
+default: prod
+
+profiles:
+  prod:
+    name: "Production"
+    description: "Production MCP service"
+    mcps:
+      - name: "Preset Superset"
+        mcp_url: "https://your-workspace.preset.io/mcp"
+        auth:
+          auth_type: "jwt"  # or "bearer" or "none"
+          api_url: "https://api.app.preset.io/v1/auth/"
+          api_token: "your-api-token"
+          api_secret: "your-api-secret"
+        timeout: 30
+        rate_limit_rpm: 60
+        default: true
+```
+
+See `.mcp_services.yaml.example` for more configuration examples.
+
+### Configuration Priority
+
+Configuration values are loaded in this order (highest priority first):
+1. CLI options (e.g., `--model`, `--provider`)
+2. LLM Profile (`.llm_providers.yaml`)
+3. MCP Profile (`.mcp_services.yaml`)
+4. Environment variables (`.env` file or system environment)
+
+### Re-running Setup
+
+The setup command is **idempotent** - it's safe to run multiple times. Use `--force` to overwrite existing configuration files:
+
+```bash
+testmcpy setup --force
 ```
 
 ## Publishing to Homebrew

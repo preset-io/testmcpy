@@ -1,0 +1,188 @@
+# MCP Test Runner - GitHub Actions Workflow
+#
+# This workflow runs MCP tests against your service and reports results.
+#
+# Usage:
+#   1. Copy this file to your repo's .github/workflows/ directory
+#   2. Set required secrets (ANTHROPIC_API_KEY, MCP_URL, etc.)
+#   3. Customize the test paths and configuration
+#
+# Triggers:
+#   - Push to main/master branches
+#   - Pull requests
+#   - Manual dispatch with custom parameters
+#   - Scheduled runs (optional)
+
+name: MCP Tests
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'tests/**'
+      - '.github/workflows/mcp-tests.yml'
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      test_path:
+        description: 'Test file or directory to run'
+        required: false
+        default: 'tests/'
+      model:
+        description: 'LLM model to use'
+        required: false
+        default: 'claude-sonnet-4-5'
+      provider:
+        description: 'LLM provider'
+        required: false
+        default: 'anthropic'
+        type: choice
+        options:
+          - anthropic
+          - openai
+          - gemini
+
+# Uncomment for scheduled runs
+# schedule:
+#   - cron: '0 6 * * *'  # Daily at 6 AM UTC
+
+env:
+  PYTHON_VERSION: '3.11'
+  TESTMCPY_VERSION: 'latest'
+
+jobs:
+  test:
+    name: Run MCP Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install testmcpy
+        run: |
+          pip install --upgrade pip
+          pip install testmcpy
+          # Or install from source:
+          # pip install git+https://github.com/preset-io/testmcpy.git
+
+      - name: Verify installation
+        run: testmcpy --version
+
+      - name: Run MCP Tests
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          MCP_URL: ${{ secrets.MCP_URL }}
+          MCP_AUTH_TOKEN: ${{ secrets.MCP_AUTH_TOKEN }}
+        run: |
+          TEST_PATH="${{ github.event.inputs.test_path || 'tests/' }}"
+          MODEL="${{ github.event.inputs.model || 'claude-sonnet-4-5' }}"
+          PROVIDER="${{ github.event.inputs.provider || 'anthropic' }}"
+
+          echo "Running tests from: $TEST_PATH"
+          echo "Using model: $MODEL ($PROVIDER)"
+
+          testmcpy run "$TEST_PATH" \
+            --model "$MODEL" \
+            --provider "$PROVIDER" \
+            --mcp-url "$MCP_URL" \
+            --output results.json \
+            --verbose
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: results.json
+          retention-days: 30
+
+      - name: Parse and display results
+        if: always()
+        run: |
+          if [ -f results.json ]; then
+            echo "## Test Results Summary" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            # Extract summary from JSON
+            TOTAL=$(jq -r '.summary.total // 0' results.json)
+            PASSED=$(jq -r '.summary.passed // 0' results.json)
+            FAILED=$(jq -r '.summary.failed // 0' results.json)
+            COST=$(jq -r '.summary.total_cost // 0' results.json)
+
+            echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Total Tests | $TOTAL |" >> $GITHUB_STEP_SUMMARY
+            echo "| Passed | $PASSED |" >> $GITHUB_STEP_SUMMARY
+            echo "| Failed | $FAILED |" >> $GITHUB_STEP_SUMMARY
+            echo "| Cost | \$$COST |" >> $GITHUB_STEP_SUMMARY
+
+            # Fail the job if any tests failed
+            if [ "$FAILED" -gt 0 ]; then
+              echo ""
+              echo "### Failed Tests" >> $GITHUB_STEP_SUMMARY
+              jq -r '.results[] | select(.passed == false) | "- **\(.test_name)**: \(.error // .reason // "Unknown error")"' results.json >> $GITHUB_STEP_SUMMARY
+              exit 1
+            fi
+          else
+            echo "No results file found" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+  smoke-test:
+    name: MCP Smoke Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install testmcpy
+        run: pip install testmcpy
+
+      - name: Run Smoke Test
+        env:
+          MCP_URL: ${{ secrets.MCP_URL }}
+          MCP_AUTH_TOKEN: ${{ secrets.MCP_AUTH_TOKEN }}
+        run: |
+          testmcpy smoke-test \
+            --mcp-url "$MCP_URL" \
+            --format json \
+            --save smoke-test-results.json
+
+      - name: Upload smoke test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-test-results
+          path: smoke-test-results.json
+          retention-days: 7
+
+      - name: Check smoke test status
+        if: always()
+        run: |
+          if [ -f smoke-test-results.json ]; then
+            FAILED=$(jq -r '.failed // 0' smoke-test-results.json)
+            if [ "$FAILED" -gt 0 ]; then
+              echo "Smoke test failed!"
+              exit 1
+            fi
+          fi

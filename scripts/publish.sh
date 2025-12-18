@@ -89,13 +89,13 @@ else
     SHA256=$(shasum -a 256 "testmcpy-${VERSION}.tar.gz" | awk '{print $1}')
     cd -
     rm -rf "$TEMP_DIR"
-    
+
     echo -e "\n${GREEN}🔐 SHA256: ${SHA256}${NC}"
-    
+
     # Update Homebrew formula
     echo -e "\n${GREEN}📝 Updating Homebrew formula...${NC}"
     sed -i '' "s/sha256 \".*\"/sha256 \"${SHA256}\"/" Formula/testmcpy.rb
-    
+
     # Commit the formula update
     git add Formula/testmcpy.rb
     git commit -m "Update Homebrew formula SHA256 for v${VERSION}"

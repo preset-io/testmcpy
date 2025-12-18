@@ -1,0 +1,255 @@
+{
+  "metadata": {
+    "run_id": "2f133af7_20251218_122010",
+    "test_file": "get_chart_info/basic_20251218_121928.yaml",
+    "test_file_path": "/Users/amin/github/preset-io/testmcpy/tests/get_chart_info/basic_20251218_121928.yaml",
+    "timestamp": "2025-12-18T12:20:10.003864",
+    "provider": "claude-cli",
+    "model": "claude-sonnet-4-20250514",
+    "mcp_profile": "sandbox",
+    "version": "1.0",
+    "total_tests": 2,
+    "passed": 2,
+    "failed": 0,
+    "total_cost": 0.0,
+    "total_tokens": 662,
+    "total_duration": 31.322330951690674
+  },
+  "results": [
+    {
+      "test_name": "test_get_chart_by_numeric_id",
+      "passed": true,
+      "score": 1.0,
+      "duration": 16.363423824310303,
+      "reason": "All evaluators passed",
+      "tool_calls": [
+        {
+          "id": "toolu_016tkfuczJA4aSJ51f8si5it",
+          "name": "mcp__testmcpy__get_chart_info",
+          "arguments": {
+            "request": {
+              "identifier": 123
+            }
+          },
+          "result": {
+            "content": "{\"result\":{\"error\":\"ChartInfo with identifier '123' not found\",\"error_type\":\"not_found\",\"timestamp\":\"2025-12-18T17:19:46.097939Z\"}}",
+            "is_error": false
+          }
+        },
+        {
+          "id": "toolu_01Nerd118heFpVs2heRRoqbC",
+          "name": "mcp__testmcpy__list_charts",
+          "arguments": {
+            "request": {
+              "page": 1,
+              "page_size": 10,
+              "order_column": "id",
+              "order_direction": "desc"
+            }
+          },
+          "result": {
+            "content": "{\"charts\":[{\"id\":78,\"slice_name\":\"Bar Chart - year vs global_sales\",\"viz_type\":\"echarts_timeseries_bar\",\"datasource_name\":\"public.Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-12-08T21:43:30.887624\",\"created_on\":\"2025-12-08T21:43:06.212170\",\"uuid\":\"10c7078b-3a48-4886-9e60-076f42b14c64\"},{\"id\":77,\"slice_name\":\"Bar Chart - genre vs global_sales\",\"viz_type\":\"echarts_timeseries_bar\",\"datasource_name\":\"public.Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-12-08T19:53:44.790524\",\"created_on\":\"2025-12-08T19:53:07.211696\",\"uuid\":\"d76f8d48-7432-4f87-9fe7-3ad3dca8a4cd\"},{\"id\":76,\"slice_name\":\"Line Chart - date vs new_members\",\"viz_type\":\"echarts_timeseries_line\",\"datasource_name\":\"public.Slack Daily Member Count\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-27T01:03:24.871968\",\"created_on\":\"2025-11-27T01:03:24.871963\",\"uuid\":\"c5499341-a6ce-4dad-a9d7-aa08f8e9a8d5\"},{\"id\":75,\"slice_name\":\"Bar Chart - order_date vs sales\",\"viz_type\":\"echarts_timeseries_bar\",\"datasource_name\":\"public.Vehicle Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-12-17T19:53:47.582956\",\"created_on\":\"2025-11-27T00:09:23.604500\",\"uuid\":\"fc905541-51cc-4a2d-8cd1-294f43b44bd2\"},{\"id\":74,\"slice_name\":\"Line Chart - year vs global_sales\",\"viz_type\":\"echarts_timeseries_line\",\"datasource_name\":\"public.Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-04T15:07:47.264085\",\"created_on\":\"2025-10-30T23:32:28.958387\",\"uuid\":\"d9ee118e-5380-480e-8e38-b51ba6cb2ef7\"},{\"id\":73,\"slice_name\":\"Age distribution of respondents\",\"viz_type\":\"histogram_v2\",\"datasource_name\":\"FCC 2018 Survey\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:22.030567\",\"created_on\":\"2025-10-23T22:43:34.187594\",\"uuid\":\"6c611338-3711-4dd3-ace0-a157878217df\"},{\"id\":72,\"slice_name\":\"Are you an ethnic minority in your city?\",\"viz_type\":\"pie\",\"datasource_name\":\"FCC 2018 Survey\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:21.998870\",\"created_on\":\"2025-10-23T22:43:34.179999\",\"uuid\":\"36a14da9-7cbc-4899-9295-111c2feb5095\"},{\"id\":71,\"slice_name\":\"Box plot\",\"viz_type\":\"box_plot\",\"datasource_name\":\"World Bank Health Data\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:21.979263\",\"created_on\":\"2025-10-23T22:43:34.171740\",\"uuid\":\"e72e4989-cf37-438e-bfec-a67d57f3b683\"},{\"id\":70,\"slice_name\":\"Country Growth Rate\",\"viz_type\":\"echarts_timeseries_line\",\"datasource_name\":\"World Bank Health Data\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:21.958887\",\"created_on\":\"2025-10-23T22:43:34.163949\",\"uuid\":\"5cee9cff-f5d3-4e44-8889-0d13cd954d0b\"},{\"id\":69,\"slice_name\":\"Country of Citizenship\",\"viz_type\":\"world_map\",\"datasource_name\":\"FCC 2018 Survey\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:21.936493\",\"created_on\":\"2025-10-23T22:43:34.155827\",\"uuid\":\"db2ecafe-e954-499a-9015-bac7390bf61a\"}],\"count\":10,\"total_count\":78,\"page\":0,\"page_size\":10,\"total_pages\":8,\"has_previous\":false,\"has_next\":true,\"columns_requested\":[\"id\",\"slice_name\",\"viz_type\",\"datasource_name\",\"description\",\"changed_by_name\",\"created_by_name\",\"changed_on\",\"created_on\",\"uuid\"],\"columns_loaded\":[\"id\",\"slice_name\",\"viz_type\",\"datasource_name\",\"description\",\"changed_by_name\",\"created_by_name\",\"changed_on\",\"created_on\",\"uuid\"],\"filters_applied\":[],\"pagination\":{\"page\":0,\"page_size\":10,\"total_count\":78,\"total_pages\":8,\"has_next\":true,\"has_previous\":false},\"timestamp\":\"2025-12-18T17:19:49.807192Z\"}",
+            "is_error": false
+          }
+        }
+      ],
+      "tool_results": [
+        {
+          "tool_call_id": "toolu_016tkfuczJA4aSJ51f8si5it",
+          "content": "{\"result\":{\"error\":\"ChartInfo with identifier '123' not found\",\"error_type\":\"not_found\",\"timestamp\":\"2025-12-18T17:19:46.097939Z\"}}",
+          "is_error": false,
+          "error_message": null
+        },
+        {
+          "tool_call_id": "toolu_01Nerd118heFpVs2heRRoqbC",
+          "content": "{\"charts\":[{\"id\":78,\"slice_name\":\"Bar Chart - year vs global_sales\",\"viz_type\":\"echarts_timeseries_bar\",\"datasource_name\":\"public.Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-12-08T21:43:30.887624\",\"created_on\":\"2025-12-08T21:43:06.212170\",\"uuid\":\"10c7078b-3a48-4886-9e60-076f42b14c64\"},{\"id\":77,\"slice_name\":\"Bar Chart - genre vs global_sales\",\"viz_type\":\"echarts_timeseries_bar\",\"datasource_name\":\"public.Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-12-08T19:53:44.790524\",\"created_on\":\"2025-12-08T19:53:07.211696\",\"uuid\":\"d76f8d48-7432-4f87-9fe7-3ad3dca8a4cd\"},{\"id\":76,\"slice_name\":\"Line Chart - date vs new_members\",\"viz_type\":\"echarts_timeseries_line\",\"datasource_name\":\"public.Slack Daily Member Count\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-27T01:03:24.871968\",\"created_on\":\"2025-11-27T01:03:24.871963\",\"uuid\":\"c5499341-a6ce-4dad-a9d7-aa08f8e9a8d5\"},{\"id\":75,\"slice_name\":\"Bar Chart - order_date vs sales\",\"viz_type\":\"echarts_timeseries_bar\",\"datasource_name\":\"public.Vehicle Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-12-17T19:53:47.582956\",\"created_on\":\"2025-11-27T00:09:23.604500\",\"uuid\":\"fc905541-51cc-4a2d-8cd1-294f43b44bd2\"},{\"id\":74,\"slice_name\":\"Line Chart - year vs global_sales\",\"viz_type\":\"echarts_timeseries_line\",\"datasource_name\":\"public.Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-04T15:07:47.264085\",\"created_on\":\"2025-10-30T23:32:28.958387\",\"uuid\":\"d9ee118e-5380-480e-8e38-b51ba6cb2ef7\"},{\"id\":73,\"slice_name\":\"Age distribution of respondents\",\"viz_type\":\"histogram_v2\",\"datasource_name\":\"FCC 2018 Survey\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:22.030567\",\"created_on\":\"2025-10-23T22:43:34.187594\",\"uuid\":\"6c611338-3711-4dd3-ace0-a157878217df\"},{\"id\":72,\"slice_name\":\"Are you an ethnic minority in your city?\",\"viz_type\":\"pie\",\"datasource_name\":\"FCC 2018 Survey\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:21.998870\",\"created_on\":\"2025-10-23T22:43:34.179999\",\"uuid\":\"36a14da9-7cbc-4899-9295-111c2feb5095\"},{\"id\":71,\"slice_name\":\"Box plot\",\"viz_type\":\"box_plot\",\"datasource_name\":\"World Bank Health Data\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:21.979263\",\"created_on\":\"2025-10-23T22:43:34.171740\",\"uuid\":\"e72e4989-cf37-438e-bfec-a67d57f3b683\"},{\"id\":70,\"slice_name\":\"Country Growth Rate\",\"viz_type\":\"echarts_timeseries_line\",\"datasource_name\":\"World Bank Health Data\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:21.958887\",\"created_on\":\"2025-10-23T22:43:34.163949\",\"uuid\":\"5cee9cff-f5d3-4e44-8889-0d13cd954d0b\"},{\"id\":69,\"slice_name\":\"Country of Citizenship\",\"viz_type\":\"world_map\",\"datasource_name\":\"FCC 2018 Survey\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:21.936493\",\"created_on\":\"2025-10-23T22:43:34.155827\",\"uuid\":\"db2ecafe-e954-499a-9015-bac7390bf61a\"}],\"count\":10,\"total_count\":78,\"page\":0,\"page_size\":10,\"total_pages\":8,\"has_previous\":false,\"has_next\":true,\"columns_requested\":[\"id\",\"slice_name\",\"viz_type\",\"datasource_name\",\"description\",\"changed_by_name\",\"created_by_name\",\"changed_on\",\"created_on\",\"uuid\"],\"columns_loaded\":[\"id\",\"slice_name\",\"viz_type\",\"datasource_name\",\"description\",\"changed_by_name\",\"created_by_name\",\"changed_on\",\"created_on\",\"uuid\"],\"filters_applied\":[],\"pagination\":{\"page\":0,\"page_size\":10,\"total_count\":78,\"total_pages\":8,\"has_next\":true,\"has_previous\":false},\"timestamp\":\"2025-12-18T17:19:49.807192Z\"}",
+          "is_error": false,
+          "error_message": null
+        }
+      ],
+      "response": "I'll get the chart details and preview URL for chart ID 123 using the available Superset MCP tools.It looks like chart ID 123 doesn't exist in your Superset instance. Let me check what charts are available by listing the existing charts:Chart ID 123 doesn't exist in your Superset instance. The available charts have IDs ranging from 69-78. Would you like to see details for one of the existing charts instead? \n\nHere are some available options:\n- Chart ID 78: \"Bar Chart - year vs global_sales\" (Video Game Sales data)\n- Chart ID 77: \"Bar Chart - genre vs global_sales\" (Video Game Sales data)\n- Chart ID 76: \"Line Chart - date vs new_members\" (Slack Daily Member Count)\n- Chart ID 75: \"Bar Chart - order_date vs sales\" (Vehicle Sales data)\n\nWould you like me to get the details and preview URL for any of these existing charts?",
+      "evaluations": [
+        {
+          "evaluator": "execution_successful",
+          "passed": true,
+          "score": 1.0,
+          "reason": "All tool executions completed successfully",
+          "details": {
+            "successful_executions": 2
+          }
+        },
+        {
+          "evaluator": "was_tool_called:get_chart_info",
+          "passed": true,
+          "score": 1.0,
+          "reason": "Tool 'get_chart_info' was called (actual: 'mcp__testmcpy__get_chart_info')",
+          "details": {
+            "tool_call": {
+              "id": "toolu_016tkfuczJA4aSJ51f8si5it",
+              "name": "mcp__testmcpy__get_chart_info",
+              "arguments": {
+                "request": {
+                  "identifier": 123
+                }
+              },
+              "result": {
+                "content": "{\"result\":{\"error\":\"ChartInfo with identifier '123' not found\",\"error_type\":\"not_found\",\"timestamp\":\"2025-12-18T17:19:46.097939Z\"}}",
+                "is_error": false
+              }
+            }
+          }
+        }
+      ],
+      "cost": 0.0,
+      "token_usage": {
+        "prompt": 13,
+        "completion": 379,
+        "total": 392,
+        "cache_creation": 32330,
+        "cache_read": 101999
+      },
+      "error": null,
+      "step_results": null,
+      "auth_success": null,
+      "auth_token": null,
+      "auth_error": null,
+      "auth_error_message": null,
+      "auth_flow_steps": [],
+      "logs": [
+        "[ClaudeCode] Running with timeout=120.0s, output_format=stream-json",
+        "[ClaudeCode] Fetched JWT token (length: 1453)",
+        "[ClaudeCode] MCP config file: /var/folders/q0/ssr0_jbj79q4h29n0rl0zr8w0000gn/T/tmpg17rw0yz.json",
+        "[ClaudeCode] MCP URL: https://66d22a6f.us1a.app-sdx.preset.io/mcp",
+        "[ClaudeCode] Full command: /Users/amin/.nvm/versions/node/v20.19.5/bin/claude -p --output-format stream-json --verbose --dangerously-skip-permissions --model claude-sonnet-4-20250514 --mcp-config /var/folders/q0/ssr0_jbj79q4h29n0rl0zr8w0000gn/T/tmpg17rw0yz.json -- <prompt>",
+        "[ClaudeCode] Prompt (85 chars):\nCan you get the details for chart ID 123? I need to see its metadata and preview URL.",
+        "[ClaudeCode] Tools provided: 21",
+        "[ClaudeCode] Tool names (first 10): ['generate_chart', 'get_chart_available_filters', 'get_chart_data', 'get_chart_info', 'get_chart_preview', 'list_charts', 'update_chart', 'update_chart_preview', 'add_chart_to_existing_dashboard', 'generate_dashboard']",
+        "[ClaudeCode] Waiting for response...",
+        "[ClaudeCode] Got response after 16.4s, returncode=0",
+        "[ClaudeCode] Response size: 17186 chars",
+        "[ClaudeCode] Raw response:\n{\"type\":\"system\",\"subtype\":\"init\",\"cwd\":\"/Users/amin/github/preset-io/testmcpy\",\"session_id\":\"3fa75345-1ab1-408d-8681-7d3ae1595a44\",\"tools\":[\"Task\",\"TaskOutput\",\"Bash\",\"Glob\",\"Grep\",\"ExitPlanMode\",\"Read\",\"Edit\",\"Write\",\"NotebookEdit\",\"WebFetch\",\"TodoWrite\",\"WebSearch\",\"KillShell\",\"AskUserQuestion\",\"Skill\",\"SlashCommand\",\"EnterPlanMode\",\"mcp__agentmcp__find_similar_agents\",\"mcp__agentmcp__find_similar_skills\",\"mcp__agentmcp__get_agent\",\"mcp__agentmcp__get_agent_reputation\",\"mcp__agentmcp__get_command\",\"mcp__agentmcp__get_skill\",\"mcp__agentmcp__get_top_agents\",\"mcp__agentmcp__governance_action\",\"mcp__agentmcp__governance_stats\",\"mcp__agentmcp__list_agents\",\"mcp__agentmcp__list_commands\",\"mcp__agentmcp__list_skills\",\"mcp__agentmcp__register_agent\",\"mcp__agentmcp__register_command\",\"mcp__agentmcp__register_skill\",\"mcp__agentmcp__report_agent\",\"mcp__agentmcp__request_agent_by_skills\",\"mcp__agentmcp__review_reports\",\"mcp__agentmcp__search_agents\",\"mcp__agentmcp__search_commands\",\"mcp__agentm...",
+        "[ClaudeCode] Parsing 9 stream-json lines",
+        "[ClaudeCode] \ud83d\udcdd Text (99 chars)",
+        "[ClaudeCode] \ud83d\udd27 Tool Call: mcp__testmcpy__get_chart_info (id=toolu_016tkfuczJA4aS...)",
+        "[ClaudeCode]    Args: {\"request\": {\"identifier\": 123}}",
+        "[ClaudeCode] \u2705 Success Tool Result (id=toolu_016tkfuczJA4aS...)",
+        "[ClaudeCode]    Content: {\"result\":{\"error\":\"ChartInfo with identifier '123' not found\",\"error_type\":\"not_found\",\"timestamp\":\"2025-12-18T17:19:46.097939Z\"}}",
+        "[ClaudeCode] \ud83d\udcdd Text (138 chars)",
+        "[ClaudeCode] \ud83d\udd27 Tool Call: mcp__testmcpy__list_charts (id=toolu_01Nerd118heFpV...)",
+        "[ClaudeCode]    Args: {\"request\": {\"page\": 1, \"page_size\": 10, \"order_column\": \"id\", \"order_direction\": \"desc\"}}",
+        "[ClaudeCode] \u2705 Success Tool Result (id=toolu_01Nerd118heFpV...)",
+        "[ClaudeCode]    Content: {\"charts\":[{\"id\":78,\"slice_name\":\"Bar Chart - year vs global_sales\",\"viz_type\":\"echarts_timeseries_bar\",\"datasource_name\":\"public.Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_o...",
+        "[ClaudeCode] \ud83d\udcdd Text (592 chars)",
+        "[ClaudeCode] \ud83d\udcca Result: 392 tokens, $0.0000",
+        "[ClaudeCode] \u2713 Parsed: 829 chars response, 2 tool calls, 2 tool results, 0 chars thinking"
+      ]
+    },
+    {
+      "test_name": "test_get_chart_by_uuid",
+      "passed": true,
+      "score": 1.0,
+      "duration": 14.958907127380371,
+      "reason": "All evaluators passed",
+      "tool_calls": [
+        {
+          "id": "toolu_01MJeF23M2pfKs217d4KHehv",
+          "name": "mcp__testmcpy__get_chart_info",
+          "arguments": {
+            "request": {
+              "identifier": "a1b2c3d4-5678-90ab-cdef-1234567890ab"
+            }
+          },
+          "result": {
+            "content": "{\"result\":{\"error\":\"ChartInfo with identifier 'a1b2c3d4-5678-90ab-cdef-1234567890ab' not found\",\"error_type\":\"not_found\",\"timestamp\":\"2025-12-18T17:20:04.561529Z\"}}",
+            "is_error": false
+          }
+        }
+      ],
+      "tool_results": [
+        {
+          "tool_call_id": "toolu_01MJeF23M2pfKs217d4KHehv",
+          "content": "{\"result\":{\"error\":\"ChartInfo with identifier 'a1b2c3d4-5678-90ab-cdef-1234567890ab' not found\",\"error_type\":\"not_found\",\"timestamp\":\"2025-12-18T17:20:04.561529Z\"}}",
+          "is_error": false,
+          "error_message": null
+        }
+      ],
+      "response": "I'll retrieve the chart information including the screenshot URL for that UUID.The chart with UUID `a1b2c3d4-5678-90ab-cdef-1234567890ab` was not found in your Superset instance. This could mean:\n\n1. The chart doesn't exist\n2. The UUID is incorrect\n3. You don't have permission to access this chart\n4. The chart may have been deleted\n\nWould you like me to:\n- List available charts to help you find the correct one?\n- Search for charts by name if you remember part of the chart title?\n- Help you create a new chart if needed?\n\nYou can also double-check the UUID - it should be a valid chart identifier in your Superset instance.",
+      "evaluations": [
+        {
+          "evaluator": "execution_successful",
+          "passed": true,
+          "score": 1.0,
+          "reason": "All tool executions completed successfully",
+          "details": {
+            "successful_executions": 1
+          }
+        },
+        {
+          "evaluator": "was_tool_called:get_chart_info",
+          "passed": true,
+          "score": 1.0,
+          "reason": "Tool 'get_chart_info' was called (actual: 'mcp__testmcpy__get_chart_info')",
+          "details": {
+            "tool_call": {
+              "id": "toolu_01MJeF23M2pfKs217d4KHehv",
+              "name": "mcp__testmcpy__get_chart_info",
+              "arguments": {
+                "request": {
+                  "identifier": "a1b2c3d4-5678-90ab-cdef-1234567890ab"
+                }
+              },
+              "result": {
+                "content": "{\"result\":{\"error\":\"ChartInfo with identifier 'a1b2c3d4-5678-90ab-cdef-1234567890ab' not found\",\"error_type\":\"not_found\",\"timestamp\":\"2025-12-18T17:20:04.561529Z\"}}",
+                "is_error": false
+              }
+            }
+          }
+        }
+      ],
+      "cost": 0.0,
+      "token_usage": {
+        "prompt": 8,
+        "completion": 262,
+        "total": 270,
+        "cache_creation": 44376,
+        "cache_read": 44194
+      },
+      "error": null,
+      "step_results": null,
+      "auth_success": null,
+      "auth_token": null,
+      "auth_error": null,
+      "auth_error_message": null,
+      "auth_flow_steps": [],
+      "logs": [
+        "[ClaudeCode] Running with timeout=120.0s, output_format=stream-json",
+        "[ClaudeCode] Fetched JWT token (length: 1453)",
+        "[ClaudeCode] MCP config file: /var/folders/q0/ssr0_jbj79q4h29n0rl0zr8w0000gn/T/tmptqle588n.json",
+        "[ClaudeCode] MCP URL: https://66d22a6f.us1a.app-sdx.preset.io/mcp",
+        "[ClaudeCode] Full command: /Users/amin/.nvm/versions/node/v20.19.5/bin/claude -p --output-format stream-json --verbose --dangerously-skip-permissions --model claude-sonnet-4-20250514 --mcp-config /var/folders/q0/ssr0_jbj79q4h29n0rl0zr8w0000gn/T/tmptqle588n.json -- <prompt>",
+        "[ClaudeCode] Prompt (124 chars):\nI have a chart with UUID a1b2c3d4-5678-90ab-cdef-1234567890ab. Please retrieve its information including the screenshot URL.",
+        "[ClaudeCode] Tools provided: 21",
+        "[ClaudeCode] Tool names (first 10): ['generate_chart', 'get_chart_available_filters', 'get_chart_data', 'get_chart_info', 'get_chart_preview', 'list_charts', 'update_chart', 'update_chart_preview', 'add_chart_to_existing_dashboard', 'generate_dashboard']",
+        "[ClaudeCode] Waiting for response...",
+        "[ClaudeCode] Got response after 15.0s, returncode=0",
+        "[ClaudeCode] Response size: 7510 chars",
+        "[ClaudeCode] Raw response:\n{\"type\":\"system\",\"subtype\":\"init\",\"cwd\":\"/Users/amin/github/preset-io/testmcpy\",\"session_id\":\"5afb15e7-a5df-463e-aae9-3d743978dcc8\",\"tools\":[\"Task\",\"TaskOutput\",\"Bash\",\"Glob\",\"Grep\",\"ExitPlanMode\",\"Read\",\"Edit\",\"Write\",\"NotebookEdit\",\"WebFetch\",\"TodoWrite\",\"WebSearch\",\"KillShell\",\"AskUserQuestion\",\"Skill\",\"SlashCommand\",\"EnterPlanMode\",\"mcp__agentmcp__find_similar_agents\",\"mcp__agentmcp__find_similar_skills\",\"mcp__agentmcp__get_agent\",\"mcp__agentmcp__get_agent_reputation\",\"mcp__agentmcp__get_command\",\"mcp__agentmcp__get_skill\",\"mcp__agentmcp__get_top_agents\",\"mcp__agentmcp__governance_action\",\"mcp__agentmcp__governance_stats\",\"mcp__agentmcp__list_agents\",\"mcp__agentmcp__list_commands\",\"mcp__agentmcp__list_skills\",\"mcp__agentmcp__register_agent\",\"mcp__agentmcp__register_command\",\"mcp__agentmcp__register_skill\",\"mcp__agentmcp__report_agent\",\"mcp__agentmcp__request_agent_by_skills\",\"mcp__agentmcp__review_reports\",\"mcp__agentmcp__search_agents\",\"mcp__agentmcp__search_commands\",\"mcp__agentm...",
+        "[ClaudeCode] Parsing 6 stream-json lines",
+        "[ClaudeCode] \ud83d\udcdd Text (79 chars)",
+        "[ClaudeCode] \ud83d\udd27 Tool Call: mcp__testmcpy__get_chart_info (id=toolu_01MJeF23M2pfKs...)",
+        "[ClaudeCode]    Args: {\"request\": {\"identifier\": \"a1b2c3d4-5678-90ab-cdef-1234567890ab\"}}",
+        "[ClaudeCode] \u2705 Success Tool Result (id=toolu_01MJeF23M2pfKs...)",
+        "[ClaudeCode]    Content: {\"result\":{\"error\":\"ChartInfo with identifier 'a1b2c3d4-5678-90ab-cdef-1234567890ab' not found\",\"error_type\":\"not_found\",\"timestamp\":\"2025-12-18T17:20:04.561529Z\"}}",
+        "[ClaudeCode] \ud83d\udcdd Text (548 chars)",
+        "[ClaudeCode] \ud83d\udcca Result: 270 tokens, $0.0000",
+        "[ClaudeCode] \u2713 Parsed: 627 chars response, 1 tool calls, 1 tool results, 0 chars thinking"
+      ]
+    }
+  ],
+  "summary": {
+    "total": 2,
+    "passed": 2,
+    "failed": 0,
+    "total_cost": 0.0
+  }
+}

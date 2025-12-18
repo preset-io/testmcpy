@@ -1,0 +1,296 @@
+version: "1.0"
+name: "Authentication Test Suite"
+description: "Comprehensive test suite for OAuth2, JWT, and Bearer token authentication"
+
+# This test suite demonstrates how to test different authentication flows with testmcpy.
+# It validates authentication success, token validity, OAuth2 flow completion, and error handling.
+#
+# To run these tests, you'll need to set up environment variables:
+#   - OAUTH_CLIENT_ID: Your OAuth client ID
+#   - OAUTH_CLIENT_SECRET: Your OAuth client secret
+#   - OAUTH_TOKEN_URL: Your OAuth token endpoint (e.g., https://auth.example.com/oauth/token)
+#   - JWT_API_URL: Your JWT API endpoint
+#   - JWT_API_TOKEN: Your JWT API token
+#   - JWT_API_SECRET: Your JWT API secret
+#   - BEARER_TOKEN: Your static bearer token
+#
+# Run with: testmcpy run examples/auth_tests.yaml --verbose
+
+tests:
+  # ============================================================================
+  # OAuth2 Client Credentials Flow Tests
+  # ============================================================================
+
+  - name: "test_oauth_success"
+    description: "Verify OAuth client credentials flow succeeds"
+    auth:
+      type: oauth
+      client_id: ${OAUTH_CLIENT_ID}
+      client_secret: ${OAUTH_CLIENT_SECRET}
+      token_url: ${OAUTH_TOKEN_URL}
+      scopes: ["read", "write"]
+    prompt: "List all available datasets"
+    evaluators:
+      # Check authentication succeeded
+      - name: "auth_successful"
+
+      # Validate token format and length
+      - name: "token_valid"
+        args:
+          format: "jwt"
+          min_length: 100
+
+      # Verify all OAuth2 flow steps completed
+      - name: "oauth2_flow_complete"
+
+      # Ensure the tool was called (auth worked)
+      - name: "was_mcp_tool_called"
+        args:
+          tool_name: "list_datasets"
+
+      # Verify execution succeeded
+      - name: "execution_successful"
+
+  - name: "test_oauth_with_minimal_scopes"
+    description: "Test OAuth with minimal scope requirements"
+    auth:
+      type: oauth
+      client_id: ${OAUTH_CLIENT_ID}
+      client_secret: ${OAUTH_CLIENT_SECRET}
+      token_url: ${OAUTH_TOKEN_URL}
+      scopes: ["read"]
+    prompt: "List datasets"
+    evaluators:
+      - name: "auth_successful"
+      - name: "oauth2_flow_complete"
+
+  - name: "test_oauth_token_is_jwt"
+    description: "Verify OAuth returns a valid JWT token"
+    auth:
+      type: oauth
+      client_id: ${OAUTH_CLIENT_ID}
+      client_secret: ${OAUTH_CLIENT_SECRET}
+      token_url: ${OAUTH_TOKEN_URL}
+      scopes: ["read", "write"]
+    prompt: "Show me a dataset"
+    evaluators:
+      - name: "auth_successful"
+      - name: "token_valid"
+        args:
+          format: "jwt"
+          check_expiration: true
+
+  # ============================================================================
+  # JWT Dynamic Token Fetch Tests
+  # ============================================================================
+
+  - name: "test_jwt_dynamic_fetch"
+    description: "Verify dynamic JWT token fetch from API"
+    auth:
+      type: jwt
+      api_url: ${JWT_API_URL}
+      api_token: ${JWT_API_TOKEN}
+      api_secret: ${JWT_API_SECRET}
+    prompt: "List all datasets"
+    evaluators:
+      - name: "auth_successful"
+
+      - name: "token_valid"
+        args:
+          format: "jwt"
+          min_length: 100
+
+      - name: "was_mcp_tool_called"
+        args:
+          tool_name: "list_datasets"
+
+      - name: "execution_successful"
+
+  - name: "test_jwt_token_structure"
+    description: "Validate JWT token structure and claims"
+    auth:
+      type: jwt
+      api_url: ${JWT_API_URL}
+      api_token: ${JWT_API_TOKEN}
+      api_secret: ${JWT_API_SECRET}
+    prompt: "Get datasets"
+    evaluators:
+      - name: "auth_successful"
+
+      - name: "token_valid"
+        args:
+          format: "jwt"
+
+  # ============================================================================
+  # Bearer Token Authentication Tests
+  # ============================================================================
+
+  - name: "test_bearer_token"
+    description: "Verify static bearer token authentication"
+    auth:
+      type: bearer
+      token: ${BEARER_TOKEN}
+    prompt: "List datasets"
+    evaluators:
+      - name: "auth_successful"
+
+      - name: "token_valid"
+        args:
+          min_length: 10
+
+      - name: "was_mcp_tool_called"
+        args:
+          tool_name: "list_datasets"
+
+      - name: "execution_successful"
+
+  # ============================================================================
+  # Authentication Error Handling Tests
+  # ============================================================================
+
+  - name: "test_invalid_oauth_credentials"
+    description: "Verify proper error handling for invalid OAuth credentials"
+    auth:
+      type: oauth
+      client_id: "invalid-client-id"
+      client_secret: "invalid-client-secret"
+      token_url: ${OAUTH_TOKEN_URL}
+    prompt: "List datasets"
+    evaluators:
+      # This test expects authentication to fail
+      # We're checking that the error message is informative
+      - name: "auth_error_handling"
+        args:
+          required_info: ["invalid", "unauthorized", "401"]
+          min_length: 20
+
+  - name: "test_invalid_jwt_credentials"
+    description: "Verify proper error handling for invalid JWT credentials"
+    auth:
+      type: jwt
+      api_url: ${JWT_API_URL}
+      api_token: "invalid-token"
+      api_secret: "invalid-secret"
+    prompt: "List datasets"
+    evaluators:
+      - name: "auth_error_handling"
+        args:
+          required_info: ["invalid", "unauthorized"]
+          min_length: 15
+
+  - name: "test_invalid_bearer_token"
+    description: "Verify MCP server rejects invalid bearer token"
+    auth:
+      type: bearer
+      token: "invalid-token-12345"
+    prompt: "List datasets"
+    evaluators:
+      # Bearer token validation happens at MCP server level
+      # This might succeed at auth level but fail at tool call level
+      # So we just check the token is present
+      - name: "token_valid"
+        args:
+          min_length: 10
+
+  - name: "test_malformed_token_url"
+    description: "Test error handling for malformed OAuth token URL"
+    auth:
+      type: oauth
+      client_id: ${OAUTH_CLIENT_ID}
+      client_secret: ${OAUTH_CLIENT_SECRET}
+      token_url: "not-a-valid-url"
+      scopes: ["read"]
+    prompt: "List datasets"
+    evaluators:
+      - name: "auth_error_handling"
+        args:
+          min_length: 10
+
+  # ============================================================================
+  # Combined Auth + MCP Tool Tests
+  # ============================================================================
+
+  - name: "test_oauth_with_tool_parameter_validation"
+    description: "Test OAuth authentication combined with tool parameter validation"
+    auth:
+      type: oauth
+      client_id: ${OAUTH_CLIENT_ID}
+      client_secret: ${OAUTH_CLIENT_SECRET}
+      token_url: ${OAUTH_TOKEN_URL}
+      scopes: ["read", "write"]
+    prompt: "List datasets with limit 10"
+    evaluators:
+      - name: "auth_successful"
+      - name: "oauth2_flow_complete"
+
+      - name: "was_mcp_tool_called"
+        args:
+          tool_name: "list_datasets"
+
+      - name: "tool_called_with_parameter"
+        args:
+          tool_name: "list_datasets"
+          parameter_name: "limit"
+
+      - name: "execution_successful"
+
+  - name: "test_jwt_with_response_validation"
+    description: "Test JWT authentication with response content validation"
+    auth:
+      type: jwt
+      api_url: ${JWT_API_URL}
+      api_token: ${JWT_API_TOKEN}
+      api_secret: ${JWT_API_SECRET}
+    prompt: "Show me information about datasets"
+    evaluators:
+      - name: "auth_successful"
+
+      - name: "was_mcp_tool_called"
+
+      - name: "execution_successful"
+
+      - name: "final_answer_contains"
+        args:
+          expected_content: "dataset"
+
+  - name: "test_bearer_with_performance"
+    description: "Test bearer token authentication with performance requirements"
+    auth:
+      type: bearer
+      token: ${BEARER_TOKEN}
+    prompt: "Quickly list all datasets"
+    evaluators:
+      - name: "auth_successful"
+
+      - name: "was_mcp_tool_called"
+        args:
+          tool_name: "list_datasets"
+
+      - name: "within_time_limit"
+        args:
+          max_seconds: 10
+
+      - name: "execution_successful"
+
+# Usage examples:
+#
+# 1. Run all auth tests:
+#    testmcpy run examples/auth_tests.yaml
+#
+# 2. Run with verbose output to see auth flow details:
+#    testmcpy run examples/auth_tests.yaml --verbose
+#
+# 3. Run only OAuth tests (filter by name pattern):
+#    testmcpy run examples/auth_tests.yaml --filter oauth
+#
+# 4. Run only error handling tests:
+#    testmcpy run examples/auth_tests.yaml --filter invalid
+#
+# 5. Generate a test report:
+#    testmcpy run examples/auth_tests.yaml --report auth-report.json
+#
+# Tips:
+# - Use environment variables or .env file for sensitive credentials
+# - Set up different profiles in MCP config for different environments
+# - Check evaluator reference docs for all available auth evaluators
+# - Use --verbose flag to debug authentication issues

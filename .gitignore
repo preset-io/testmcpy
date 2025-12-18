@@ -83,6 +83,8 @@ celerybeat-schedule
 
 # Environments
 .env
+.env.local
+.env.*.local
 .venv
 env/
 venv/
@@ -116,5 +118,55 @@ Thumbs.db
 # Project specific
 work/
 reports/*.json
-#reports/*.yaml
+reports/*.yaml
 !reports/.gitkeep
+
+# Sensitive files
+*.key
+*.pem
+*.p12
+*.pfx
+credentials.json
+secrets.json
+*secret*
+*credential*
+.testmcpy
+!.testmcpy.example
+
+# MCP service profiles (may contain sensitive data)
+.mcp_services.yaml
+!.mcp_services.yaml.example
+
+# LLM provider profiles (may contain API keys/sensitive data)
+.llm_providers.yaml
+!.llm_providers.yaml.example
+
+# Test profiles (may contain sensitive test data)
+.test_profiles.yaml
+!.test_profiles.yaml.example
+
+# Large test output files
+test_output.txt
+*.log
+
+# Node modules (for web UI)
+node_modules/
+
+# Build artifacts
+dist/
+build/
+
+# Backup files with potential credentials
+*.backup
+.mcp_services.yaml.backup
+.llm_providers.yaml.backup
+.test_profiles.yaml.backup
+
+# Conversation logs and debugging artifacts
+*conversation*.txt
+*-20[0-9][0-9]-[0-9][0-9]-*.txt
+
+# Claude Code context files (internal development instructions)
+.claude/
+*/.claude/
+CLAUDE.md

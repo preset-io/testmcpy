@@ -1,0 +1,16 @@
+version: "1.0"
+tests:
+  - name: test_get_chart_by_numeric_id
+    prompt: "Can you get the details for chart ID 123? I need to see its metadata and preview URL."
+    evaluators:
+      - name: execution_successful
+      - name: was_mcp_tool_called
+        args:
+          tool_name: "get_chart_info"
+  - name: test_get_chart_by_uuid
+    prompt: "I have a chart with UUID a1b2c3d4-5678-90ab-cdef-1234567890ab. Please retrieve its information including the screenshot URL."
+    evaluators:
+      - name: execution_successful
+      - name: was_mcp_tool_called
+        args:
+          tool_name: "get_chart_info"

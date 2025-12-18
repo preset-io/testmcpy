@@ -10,10 +10,24 @@ function Configuration() {
     loadConfig()
   }, [])
 
+  const fetchWithRetry = async (url, retries = 3, delay = 1000) => {
+    for (let i = 0; i < retries; i++) {
+      try {
+        const response = await fetch(url)
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        return response
+      } catch (error) {
+        if (i === retries - 1) throw error
+        console.log(`Retry ${i + 1}/${retries} for ${url}...`)
+        await new Promise(resolve => setTimeout(resolve, delay))
+      }
+    }
+  }
+
   const loadConfig = async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/config')
+      const res = await fetchWithRetry('/api/config')
       const data = await res.json()
       setConfig(data)
     } catch (error) {
@@ -34,7 +48,7 @@ function Configuration() {
   }
 
   const getMcpUrl = () => {
-    return config.MCP_URL?.value || 'https://your-workspace.preset.io/mcp'
+    return config.MCP_URL?.value || 'https://your-instance.example.com/mcp'
   }
 
   const getAuthToken = () => {
@@ -53,10 +67,8 @@ function Configuration() {
 
   const configGroups = {
     'MCP Settings': ['MCP_URL', 'MCP_AUTH_TOKEN', 'MCP_AUTH_API_URL', 'MCP_AUTH_API_TOKEN', 'MCP_AUTH_API_SECRET'],
-    'LLM Provider': ['DEFAULT_PROVIDER', 'DEFAULT_MODEL'],
-    'Anthropic': ['ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL'],
-    'OpenAI': ['OPENAI_API_KEY', 'OPENAI_BASE_URL'],
-    'Ollama': ['OLLAMA_BASE_URL'],
+    'API Keys': ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY'],
+    'Provider URLs': ['OLLAMA_BASE_URL', 'OPENAI_BASE_URL'],
   }
 
   if (loading) {
@@ -102,7 +114,8 @@ function Configuration() {
                 Configuration Sources
               </p>
               <p className="text-text-secondary leading-relaxed">
-                Settings are loaded from: Command-line options, .env file in current directory, ~/.testmcpy, environment variables, and built-in defaults (in priority order).
+                MCP servers are configured via <code className="bg-background-subtle px-2 py-0.5 rounded font-mono text-xs">.mcp_services.yaml</code>.
+                LLM provider settings (API keys, models) are loaded from environment variables and command-line options.
               </p>
             </div>
           </div>
@@ -334,23 +347,15 @@ function Configuration() {
             <ul className="space-y-2.5 text-sm text-text-secondary">
               <li className="flex items-start gap-3">
                 <span className="text-primary mt-0.5">•</span>
-                <span>Run <code className="bg-background-subtle px-2 py-0.5 rounded font-mono text-xs text-primary-light">testmcpy setup</code> for interactive configuration</span>
+                <span><strong>MCP Servers:</strong> Configure via the Profiles selector in the sidebar or edit <code className="bg-background-subtle px-2 py-0.5 rounded font-mono text-xs text-primary-light">.mcp_services.yaml</code></span>
               </li>
               <li className="flex items-start gap-3">
                 <span className="text-primary mt-0.5">•</span>
-                <span>Edit <code className="bg-background-subtle px-2 py-0.5 rounded font-mono text-xs text-primary-light">~/.testmcpy</code> for user-wide settings</span>
+                <span><strong>LLM API Keys:</strong> Set environment variables (e.g., <code className="bg-background-subtle px-2 py-0.5 rounded font-mono text-xs text-primary-light">ANTHROPIC_API_KEY</code>)</span>
               </li>
               <li className="flex items-start gap-3">
                 <span className="text-primary mt-0.5">•</span>
-                <span>Edit <code className="bg-background-subtle px-2 py-0.5 rounded font-mono text-xs text-primary-light">.env</code> in your project directory</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="text-primary mt-0.5">•</span>
-                <span>Set environment variables</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="text-primary mt-0.5">•</span>
-                <span>Use command-line flags when running testmcpy</span>
+                <span><strong>LLM Models:</strong> Configure via the LLM Profile selector in the sidebar or edit <code className="bg-background-subtle px-2 py-0.5 rounded font-mono text-xs text-primary-light">.llm_providers.yaml</code></span>
               </li>
             </ul>
           </div>

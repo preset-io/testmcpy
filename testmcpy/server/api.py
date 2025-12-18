@@ -2,70 +2,275 @@
 FastAPI server for testmcpy web UI.
 """
 
-import asyncio
-import json
-import os
-from pathlib import Path
-from typing import Dict, List, Any, Optional
+import warnings
+
+# Suppress all deprecation warnings from websockets before any imports
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="websockets")
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="websockets.legacy")
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="uvicorn")
+
+from contextlib import asynccontextmanager
 from datetime import datetime
+from enum import Enum
+from pathlib import Path
+from typing import Any
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel
-import yaml
+from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 
-from testmcpy.src.mcp_client import MCPClient, MCPToolCall
-from testmcpy.src.llm_integration import create_llm_provider
-from testmcpy.src.test_runner import TestRunner, TestCase
 from testmcpy.config import get_config
-from testmcpy.evals.base_evaluators import create_evaluator
+from testmcpy.mcp_profiles import load_profile
+from testmcpy.server.routers import auth as auth_router
+from testmcpy.server.routers import generation_logs as generation_logs_router
+from testmcpy.server.routers import llm as llm_router
+from testmcpy.server.routers import mcp_profiles as mcp_profiles_router
+from testmcpy.server.routers import results as results_router
+from testmcpy.server.routers import smoke_reports as smoke_reports_router
+from testmcpy.server.routers import test_profiles as test_profiles_router
+from testmcpy.server.routers import tests as tests_router
+from testmcpy.server.routers import tools as tools_router
+from testmcpy.server.websocket import strip_mcp_prefix
+from testmcpy.src.llm_integration import create_llm_provider
+from testmcpy.src.mcp_client import MCPClient, MCPToolCall
+
+
+# Enums for validation
+class LLMProvider(str, Enum):
+    OLLAMA = "ollama"
+    OPENAI = "openai"
+    LOCAL = "local"
+    ANTHROPIC = "anthropic"
+    CLAUDE_SDK = "claude-sdk"
+    CLAUDE_CLI = "claude-cli"
+    CODEX_CLI = "codex-cli"
+
+
+class AuthType(str, Enum):
+    NONE = "none"
+    BEARER = "bearer"
+    JWT = "jwt"
+    OAUTH = "oauth"
 
 
 # Pydantic models for request/response
+class AuthConfig(BaseModel):
+    type: AuthType
+    token: str | None = None
+    api_url: str | None = None
+    api_token: str | None = None
+    api_secret: str | None = None
+    client_id: str | None = None
+    client_secret: str | None = None
+    token_url: str | None = None
+    scopes: list[str] | None = None
+    insecure: bool = False  # Skip SSL verification
+    oauth_auto_discover: bool = False  # Use RFC 8414 auto-discovery for OAuth
+
+
 class ChatRequest(BaseModel):
-    message: str
-    model: Optional[str] = None
-    provider: Optional[str] = None
+    message: str = Field(..., min_length=1)
+    model: str | None = None
+    provider: LLMProvider | None = None
+    llm_profile: str | None = None  # LLM profile ID to use
+    profiles: list[str] | None = None  # List of MCP profile IDs to use
+    history: list[dict[str, Any]] | None = None  # Chat history for context
 
 
 class ChatResponse(BaseModel):
     response: str
-    tool_calls: List[Dict[str, Any]] = []
-    token_usage: Optional[Dict[str, int]] = None
+    tool_calls: list[dict[str, Any]] = []
+    thinking: str | None = None  # Extended thinking content (Claude 4 models)
+    token_usage: dict[str, int] | None = None
     cost: float = 0.0
     duration: float = 0.0
+    model: str | None = None  # Model used for this response
+    provider: str | None = None  # Provider used (anthropic, openai, etc.)
 
 
-class TestFileCreate(BaseModel):
-    filename: str
-    content: str
+# Global state
+config = get_config()
+mcp_client: MCPClient | None = None  # Default MCP client (for backwards compat)
+mcp_clients: dict[str, MCPClient] = {}  # Cache of MCP clients by "{profile_id}:{mcp_name}"
+active_websockets: list[WebSocket] = []
 
 
-class TestFileUpdate(BaseModel):
-    content: str
+async def get_mcp_clients_for_profile(profile_id: str) -> list[tuple[str, MCPClient]]:
+    """
+    Get or create MCP clients for all MCP servers in a profile.
+
+    Returns:
+        List of tuples (mcp_name, MCPClient) for all MCPs in the profile
+    """
+    global mcp_clients
+
+    # Load profile
+    profile = load_profile(profile_id)
+    if not profile:
+        raise ValueError(f"Profile '{profile_id}' not found in .mcp_services.yaml")
+
+    clients = []
+
+    # Handle case where profile has no MCPs (backward compatibility check)
+    if not profile.mcps:
+        raise ValueError(f"Profile '{profile_id}' has no MCP servers configured")
+
+    # Initialize a client for each MCP server in the profile
+    for mcp_server in profile.mcps:
+        cache_key = f"{profile_id}:{mcp_server.name}"
+
+        # Return cached client if exists
+        if cache_key in mcp_clients:
+            clients.append((mcp_server.name, mcp_clients[cache_key]))
+            continue
+
+        # Create client with auth configuration
+        auth_dict = mcp_server.auth.to_dict() if mcp_server.auth else None
+        client = MCPClient(mcp_server.mcp_url, auth=auth_dict)
+        await client.initialize()
+
+        # Cache the client
+        mcp_clients[cache_key] = client
+        clients.append((mcp_server.name, client))
+        print(
+            f"MCP client initialized for profile '{profile_id}', MCP '{mcp_server.name}' at {mcp_server.mcp_url}"
+        )
+
+    return clients
 
 
-class TestRunRequest(BaseModel):
-    test_path: str
-    model: Optional[str] = None
-    provider: Optional[str] = None
+async def get_mcp_client_for_server(profile_id: str, mcp_name: str) -> MCPClient | None:
+    """
+    Get or create MCP client for a specific MCP server in a profile.
+
+    Args:
+        profile_id: The profile ID
+        mcp_name: The name of the specific MCP server within the profile
+
+    Returns:
+        MCPClient instance or None if not found
+    """
+    global mcp_clients
+
+    # Load profile
+    profile = load_profile(profile_id)
+    if not profile:
+        print(f"Profile '{profile_id}' not found")
+        return None
+
+    # Find the specific MCP server
+    mcp_server = None
+    for server in profile.mcps:
+        if server.name == mcp_name:
+            mcp_server = server
+            break
+
+    if not mcp_server:
+        print(f"MCP server '{mcp_name}' not found in profile '{profile_id}'")
+        return None
+
+    # Check cache
+    cache_key = f"{profile_id}:{mcp_server.name}"
+    if cache_key in mcp_clients:
+        return mcp_clients[cache_key]
+
+    # Create client with auth configuration
+    auth_dict = mcp_server.auth.to_dict() if mcp_server.auth else None
+    client = MCPClient(mcp_server.mcp_url, auth=auth_dict)
+    await client.initialize()
+
+    # Cache the client
+    mcp_clients[cache_key] = client
+    print(f"MCP client initialized for '{profile_id}:{mcp_server.name}' at {mcp_server.mcp_url}")
+
+    return client
 
 
-class EvalRunRequest(BaseModel):
-    prompt: str
-    response: str
-    tool_calls: List[Dict[str, Any]] = []
-    model: Optional[str] = None
-    provider: Optional[str] = None
+async def clear_cached_client(cache_key: str) -> bool:
+    """
+    Clear a cached MCP client by its cache key.
+
+    Args:
+        cache_key: Cache key in format "{profile_id}:{mcp_name}"
+
+    Returns:
+        True if a client was cleared, False if no client was cached
+    """
+    global mcp_clients
+
+    client = mcp_clients.pop(cache_key, None)
+    if client:
+        try:
+            await client.close()
+            print(f"Cleared cached client '{cache_key}' (stale JWT token)")
+        except Exception as e:
+            print(f"Warning: Failed to close cached client '{cache_key}': {e}")
+        return True
+    return False
+
+
+def is_auth_error(error_msg: str) -> bool:
+    """Check if an error message indicates an authentication failure."""
+    error_lower = error_msg.lower()
+    return (
+        "401" in error_lower
+        or "403" in error_lower
+        or "unauthorized" in error_lower
+        or "forbidden" in error_lower
+        or "not connect" in error_lower
+    )
+
+
+def is_connection_error(error_msg: str) -> bool:
+    """Check if an error message indicates a connection issue (auth, timeout, or connection failure)."""
+    error_lower = error_msg.lower()
+    return (
+        is_auth_error(error_msg)
+        or "timeout" in error_lower
+        or "timed out" in error_lower
+        or "connection" in error_lower
+        or "refused" in error_lower
+    )
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan event handler for startup and shutdown."""
+    global mcp_client, mcp_clients
+    # Startup
+    try:
+        mcp_url = config.get_mcp_url()
+        if mcp_url:
+            mcp_client = MCPClient(mcp_url)
+            await mcp_client.initialize()
+            print(f"MCP client initialized at {mcp_url}")
+        else:
+            print("No default MCP URL configured")
+    except Exception as e:
+        print(f"Warning: Failed to initialize MCP client: {e}")
+
+    yield
+
+    # Shutdown
+    if mcp_client:
+        await mcp_client.close()
+
+    # Close all profile clients (cache keys are "{profile_id}:{mcp_name}")
+    for cache_key, client in mcp_clients.items():
+        try:
+            await client.close()
+            print(f"Closed MCP client '{cache_key}'")
+        except Exception as e:
+            print(f"Error closing client '{cache_key}': {e}")
 
 
 # Initialize FastAPI app
 app = FastAPI(
     title="testmcpy Web UI",
     description="Web interface for testing MCP services with LLMs",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 # Enable CORS
@@ -77,33 +282,52 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Global state
-config = get_config()
-mcp_client: Optional[MCPClient] = None
-active_websockets: List[WebSocket] = []
+# Add middleware to set CSP headers for ngrok compatibility
+from starlette.middleware.base import BaseHTTPMiddleware
 
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize MCP client on startup."""
-    global mcp_client
-    try:
-        mcp_client = MCPClient(config.mcp_url)
-        await mcp_client.initialize()
-        print(f"MCP client initialized at {config.mcp_url}")
-    except Exception as e:
-        print(f"Warning: Failed to initialize MCP client: {e}")
+class CSPMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+
+        # Set permissive CSP for development (allows ngrok)
+        # In production, you'd want to tighten this up
+        response.headers["Content-Security-Policy"] = (
+            "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; "
+            "script-src * 'unsafe-inline' 'unsafe-eval' blob:; "
+            "worker-src * blob:; "
+            "style-src * 'unsafe-inline'; "
+            "img-src * data: blob:; "
+            "font-src * data:; "
+            "connect-src *; "
+        )
+
+        return response
 
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup on shutdown."""
-    global mcp_client
-    if mcp_client:
-        await mcp_client.close()
+app.add_middleware(CSPMiddleware)
+
+
+# Global Exception Handlers - Never let the server crash
+
+from testmcpy.error_handlers import global_exception_handler
+
+app.exception_handler(Exception)(global_exception_handler)
+
+# Register routers
+app.include_router(auth_router.router)
+app.include_router(generation_logs_router.router)
+app.include_router(llm_router.router)
+app.include_router(mcp_profiles_router.router)
+app.include_router(results_router.router)
+app.include_router(smoke_reports_router.router)
+app.include_router(test_profiles_router.router)
+app.include_router(tests_router.router)
+app.include_router(tools_router.router)
 
 
 # API Routes
+
 
 @app.get("/")
 async def root():
@@ -117,12 +341,44 @@ async def root():
 
 @app.get("/api/health")
 async def health_check():
-    """Health check endpoint."""
+    """Health check endpoint with detailed status."""
+    from testmcpy.mcp_profiles import get_profile_config
+
+    # Check if MCP config exists
+    has_config = False
+    profile_count = 0
+    mcp_server_count = 0
+
+    try:
+        profile_config = get_profile_config()
+        if profile_config.has_profiles():
+            has_config = True
+            profile_ids = profile_config.list_profiles()
+            profile_count = len(profile_ids)
+            for profile_id in profile_ids:
+                profile = profile_config.get_profile(profile_id)
+                if profile:
+                    mcp_server_count += len(profile.mcps)
+    except Exception:
+        pass
+
     return {
         "status": "healthy",
         "mcp_connected": mcp_client is not None,
-        "timestamp": datetime.now().isoformat()
+        "mcp_clients_cached": len(mcp_clients),
+        "has_config": has_config,
+        "profile_count": profile_count,
+        "mcp_server_count": mcp_server_count,
+        "timestamp": datetime.now().isoformat(),
     }
+
+
+@app.get("/api/version")
+async def get_version():
+    """Get the testmcpy version."""
+    from testmcpy import __version__
+
+    return {"version": __version__}
 
 
 @app.get("/api/config")
@@ -141,10 +397,7 @@ async def get_configuration():
         else:
             masked_value = value
 
-        masked_config[key] = {
-            "value": masked_value,
-            "source": source
-        }
+        masked_config[key] = {"value": masked_value, "source": source}
 
     return masked_config
 
@@ -154,121 +407,363 @@ async def list_models():
     """List available models for each provider."""
     return {
         "anthropic": [
-            {"id": "claude-sonnet-4-5", "name": "Claude Sonnet 4.5", "description": "Latest Sonnet 4.5 (most capable)"},
-            {"id": "claude-haiku-4-5", "name": "Claude Haiku 4.5", "description": "Latest Haiku 4.5 (fast & efficient)"},
-            {"id": "claude-opus-4-1", "name": "Claude Opus 4.1", "description": "Latest Opus 4.1 (most powerful)"},
-            {"id": "claude-haiku-4-5", "name": "Claude 3.5 Haiku", "description": "Legacy Haiku 3.5"}
+            {
+                "id": "claude-sonnet-4-5",
+                "name": "Claude Sonnet 4.5",
+                "description": "Latest Sonnet 4.5 (most capable)",
+            },
+            {
+                "id": "claude-haiku-4-5",
+                "name": "Claude Haiku 4.5",
+                "description": "Latest Haiku 4.5 (fast & efficient)",
+            },
+            {
+                "id": "claude-opus-4-1",
+                "name": "Claude Opus 4.1",
+                "description": "Latest Opus 4.1 (most powerful)",
+            },
+            {
+                "id": "claude-haiku-4-5",
+                "name": "Claude 3.5 Haiku",
+                "description": "Legacy Haiku 3.5",
+            },
         ],
         "ollama": [
-            {"id": "llama3.1:8b", "name": "Llama 3.1 8B", "description": "Meta's Llama 3.1 8B (good balance)"},
-            {"id": "llama3.1:70b", "name": "Llama 3.1 70B", "description": "Meta's Llama 3.1 70B (more capable)"},
-            {"id": "qwen2.5:14b", "name": "Qwen 2.5 14B", "description": "Alibaba's Qwen 2.5 14B (strong coding)"},
-            {"id": "mistral:7b", "name": "Mistral 7B", "description": "Mistral 7B (efficient)"}
+            {
+                "id": "llama3.1:8b",
+                "name": "Llama 3.1 8B",
+                "description": "Meta's Llama 3.1 8B (good balance)",
+            },
+            {
+                "id": "llama3.1:70b",
+                "name": "Llama 3.1 70B",
+                "description": "Meta's Llama 3.1 70B (more capable)",
+            },
+            {
+                "id": "qwen2.5:14b",
+                "name": "Qwen 2.5 14B",
+                "description": "Alibaba's Qwen 2.5 14B (strong coding)",
+            },
+            {"id": "mistral:7b", "name": "Mistral 7B", "description": "Mistral 7B (efficient)"},
         ],
         "openai": [
-            {"id": "gpt-4o", "name": "GPT-4 Optimized", "description": "GPT-4 Optimized (recommended)"},
+            {
+                "id": "gpt-4o",
+                "name": "GPT-4 Optimized",
+                "description": "GPT-4 Optimized (recommended)",
+            },
             {"id": "gpt-4-turbo", "name": "GPT-4 Turbo", "description": "GPT-4 Turbo"},
             {"id": "gpt-4", "name": "GPT-4", "description": "GPT-4 (original)"},
-            {"id": "gpt-3.5-turbo", "name": "GPT-3.5 Turbo", "description": "GPT-3.5 Turbo (faster, cheaper)"}
-        ]
+            {
+                "id": "gpt-3.5-turbo",
+                "name": "GPT-3.5 Turbo",
+                "description": "GPT-3.5 Turbo (faster, cheaper)",
+            },
+        ],
     }
 
 
 # MCP Tools, Resources, Prompts
 
-@app.get("/api/mcp/tools")
-async def list_mcp_tools():
-    """List all MCP tools with their schemas."""
-    if not mcp_client:
-        raise HTTPException(status_code=503, detail="MCP client not initialized")
 
+@app.get("/api/mcp/tools")
+async def list_mcp_tools(profiles: list[str] = Query(default=None)):
+    """List all MCP tools with their schemas. Supports optional ?profiles=xxx&profiles=yyy parameters."""
+    accessed_servers = []  # Track servers accessed for cache invalidation on error
     try:
-        tools = await mcp_client.list_tools()
-        return [
-            {
-                "name": tool.name,
-                "description": tool.description,
-                "input_schema": tool.input_schema
-            }
-            for tool in tools
-        ]
+        all_tools = []
+
+        if profiles:
+            # Parse server IDs in format "profileId:mcpName"
+            for server_id in profiles:
+                if ":" in server_id:
+                    # New format: specific server selection
+                    profile_id, mcp_name = server_id.split(":", 1)
+                    accessed_servers.append(f"{profile_id}:{mcp_name}")
+                    client = await get_mcp_client_for_server(profile_id, mcp_name)
+                    if client:
+                        tools = await client.list_tools()
+                        for tool in tools:
+                            all_tools.append(
+                                {
+                                    "name": tool.name,
+                                    "description": tool.description,
+                                    "input_schema": tool.input_schema,
+                                    "output_schema": tool.output_schema,
+                                    "mcp_source": mcp_name,
+                                }
+                            )
+                else:
+                    # Legacy format: entire profile (load all servers from profile)
+                    clients = await get_mcp_clients_for_profile(server_id)
+                    for mcp_name, client in clients:
+                        accessed_servers.append(f"{server_id}:{mcp_name}")
+                        tools = await client.list_tools()
+                        for tool in tools:
+                            all_tools.append(
+                                {
+                                    "name": tool.name,
+                                    "description": tool.description,
+                                    "input_schema": tool.input_schema,
+                                    "output_schema": tool.output_schema,
+                                    "mcp_source": mcp_name,
+                                }
+                            )
+
+        return all_tools
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        error_msg = str(e)
+        if is_connection_error(error_msg):
+            # Clear stale cached clients so retry can get fresh connection
+            for cache_key in accessed_servers:
+                await clear_cached_client(cache_key)
+            raise HTTPException(
+                status_code=503,
+                detail=f"Service unavailable: Unable to connect to MCP server. {error_msg}",
+            )
+        raise HTTPException(status_code=500, detail=error_msg)
 
 
 @app.get("/api/mcp/resources")
-async def list_mcp_resources():
-    """List all MCP resources."""
-    if not mcp_client:
-        raise HTTPException(status_code=503, detail="MCP client not initialized")
+async def list_mcp_resources(profiles: list[str] = Query(default=None)):
+    """List all MCP resources. Supports optional ?profiles=xxx&profiles=yyy parameters."""
+    all_resources = []
 
-    try:
-        resources = await mcp_client.list_resources()
-        return resources
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    if profiles:
+        # Parse server IDs in format "profileId:mcpName"
+        for server_id in profiles:
+            if ":" in server_id:
+                # New format: specific server selection
+                profile_id, mcp_name = server_id.split(":", 1)
+                try:
+                    client = await get_mcp_client_for_server(profile_id, mcp_name)
+                    if client:
+                        resources = await client.list_resources()
+                        for resource in resources:
+                            if isinstance(resource, dict):
+                                resource["mcp_source"] = mcp_name
+                            all_resources.append(resource)
+                except Exception as e:
+                    # Server doesn't support resources or connection failed - skip silently
+                    print(f"Warning: Could not list resources from {mcp_name}: {e}")
+            else:
+                # Legacy format: entire profile
+                try:
+                    clients = await get_mcp_clients_for_profile(server_id)
+                    for mcp_name, client in clients:
+                        try:
+                            resources = await client.list_resources()
+                            for resource in resources:
+                                if isinstance(resource, dict):
+                                    resource["mcp_source"] = mcp_name
+                                all_resources.append(resource)
+                        except Exception as e:
+                            print(f"Warning: Could not list resources from {mcp_name}: {e}")
+                except Exception as e:
+                    print(f"Warning: Could not get clients for profile {server_id}: {e}")
+
+    return all_resources
 
 
 @app.get("/api/mcp/prompts")
-async def list_mcp_prompts():
-    """List all MCP prompts."""
-    if not mcp_client:
-        raise HTTPException(status_code=503, detail="MCP client not initialized")
+async def list_mcp_prompts(profiles: list[str] = Query(default=None)):
+    """List all MCP prompts. Supports optional ?profiles=xxx&profiles=yyy parameters."""
+    all_prompts = []
 
-    try:
-        prompts = await mcp_client.list_prompts()
-        return prompts
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    if profiles:
+        # Parse server IDs in format "profileId:mcpName"
+        for server_id in profiles:
+            if ":" in server_id:
+                # New format: specific server selection
+                profile_id, mcp_name = server_id.split(":", 1)
+                try:
+                    client = await get_mcp_client_for_server(profile_id, mcp_name)
+                    if client:
+                        prompts = await client.list_prompts()
+                        for prompt in prompts:
+                            if isinstance(prompt, dict):
+                                prompt["mcp_source"] = mcp_name
+                            all_prompts.append(prompt)
+                except Exception as e:
+                    # Server doesn't support prompts or connection failed - skip silently
+                    print(f"Warning: Could not list prompts from {mcp_name}: {e}")
+            else:
+                # Legacy format: entire profile
+                try:
+                    clients = await get_mcp_clients_for_profile(server_id)
+                    for mcp_name, client in clients:
+                        try:
+                            prompts = await client.list_prompts()
+                            for prompt in prompts:
+                                if isinstance(prompt, dict):
+                                    prompt["mcp_source"] = mcp_name
+                                all_prompts.append(prompt)
+                        except Exception as e:
+                            print(f"Warning: Could not list prompts from {mcp_name}: {e}")
+                except Exception as e:
+                    print(f"Warning: Could not get clients for profile {server_id}: {e}")
+
+    return all_prompts
 
 
 # Chat endpoint
 
+
 @app.post("/api/chat")
 async def chat(request: ChatRequest) -> ChatResponse:
     """Send a message to the LLM with MCP tools."""
-    if not mcp_client:
-        raise HTTPException(status_code=503, detail="MCP client not initialized")
+    # Get model, provider, and api_key from LLM profile if specified
+    api_key = None
+    if request.llm_profile:
+        from testmcpy.llm_profiles import load_llm_profile
 
-    model = request.model or config.default_model
-    provider = request.provider or config.default_provider
+        llm_profile = load_llm_profile(request.llm_profile)
+        if llm_profile:
+            # If specific model/provider requested, find matching config
+            if request.model and request.provider:
+                # Find provider config matching the request
+                for provider_config in llm_profile.providers:
+                    if provider_config.model == request.model and provider_config.provider == str(
+                        request.provider.value
+                    ):
+                        api_key = provider_config.api_key
+                        break
+                model = request.model
+                provider = request.provider
+            else:
+                # Use default provider
+                default_provider_config = llm_profile.get_default_provider()
+                if default_provider_config:
+                    model = request.model or default_provider_config.model
+                    provider = request.provider or default_provider_config.provider
+                    api_key = default_provider_config.api_key
+                else:
+                    model = request.model or config.default_model
+                    provider = request.provider or config.default_provider
+        else:
+            model = request.model or config.default_model
+            provider = request.provider or config.default_provider
+    else:
+        model = request.model or config.default_model
+        provider = request.provider or config.default_provider
 
+    if not model or not provider:
+        raise HTTPException(
+            status_code=400,
+            detail="Model and provider must be specified or configured in LLM profile",
+        )
+
+    print(f"[Chat] Using provider={provider}, model={model}")
+
+    accessed_servers = []  # Track servers accessed for cache invalidation on error
     try:
-        # Get available tools
-        tools = await mcp_client.list_tools()
-        formatted_tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": tool.name,
-                    "description": tool.description,
-                    "parameters": tool.input_schema
-                }
-            }
-            for tool in tools
-        ]
+        # Determine which MCP clients to use
+        clients_to_use = []  # List of (profile_id, mcp_name, client) tuples
+
+        # Use specified profiles or fall back to default profile
+        profiles_to_use = request.profiles
+        if not profiles_to_use:
+            # Load default profile from config
+            from testmcpy.server.helpers.mcp_config import load_mcp_yaml
+
+            mcp_config = load_mcp_yaml()
+            default_profile = mcp_config.get("default")
+            if default_profile:
+                profiles_to_use = [default_profile]
+                print(f"[Chat] Using default profile: {default_profile}")
+
+        if profiles_to_use:
+            # Parse server IDs in format "profileId:mcpName"
+            for server_id in profiles_to_use:
+                if ":" in server_id:
+                    # New format: specific server selection
+                    profile_id, mcp_name = server_id.split(":", 1)
+                    accessed_servers.append(f"{profile_id}:{mcp_name}")
+                    client = await get_mcp_client_for_server(profile_id, mcp_name)
+                    if client:
+                        clients_to_use.append((profile_id, mcp_name, client))
+                else:
+                    # Legacy format: entire profile (load all servers from profile)
+                    profile_clients = await get_mcp_clients_for_profile(server_id)
+                    for mcp_name, client in profile_clients:
+                        accessed_servers.append(f"{server_id}:{mcp_name}")
+                        clients_to_use.append((server_id, mcp_name, client))
+
+        # Gather tools from all clients
+        all_tools = []
+        tool_to_client = {}  # Map tool name to (client, profile_id, mcp_name) for execution
+
+        for profile_id, mcp_name, client in clients_to_use:
+            tools = await client.list_tools()
+            for tool in tools:
+                # Track which client provides this tool (last wins if duplicate names)
+                tool_to_client[tool.name] = (client, profile_id, mcp_name)
+
+                # Add tool to list
+                all_tools.append(
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": tool.name,
+                            "description": tool.description,
+                            "parameters": tool.input_schema,
+                        },
+                    }
+                )
 
         # Initialize LLM provider
-        llm_provider = create_llm_provider(provider, model)
+        print(f"[Chat] Creating LLM provider: {provider}")
+        provider_kwargs = {}
+        if api_key:
+            provider_kwargs["api_key"] = api_key
+        llm_provider = create_llm_provider(provider, model, **provider_kwargs)
+        print("[Chat] Initializing LLM provider...")
         await llm_provider.initialize()
-
-        # Generate response
-        result = await llm_provider.generate_with_tools(
-            prompt=request.message,
-            tools=formatted_tools,
-            timeout=30.0
+        print(
+            f"[Chat] LLM provider initialized. Generating response with {len(all_tools)} tools..."
         )
+
+        # Generate response with optional history
+        # Use longer timeout (120s) for Claude CLI with MCP tools
+        result = await llm_provider.generate_with_tools(
+            prompt=request.message, tools=all_tools, timeout=120.0, messages=request.history
+        )
+        print(f"[Chat] Response generated. Tool calls: {len(result.tool_calls)}")
 
         # Execute tool calls if any
         tool_calls_with_results = []
         if result.tool_calls:
             for tool_call in result.tool_calls:
+                # Strip MCP prefix from tool name if present (e.g., mcp__testmcpy__list_charts -> list_charts)
+                actual_tool_name = strip_mcp_prefix(tool_call["name"])
                 mcp_tool_call = MCPToolCall(
-                    name=tool_call["name"],
+                    name=actual_tool_name,
                     arguments=tool_call.get("arguments", {}),
-                    id=tool_call.get("id", "unknown")
+                    id=tool_call.get("id", "unknown"),
                 )
-                tool_result = await mcp_client.call_tool(mcp_tool_call)
+
+                # Find the appropriate client for this tool (using stripped name)
+                tool_info = tool_to_client.get(actual_tool_name)
+                if not tool_info:
+                    # Tool not found in any client
+                    tool_call_with_result = {
+                        "name": tool_call["name"],
+                        "arguments": tool_call.get("arguments", {}),
+                        "id": tool_call.get("id", "unknown"),
+                        "result": None,
+                        "error": f"Tool '{tool_call['name']}' not found in any MCP profile",
+                        "is_error": True,
+                    }
+                    tool_calls_with_results.append(tool_call_with_result)
+                    continue
+
+                # Extract client info
+                client_for_tool, profile_id, mcp_name = tool_info
+
+                # Execute tool call
+                tool_result = await client_for_tool.call_tool(mcp_tool_call)
 
                 # Add result to tool call
                 tool_call_with_result = {
@@ -277,7 +772,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
                     "id": tool_call.get("id", "unknown"),
                     "result": tool_result.content if not tool_result.is_error else None,
                     "error": tool_result.error_message if tool_result.is_error else None,
-                    "is_error": tool_result.is_error
+                    "is_error": tool_result.is_error,
                 }
                 tool_calls_with_results.append(tool_call_with_result)
 
@@ -287,310 +782,57 @@ async def chat(request: ChatRequest) -> ChatResponse:
         clean_response = result.response
         if tool_calls_with_results:
             # Remove lines that start with "Tool <name> executed" or "Tool <name> failed"
-            lines = clean_response.split('\n')
+            lines = clean_response.split("\n")
             filtered_lines = []
             skip_next = False
             for line in lines:
                 # Skip tool execution status lines
-                if line.strip().startswith('Tool ') and (' executed successfully' in line or ' failed' in line):
+                if line.strip().startswith("Tool ") and (
+                    " executed successfully" in line or " failed" in line
+                ):
                     skip_next = True
                     continue
                 # Skip the raw content line after tool execution
-                if skip_next and (line.strip().startswith('[') or line.strip().startswith('{')):
+                if skip_next and (line.strip().startswith("[") or line.strip().startswith("{")):
                     skip_next = False
                     continue
                 skip_next = False
                 filtered_lines.append(line)
 
-            clean_response = '\n'.join(filtered_lines).strip()
+            clean_response = "\n".join(filtered_lines).strip()
 
         return ChatResponse(
             response=clean_response,
             tool_calls=tool_calls_with_results,
+            thinking=result.thinking,
             token_usage=result.token_usage,
             cost=result.cost,
-            duration=result.duration
-        )
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# Test file management
-
-@app.get("/api/tests")
-async def list_tests():
-    """List all test files in the tests directory."""
-    tests_dir = Path.cwd() / "tests"
-    if not tests_dir.exists():
-        return []
-
-    test_files = []
-    for file in tests_dir.glob("*.yaml"):
-        try:
-            with open(file) as f:
-                content = f.read()
-                data = yaml.safe_load(content)
-
-                # Count tests
-                test_count = len(data.get("tests", [])) if "tests" in data else 1
-
-                test_files.append({
-                    "filename": file.name,
-                    "path": str(file),
-                    "test_count": test_count,
-                    "size": file.stat().st_size,
-                    "modified": file.stat().st_mtime
-                })
-        except Exception as e:
-            print(f"Error reading {file}: {e}")
-
-    return sorted(test_files, key=lambda x: x["modified"], reverse=True)
-
-
-@app.get("/api/tests/{filename}")
-async def get_test_file(filename: str):
-    """Get content of a specific test file."""
-    tests_dir = Path.cwd() / "tests"
-    file_path = tests_dir / filename
-
-    if not file_path.exists() or not file_path.is_relative_to(tests_dir):
-        raise HTTPException(status_code=404, detail="Test file not found")
-
-    try:
-        with open(file_path) as f:
-            content = f.read()
-
-        return {
-            "filename": filename,
-            "content": content,
-            "path": str(file_path)
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/tests")
-async def create_test_file(request: TestFileCreate):
-    """Create a new test file."""
-    tests_dir = Path.cwd() / "tests"
-    tests_dir.mkdir(exist_ok=True)
-
-    file_path = tests_dir / request.filename
-
-    if file_path.exists():
-        raise HTTPException(status_code=400, detail="File already exists")
-
-    # Validate YAML
-    try:
-        yaml.safe_load(request.content)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid YAML: {str(e)}")
-
-    try:
-        with open(file_path, 'w') as f:
-            f.write(request.content)
-
-        return {
-            "message": "Test file created successfully",
-            "filename": request.filename,
-            "path": str(file_path)
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.put("/api/tests/{filename}")
-async def update_test_file(filename: str, request: TestFileUpdate):
-    """Update an existing test file."""
-    tests_dir = Path.cwd() / "tests"
-    file_path = tests_dir / filename
-
-    if not file_path.exists() or not file_path.is_relative_to(tests_dir):
-        raise HTTPException(status_code=404, detail="Test file not found")
-
-    # Validate YAML
-    try:
-        yaml.safe_load(request.content)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid YAML: {str(e)}")
-
-    try:
-        with open(file_path, 'w') as f:
-            f.write(request.content)
-
-        return {
-            "message": "Test file updated successfully",
-            "filename": filename,
-            "path": str(file_path)
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.delete("/api/tests/{filename}")
-async def delete_test_file(filename: str):
-    """Delete a test file."""
-    tests_dir = Path.cwd() / "tests"
-    file_path = tests_dir / filename
-
-    if not file_path.exists() or not file_path.is_relative_to(tests_dir):
-        raise HTTPException(status_code=404, detail="Test file not found")
-
-    try:
-        file_path.unlink()
-        return {
-            "message": "Test file deleted successfully",
-            "filename": filename
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# Test execution
-
-@app.post("/api/tests/run")
-async def run_tests(request: TestRunRequest):
-    """Run test cases from a file."""
-    test_path = Path(request.test_path)
-
-    if not test_path.exists():
-        raise HTTPException(status_code=404, detail="Test file not found")
-
-    model = request.model or config.default_model
-    provider = request.provider or config.default_provider
-
-    try:
-        # Load test cases
-        with open(test_path) as f:
-            if test_path.suffix == ".json":
-                data = json.load(f)
-            else:
-                data = yaml.safe_load(f)
-
-        test_cases = []
-        if "tests" in data:
-            for test_data in data["tests"]:
-                test_cases.append(TestCase.from_dict(test_data))
-        else:
-            test_cases.append(TestCase.from_dict(data))
-
-        # Run tests
-        runner = TestRunner(
+            duration=result.duration,
             model=model,
-            provider=provider,
-            mcp_url=config.mcp_url,
-            verbose=False,
-            hide_tool_output=True
+            provider=str(provider.value) if hasattr(provider, "value") else str(provider),
         )
 
-        results = await runner.run_tests(test_cases)
-
-        # Format results
-        return {
-            "summary": {
-                "total": len(results),
-                "passed": sum(1 for r in results if r.passed),
-                "failed": sum(1 for r in results if not r.passed),
-                "total_cost": sum(r.cost for r in results),
-                "total_tokens": sum(r.token_usage.get("total", 0) for r in results if r.token_usage)
-            },
-            "results": [r.to_dict() for r in results]
-        }
-
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        error_msg = str(e)
+        if is_connection_error(error_msg):
+            # Clear stale cached clients so retry can get fresh connection
+            for cache_key in accessed_servers:
+                await clear_cached_client(cache_key)
+            raise HTTPException(
+                status_code=503,
+                detail=f"Service unavailable: Unable to connect to MCP server. {error_msg}",
+            )
+        raise HTTPException(status_code=500, detail=error_msg)
 
 
-# Eval endpoints
+# WebSocket endpoint for streaming test execution
+from testmcpy.server.websocket import handle_test_websocket
 
-@app.post("/api/eval/run")
-async def run_eval(request: EvalRunRequest):
-    """Run evaluators on a prompt/response pair from chat."""
-    try:
-        # Extract tool results from tool_calls (chat embeds results in tool_calls)
-        from testmcpy.src.mcp_client import MCPToolResult
 
-        print(f"[EVAL DEBUG] Received tool_calls: {request.tool_calls}")
-
-        tool_results = []
-        for tool_call in request.tool_calls:
-            print(f"[EVAL DEBUG] Processing tool_call: {tool_call.get('name')}")
-            print(f"[EVAL DEBUG] - has 'result' key: {'result' in tool_call}")
-            print(f"[EVAL DEBUG] - result value: {tool_call.get('result')}")
-            print(f"[EVAL DEBUG] - is_error: {tool_call.get('is_error', False)}")
-
-            # Create MCPToolResult from embedded result data
-            tool_results.append(MCPToolResult(
-                tool_call_id=tool_call.get("id", "unknown"),
-                content=tool_call.get("result"),
-                is_error=tool_call.get("is_error", False),
-                error_message=tool_call.get("error")
-            ))
-
-        print(f"[EVAL DEBUG] Created {len(tool_results)} tool_results")
-
-        # Create a context for evaluators
-        context = {
-            "prompt": request.prompt,
-            "response": request.response,
-            "tool_calls": request.tool_calls,
-            "tool_results": tool_results,
-            "metadata": {
-                "model": request.model or config.default_model,
-                "provider": request.provider or config.default_provider,
-            }
-        }
-
-        # Default evaluators to run for chat interactions
-        default_evaluators = [
-            {"name": "execution_successful"},
-            {"name": "was_mcp_tool_called"},
-        ]
-
-        # Run evaluators
-        evaluations = []
-        all_passed = True
-        total_score = 0.0
-
-        for eval_config in default_evaluators:
-            try:
-                evaluator = create_evaluator(eval_config["name"], **eval_config.get("args", {}))
-                eval_result = evaluator.evaluate(context)
-
-                evaluations.append({
-                    "evaluator": evaluator.name,
-                    "passed": eval_result.passed,
-                    "score": eval_result.score,
-                    "reason": eval_result.reason,
-                    "details": eval_result.details
-                })
-
-                if not eval_result.passed:
-                    all_passed = False
-                total_score += eval_result.score
-            except Exception as e:
-                # If evaluator fails, mark it as failed but continue
-                evaluations.append({
-                    "evaluator": eval_config["name"],
-                    "passed": False,
-                    "score": 0.0,
-                    "reason": f"Evaluator error: {str(e)}",
-                    "details": None
-                })
-                all_passed = False
-
-        avg_score = total_score / len(default_evaluators) if default_evaluators else 0.0
-
-        return {
-            "passed": all_passed,
-            "score": avg_score,
-            "reason": "All evaluators passed" if all_passed else "Some evaluators failed",
-            "evaluations": evaluations
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+@app.websocket("/ws/tests")
+async def websocket_tests(websocket: WebSocket):
+    """WebSocket endpoint for streaming test execution with real-time logs."""
+    await handle_test_websocket(websocket)
 
 
 # Catch-all route for React Router (must be before static files)

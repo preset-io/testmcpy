@@ -1,30 +1,65 @@
 """
-Base evaluation functions for MCP Testing Framework.
+Base evaluation functions for testmcpy.
 
 These evaluators can be used to validate LLM responses and tool calling behavior.
 """
 
-import json
 import re
-from typing import Dict, Any, List, Optional, Union, Callable
-from dataclasses import dataclass
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass
 class EvalResult:
     """Result from an evaluation function."""
+
     passed: bool
     score: float  # 0.0 to 1.0
-    reason: Optional[str] = None
-    details: Optional[Dict[str, Any]] = None
+    reason: str | None = None
+    details: dict[str, Any] | None = None
+
+
+def _match_tool_name(actual_name: str, expected_name: str) -> bool:
+    """
+    Match tool names with support for MCP prefixes.
+
+    MCP tools often have prefixed names like 'mcp__testmcpy__health_check'.
+    This function matches if:
+    - Exact match: 'health_check' == 'health_check'
+    - Suffix match: 'mcp__testmcpy__health_check' ends with '__health_check'
+    - Contains match: 'mcp__testmcpy__health_check' contains 'health_check'
+
+    Args:
+        actual_name: The actual tool name from the LLM response
+        expected_name: The expected tool name from the test definition
+
+    Returns:
+        True if the names match
+    """
+    if not actual_name or not expected_name:
+        return False
+
+    # Exact match
+    if actual_name == expected_name:
+        return True
+
+    # Suffix match (handles mcp__namespace__tool_name pattern)
+    if actual_name.endswith(f"__{expected_name}"):
+        return True
+
+    # Contains match (for partial tool names)
+    if expected_name in actual_name:
+        return True
+
+    return False
 
 
 class BaseEvaluator(ABC):
     """Base class for all evaluators."""
 
     @abstractmethod
-    def evaluate(self, context: Dict[str, Any]) -> EvalResult:
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
         """
         Evaluate based on the provided context.
 
@@ -56,7 +91,7 @@ class BaseEvaluator(ABC):
 class WasMCPToolCalled(BaseEvaluator):
     """Check if an MCP tool was called."""
 
-    def __init__(self, tool_name: Optional[str] = None):
+    def __init__(self, tool_name: str | None = None):
         self.tool_name = tool_name
 
     @property
@@ -71,32 +106,29 @@ class WasMCPToolCalled(BaseEvaluator):
             return f"Checks if the '{self.tool_name}' tool was called"
         return "Checks if any MCP tool was called"
 
-    def evaluate(self, context: Dict[str, Any]) -> EvalResult:
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
         tool_calls = context.get("tool_calls", [])
 
         if not tool_calls:
-            return EvalResult(
-                passed=False,
-                score=0.0,
-                reason="No tool calls found in response"
-            )
+            return EvalResult(passed=False, score=0.0, reason="No tool calls found in response")
 
         if self.tool_name:
-            # Check for specific tool
+            # Check for specific tool (with support for MCP prefixed names)
             for call in tool_calls:
-                if call.get("name") == self.tool_name:
+                actual_name = call.get("name", "")
+                if _match_tool_name(actual_name, self.tool_name):
                     return EvalResult(
                         passed=True,
                         score=1.0,
-                        reason=f"Tool '{self.tool_name}' was called",
-                        details={"tool_call": call}
+                        reason=f"Tool '{self.tool_name}' was called (actual: '{actual_name}')",
+                        details={"tool_call": call},
                     )
 
             return EvalResult(
                 passed=False,
                 score=0.0,
                 reason=f"Tool '{self.tool_name}' was not called",
-                details={"tools_called": [c.get("name") for c in tool_calls]}
+                details={"tools_called": [c.get("name") for c in tool_calls]},
             )
 
         # Any tool call is acceptable
@@ -104,7 +136,7 @@ class WasMCPToolCalled(BaseEvaluator):
             passed=True,
             score=1.0,
             reason=f"{len(tool_calls)} tool(s) called",
-            details={"tool_calls": tool_calls}
+            details={"tool_calls": tool_calls},
         )
 
 
@@ -119,45 +151,42 @@ class ExecutionSuccessful(BaseEvaluator):
     def description(self) -> str:
         return "Checks if tool execution completed without errors"
 
-    def evaluate(self, context: Dict[str, Any]) -> EvalResult:
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
         tool_results = context.get("tool_results", [])
 
         if not tool_results:
-            return EvalResult(
-                passed=False,
-                score=0.0,
-                reason="No tool execution results found"
-            )
+            return EvalResult(passed=False, score=0.0, reason="No tool execution results found")
 
         errors = []
         for result in tool_results:
             if result.is_error:
-                errors.append({
-                    "tool": result.tool_call_id,
-                    "error": result.error_message or "Unknown error"
-                })
+                errors.append(
+                    {"tool": result.tool_call_id, "error": result.error_message or "Unknown error"}
+                )
 
         if errors:
             return EvalResult(
                 passed=False,
                 score=0.0,
                 reason=f"{len(errors)} tool execution error(s) occurred",
-                details={"errors": errors}
+                details={"errors": errors},
             )
 
         return EvalResult(
             passed=True,
             score=1.0,
             reason="All tool executions completed successfully",
-            details={"successful_executions": len(tool_results)}
+            details={"successful_executions": len(tool_results)},
         )
 
 
 class FinalAnswerContains(BaseEvaluator):
     """Check if the final answer contains expected content."""
 
-    def __init__(self, expected_content: Union[str, List[str]], case_sensitive: bool = False):
-        self.expected_content = expected_content if isinstance(expected_content, list) else [expected_content]
+    def __init__(self, expected_content: str | list[str], case_sensitive: bool = False):
+        self.expected_content = (
+            expected_content if isinstance(expected_content, list) else [expected_content]
+        )
         self.case_sensitive = case_sensitive
 
     @property
@@ -168,7 +197,7 @@ class FinalAnswerContains(BaseEvaluator):
     def description(self) -> str:
         return f"Checks if final answer contains: {', '.join(self.expected_content)}"
 
-    def evaluate(self, context: Dict[str, Any]) -> EvalResult:
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
         response = context.get("response", "")
 
         if not self.case_sensitive:
@@ -191,28 +220,28 @@ class FinalAnswerContains(BaseEvaluator):
                 passed=True,
                 score=score,
                 reason="All expected content found in response",
-                details={"found": found}
+                details={"found": found},
             )
         elif score > 0:
             return EvalResult(
                 passed=False,
                 score=score,
                 reason=f"Partial match: {len(found)}/{len(self.expected_content)} items found",
-                details={"found": found, "not_found": not_found}
+                details={"found": found, "not_found": not_found},
             )
         else:
             return EvalResult(
                 passed=False,
                 score=0.0,
                 reason="No expected content found in response",
-                details={"not_found": not_found}
+                details={"not_found": not_found},
             )
 
 
 class AnswerContainsLink(BaseEvaluator):
     """Check if the answer contains expected links."""
 
-    def __init__(self, expected_links: Optional[List[str]] = None):
+    def __init__(self, expected_links: list[str] | None = None):
         self.expected_links = expected_links
 
     @property
@@ -223,7 +252,7 @@ class AnswerContainsLink(BaseEvaluator):
     def description(self) -> str:
         return "Checks if answer contains expected links"
 
-    def evaluate(self, context: Dict[str, Any]) -> EvalResult:
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
         response = context.get("response", "")
 
         # Extract all URLs from response
@@ -237,14 +266,10 @@ class AnswerContainsLink(BaseEvaluator):
                     passed=True,
                     score=1.0,
                     reason=f"Found {len(found_links)} link(s) in response",
-                    details={"links": found_links}
+                    details={"links": found_links},
                 )
             else:
-                return EvalResult(
-                    passed=False,
-                    score=0.0,
-                    reason="No links found in response"
-                )
+                return EvalResult(passed=False, score=0.0, reason="No links found in response")
 
         # Check for specific links
         found_expected = []
@@ -263,14 +288,14 @@ class AnswerContainsLink(BaseEvaluator):
                 passed=True,
                 score=score,
                 reason="All expected links found",
-                details={"found": found_expected}
+                details={"found": found_expected},
             )
         else:
             return EvalResult(
                 passed=False,
                 score=score,
                 reason=f"Missing {len(missing)} expected link(s)",
-                details={"found": found_expected, "missing": missing, "all_links": found_links}
+                details={"found": found_expected, "missing": missing, "all_links": found_links},
             )
 
 
@@ -288,29 +313,26 @@ class WithinTimeLimit(BaseEvaluator):
     def description(self) -> str:
         return f"Checks if execution completed within {self.max_seconds} seconds"
 
-    def evaluate(self, context: Dict[str, Any]) -> EvalResult:
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
         duration = context.get("metadata", {}).get("duration_seconds", 0)
 
         if duration <= 0:
-            return EvalResult(
-                passed=False,
-                score=0.0,
-                reason="Duration information not available"
-            )
+            return EvalResult(passed=False, score=0.0, reason="Duration information not available")
 
         if duration <= self.max_seconds:
             return EvalResult(
                 passed=True,
-                score=1.0 - (duration / self.max_seconds) * 0.5,  # Higher score for faster execution
+                score=1.0
+                - (duration / self.max_seconds) * 0.5,  # Higher score for faster execution
                 reason=f"Completed in {duration:.2f}s (limit: {self.max_seconds}s)",
-                details={"duration": duration}
+                details={"duration": duration},
             )
         else:
             return EvalResult(
                 passed=False,
                 score=0.0,
                 reason=f"Exceeded time limit: {duration:.2f}s > {self.max_seconds}s",
-                details={"duration": duration, "limit": self.max_seconds}
+                details={"duration": duration, "limit": self.max_seconds},
             )
 
 
@@ -327,18 +349,18 @@ class TokenUsageReasonable(BaseEvaluator):
 
     @property
     def description(self) -> str:
-        return f"Checks if token usage is reasonable (max: {self.max_tokens} tokens, ${self.max_cost})"
+        return (
+            f"Checks if token usage is reasonable (max: {self.max_tokens} tokens, ${self.max_cost})"
+        )
 
-    def evaluate(self, context: Dict[str, Any]) -> EvalResult:
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
         metadata = context.get("metadata", {})
         tokens_used = metadata.get("total_tokens", 0)
         cost = metadata.get("cost", 0.0)
 
         if tokens_used <= 0:
             return EvalResult(
-                passed=False,
-                score=0.0,
-                reason="Token usage information not available"
+                passed=False, score=0.0, reason="Token usage information not available"
             )
 
         issues = []
@@ -353,31 +375,544 @@ class TokenUsageReasonable(BaseEvaluator):
                 passed=False,
                 score=max(0, 1.0 - (tokens_used / self.max_tokens - 1.0)),
                 reason="; ".join(issues),
-                details={"tokens_used": tokens_used, "cost": cost}
+                details={"tokens_used": tokens_used, "cost": cost},
             )
 
         return EvalResult(
             passed=True,
             score=1.0 - (tokens_used / self.max_tokens) * 0.5,  # Higher score for fewer tokens
             reason=f"Token usage reasonable: {tokens_used} tokens, ${cost:.4f}",
-            details={"tokens_used": tokens_used, "cost": cost}
+            details={"tokens_used": tokens_used, "cost": cost},
         )
 
 
-# Superset-specific evaluators
+# Parameter validation evaluators
 
-class WasSupersetChartCreated(BaseEvaluator):
-    """Check if a Superset chart was created."""
+
+class ToolCalledWithParameter(BaseEvaluator):
+    """Check if a tool was called with a specific parameter."""
+
+    def __init__(self, tool_name: str, parameter_name: str, parameter_value: Any | None = None):
+        """
+        Check if tool was called with a specific parameter.
+
+        Args:
+            tool_name: Name of the tool to check
+            parameter_name: Name of the parameter to check for
+            parameter_value: Optional - specific value to check for. If None, just checks parameter exists
+        """
+        self.tool_name = tool_name
+        self.parameter_name = parameter_name
+        self.parameter_value = parameter_value
 
     @property
     def name(self) -> str:
-        return "was_superset_chart_created"
+        if self.parameter_value is not None:
+            return f"tool_called_with_param:{self.tool_name}.{self.parameter_name}={self.parameter_value}"
+        return f"tool_called_with_param:{self.tool_name}.{self.parameter_name}"
 
     @property
     def description(self) -> str:
-        return "Checks if a Superset chart was successfully created"
+        if self.parameter_value is not None:
+            return f"Checks if '{self.tool_name}' was called with {self.parameter_name}={self.parameter_value}"
+        return f"Checks if '{self.tool_name}' was called with parameter '{self.parameter_name}'"
 
-    def evaluate(self, context: Dict[str, Any]) -> EvalResult:
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
+        tool_calls = context.get("tool_calls", [])
+
+        if not tool_calls:
+            return EvalResult(passed=False, score=0.0, reason="No tool calls found in response")
+
+        # Find tool call matching the tool name (with support for MCP prefixed names)
+        matching_calls = [
+            call for call in tool_calls if _match_tool_name(call.get("name", ""), self.tool_name)
+        ]
+
+        if not matching_calls:
+            return EvalResult(
+                passed=False,
+                score=0.0,
+                reason=f"Tool '{self.tool_name}' was not called",
+                details={"tools_called": [c.get("name") for c in tool_calls]},
+            )
+
+        # Check if parameter exists in any matching call
+        for call in matching_calls:
+            arguments = call.get("arguments", {})
+
+            if self.parameter_name in arguments:
+                actual_value = arguments[self.parameter_name]
+
+                # If we're checking for a specific value
+                if self.parameter_value is not None:
+                    if actual_value == self.parameter_value:
+                        return EvalResult(
+                            passed=True,
+                            score=1.0,
+                            reason=f"Tool '{self.tool_name}' called with {self.parameter_name}={actual_value}",
+                            details={"tool_call": call, "parameter_value": actual_value},
+                        )
+                else:
+                    # Just checking parameter exists
+                    return EvalResult(
+                        passed=True,
+                        score=1.0,
+                        reason=f"Tool '{self.tool_name}' called with parameter '{self.parameter_name}'",
+                        details={"tool_call": call, "parameter_value": actual_value},
+                    )
+
+        # Parameter not found or value didn't match
+        if self.parameter_value is not None:
+            return EvalResult(
+                passed=False,
+                score=0.0,
+                reason=f"Tool '{self.tool_name}' was called but parameter '{self.parameter_name}' was not set to '{self.parameter_value}'",
+                details={"tool_calls": matching_calls},
+            )
+        else:
+            return EvalResult(
+                passed=False,
+                score=0.0,
+                reason=f"Tool '{self.tool_name}' was called but parameter '{self.parameter_name}' was not provided",
+                details={"tool_calls": matching_calls},
+            )
+
+
+class ToolCalledWithParameters(BaseEvaluator):
+    """Check if a tool was called with multiple specific parameters."""
+
+    def __init__(self, tool_name: str, parameters: dict[str, Any], partial_match: bool = False):
+        """
+        Check if tool was called with specific parameters.
+
+        Args:
+            tool_name: Name of the tool to check
+            parameters: Dictionary of parameter_name -> expected_value
+            partial_match: If True, additional parameters are allowed. If False, must match exactly
+        """
+        self.tool_name = tool_name
+        self.parameters = parameters
+        self.partial_match = partial_match
+
+    @property
+    def name(self) -> str:
+        mode = "partial" if self.partial_match else "exact"
+        return f"tool_called_with_params:{self.tool_name}:{mode}"
+
+    @property
+    def description(self) -> str:
+        mode = "at least" if self.partial_match else "exactly"
+        params_str = ", ".join(f"{k}={v}" for k, v in self.parameters.items())
+        return f"Checks if '{self.tool_name}' was called with {mode} parameters: {params_str}"
+
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
+        tool_calls = context.get("tool_calls", [])
+
+        if not tool_calls:
+            return EvalResult(passed=False, score=0.0, reason="No tool calls found in response")
+
+        # Find tool call matching the tool name (with support for MCP prefixed names)
+        matching_calls = [
+            call for call in tool_calls if _match_tool_name(call.get("name", ""), self.tool_name)
+        ]
+
+        if not matching_calls:
+            return EvalResult(
+                passed=False,
+                score=0.0,
+                reason=f"Tool '{self.tool_name}' was not called",
+                details={"tools_called": [c.get("name") for c in tool_calls]},
+            )
+
+        # Check each matching call for parameter match
+        for call in matching_calls:
+            arguments = call.get("arguments", {})
+
+            # Check if all required parameters match
+            matches = []
+            mismatches = []
+
+            for param_name, expected_value in self.parameters.items():
+                actual_value = arguments.get(param_name)
+
+                if actual_value == expected_value:
+                    matches.append(param_name)
+                else:
+                    mismatches.append(
+                        {
+                            "parameter": param_name,
+                            "expected": expected_value,
+                            "actual": actual_value,
+                        }
+                    )
+
+            # If all parameters match
+            if len(matches) == len(self.parameters):
+                # For exact match, check no extra parameters
+                if not self.partial_match:
+                    extra_params = set(arguments.keys()) - set(self.parameters.keys())
+                    if extra_params:
+                        return EvalResult(
+                            passed=False,
+                            score=0.8,
+                            reason=f"Tool called with correct parameters but has extra parameters: {extra_params}",
+                            details={"tool_call": call, "extra_parameters": list(extra_params)},
+                        )
+
+                return EvalResult(
+                    passed=True,
+                    score=1.0,
+                    reason=f"Tool '{self.tool_name}' called with matching parameters",
+                    details={"tool_call": call, "matched_parameters": matches},
+                )
+
+        # No matching call found
+        score = len(matches) / len(self.parameters) if self.parameters else 0.0
+        return EvalResult(
+            passed=False,
+            score=score,
+            reason=f"Tool '{self.tool_name}' called but parameters don't match",
+            details={"tool_calls": matching_calls, "matched": matches, "mismatched": mismatches},
+        )
+
+
+class ParameterValueInRange(BaseEvaluator):
+    """Check if a parameter value is within expected range."""
+
+    def __init__(
+        self,
+        tool_name: str,
+        parameter_name: str,
+        min_value: float | None = None,
+        max_value: float | None = None,
+    ):
+        """
+        Check if parameter value is in range.
+
+        Args:
+            tool_name: Name of the tool
+            parameter_name: Name of the parameter
+            min_value: Minimum acceptable value (inclusive)
+            max_value: Maximum acceptable value (inclusive)
+        """
+        self.tool_name = tool_name
+        self.parameter_name = parameter_name
+        self.min_value = min_value
+        self.max_value = max_value
+
+    @property
+    def name(self) -> str:
+        range_str = f"{self.min_value or '-∞'}-{self.max_value or '∞'}"
+        return f"param_in_range:{self.tool_name}.{self.parameter_name}:{range_str}"
+
+    @property
+    def description(self) -> str:
+        range_str = f"[{self.min_value or '-∞'}, {self.max_value or '∞'}]"
+        return f"Checks if {self.tool_name}.{self.parameter_name} is in range {range_str}"
+
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
+        tool_calls = context.get("tool_calls", [])
+
+        matching_calls = [call for call in tool_calls if call.get("name") == self.tool_name]
+
+        if not matching_calls:
+            return EvalResult(
+                passed=False, score=0.0, reason=f"Tool '{self.tool_name}' was not called"
+            )
+
+        for call in matching_calls:
+            arguments = call.get("arguments", {})
+
+            if self.parameter_name not in arguments:
+                continue
+
+            value = arguments[self.parameter_name]
+
+            try:
+                numeric_value = float(value)
+
+                in_range = True
+                if self.min_value is not None and numeric_value < self.min_value:
+                    in_range = False
+                if self.max_value is not None and numeric_value > self.max_value:
+                    in_range = False
+
+                if in_range:
+                    return EvalResult(
+                        passed=True,
+                        score=1.0,
+                        reason=f"Parameter {self.parameter_name}={numeric_value} is in valid range",
+                        details={"value": numeric_value},
+                    )
+                else:
+                    return EvalResult(
+                        passed=False,
+                        score=0.0,
+                        reason=f"Parameter {self.parameter_name}={numeric_value} is out of range",
+                        details={
+                            "value": numeric_value,
+                            "min": self.min_value,
+                            "max": self.max_value,
+                        },
+                    )
+
+            except (ValueError, TypeError):
+                return EvalResult(
+                    passed=False,
+                    score=0.0,
+                    reason=f"Parameter {self.parameter_name} value '{value}' is not numeric",
+                    details={"value": value},
+                )
+
+        return EvalResult(
+            passed=False,
+            score=0.0,
+            reason=f"Parameter '{self.parameter_name}' not found in tool calls",
+            details={"tool_calls": matching_calls},
+        )
+
+
+class ToolCallCount(BaseEvaluator):
+    """Check the number of times a tool was called."""
+
+    def __init__(
+        self,
+        tool_name: str | None = None,
+        expected_count: int | None = None,
+        min_count: int | None = None,
+        max_count: int | None = None,
+    ):
+        """
+        Check tool call count.
+
+        Args:
+            tool_name: Specific tool to count. If None, counts all tools
+            expected_count: Exact number of calls expected
+            min_count: Minimum number of calls
+            max_count: Maximum number of calls
+        """
+        self.tool_name = tool_name
+        self.expected_count = expected_count
+        self.min_count = min_count
+        self.max_count = max_count
+
+    @property
+    def name(self) -> str:
+        tool = self.tool_name or "any_tool"
+        if self.expected_count is not None:
+            return f"tool_call_count:{tool}=={self.expected_count}"
+        return f"tool_call_count:{tool}"
+
+    @property
+    def description(self) -> str:
+        tool = self.tool_name or "any tool"
+        if self.expected_count is not None:
+            return f"Checks if '{tool}' was called exactly {self.expected_count} time(s)"
+        ranges = []
+        if self.min_count is not None:
+            ranges.append(f"at least {self.min_count}")
+        if self.max_count is not None:
+            ranges.append(f"at most {self.max_count}")
+        range_str = " and ".join(ranges) if ranges else "any number of"
+        return f"Checks if '{tool}' was called {range_str} times"
+
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
+        tool_calls = context.get("tool_calls", [])
+
+        if self.tool_name:
+            count = sum(1 for call in tool_calls if call.get("name") == self.tool_name)
+            tool_desc = f"'{self.tool_name}'"
+        else:
+            count = len(tool_calls)
+            tool_desc = "tools"
+
+        # Check expected count
+        if self.expected_count is not None:
+            if count == self.expected_count:
+                return EvalResult(
+                    passed=True,
+                    score=1.0,
+                    reason=f"{tool_desc} called exactly {count} time(s) as expected",
+                    details={"count": count},
+                )
+            else:
+                return EvalResult(
+                    passed=False,
+                    score=0.0,
+                    reason=f"{tool_desc} called {count} time(s), expected {self.expected_count}",
+                    details={"count": count, "expected": self.expected_count},
+                )
+
+        # Check range
+        passed = True
+        issues = []
+
+        if self.min_count is not None and count < self.min_count:
+            passed = False
+            issues.append(f"called {count} time(s), minimum {self.min_count}")
+
+        if self.max_count is not None and count > self.max_count:
+            passed = False
+            issues.append(f"called {count} time(s), maximum {self.max_count}")
+
+        if passed:
+            return EvalResult(
+                passed=True,
+                score=1.0,
+                reason=f"{tool_desc} called {count} time(s), within expected range",
+                details={"count": count},
+            )
+        else:
+            return EvalResult(
+                passed=False,
+                score=0.0,
+                reason="; ".join(issues),
+                details={"count": count, "min": self.min_count, "max": self.max_count},
+            )
+
+
+class ToolCallSequence(BaseEvaluator):
+    """Check that tools were called in a specific order."""
+
+    def __init__(
+        self,
+        sequence: list[str],
+        strict: bool = True,
+        allow_intermediate: bool = False,
+    ):
+        """
+        Check tool call sequence.
+
+        Args:
+            sequence: List of tool names that should be called in order
+            strict: If True, sequence must match exactly (no extra tools).
+                   If False, only checks that sequence appears in order.
+            allow_intermediate: If True, allows other tools between sequence steps.
+                              Only applies when strict=False.
+
+        Examples:
+            # Strict sequence - must be exactly these tools in this order
+            ToolCallSequence(["list_datasets", "generate_chart"], strict=True)
+
+            # Loose sequence - these tools must appear in order, but other tools allowed
+            ToolCallSequence(["list_datasets", "generate_chart"], strict=False, allow_intermediate=True)
+        """
+        self.sequence = sequence
+        self.strict = strict
+        self.allow_intermediate = allow_intermediate
+
+    @property
+    def name(self) -> str:
+        return f"tool_call_sequence:{' -> '.join(self.sequence)}"
+
+    @property
+    def description(self) -> str:
+        if self.strict:
+            return f"Checks that tools are called in exact sequence: {' -> '.join(self.sequence)}"
+        elif self.allow_intermediate:
+            return f"Checks that tools appear in order (other tools allowed): {' -> '.join(self.sequence)}"
+        else:
+            return f"Checks that only these tools are called in order: {' -> '.join(self.sequence)}"
+
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
+        tool_calls = context.get("tool_calls", [])
+
+        if not tool_calls:
+            return EvalResult(
+                passed=False,
+                score=0.0,
+                reason="No tool calls found in response",
+            )
+
+        actual_sequence = [call.get("name") for call in tool_calls]
+
+        if self.strict:
+            # Exact match required
+            if actual_sequence == self.sequence:
+                return EvalResult(
+                    passed=True,
+                    score=1.0,
+                    reason=f"Tools called in exact sequence: {' -> '.join(actual_sequence)}",
+                    details={
+                        "actual_sequence": actual_sequence,
+                        "expected_sequence": self.sequence,
+                    },
+                )
+            else:
+                return EvalResult(
+                    passed=False,
+                    score=0.0,
+                    reason=f"Sequence mismatch. Expected: {' -> '.join(self.sequence)}, Got: {' -> '.join(actual_sequence)}",
+                    details={
+                        "actual_sequence": actual_sequence,
+                        "expected_sequence": self.sequence,
+                    },
+                )
+
+        # Non-strict mode: check if sequence appears in order
+        sequence_idx = 0
+        found_positions = []
+
+        for i, tool_name in enumerate(actual_sequence):
+            if sequence_idx < len(self.sequence) and tool_name == self.sequence[sequence_idx]:
+                found_positions.append(i)
+                sequence_idx += 1
+            elif not self.allow_intermediate and tool_name not in self.sequence:
+                # Found a tool not in our sequence and intermediates not allowed
+                return EvalResult(
+                    passed=False,
+                    score=sequence_idx / len(self.sequence),
+                    reason=f"Unexpected tool '{tool_name}' at position {i}. Only {self.sequence} allowed.",
+                    details={
+                        "actual_sequence": actual_sequence,
+                        "expected_sequence": self.sequence,
+                        "found_up_to_index": sequence_idx,
+                        "unexpected_tool": tool_name,
+                    },
+                )
+
+        # Check if we found all tools in the sequence
+        if sequence_idx == len(self.sequence):
+            return EvalResult(
+                passed=True,
+                score=1.0,
+                reason=f"Required tools called in correct order: {' -> '.join([actual_sequence[i] for i in found_positions])}",
+                details={
+                    "actual_sequence": actual_sequence,
+                    "expected_sequence": self.sequence,
+                    "found_positions": found_positions,
+                },
+            )
+        else:
+            missing_tools = self.sequence[sequence_idx:]
+            return EvalResult(
+                passed=False,
+                score=sequence_idx / len(self.sequence),
+                reason=f"Incomplete sequence. Found {sequence_idx}/{len(self.sequence)} tools. Missing: {' -> '.join(missing_tools)}",
+                details={
+                    "actual_sequence": actual_sequence,
+                    "expected_sequence": self.sequence,
+                    "found_up_to_index": sequence_idx,
+                    "missing_tools": missing_tools,
+                },
+            )
+
+
+# Chart creation evaluators
+
+
+class WasChartCreated(BaseEvaluator):
+    """Check if a chart was created."""
+
+    @property
+    def name(self) -> str:
+        return "was_chart_created"
+
+    @property
+    def description(self) -> str:
+        return "Checks if a chart was successfully created"
+
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
         tool_calls = context.get("tool_calls", [])
         tool_results = context.get("tool_results", [])
 
@@ -397,7 +932,8 @@ class WasSupersetChartCreated(BaseEvaluator):
                         if isinstance(content, str):
                             # Look for chart ID pattern
                             import re
-                            match = re.search(r'chart[_\s]?id[:\s]+(\d+)', content, re.IGNORECASE)
+
+                            match = re.search(r"chart[_\s]?id[:\s]+(\d+)", content, re.IGNORECASE)
                             if match:
                                 chart_id = match.group(1)
 
@@ -406,14 +942,10 @@ class WasSupersetChartCreated(BaseEvaluator):
                 passed=True,
                 score=1.0,
                 reason="Chart was successfully created",
-                details={"chart_id": chart_id} if chart_id else None
+                details={"chart_id": chart_id} if chart_id else None,
             )
         else:
-            return EvalResult(
-                passed=False,
-                score=0.0,
-                reason="No chart creation detected"
-            )
+            return EvalResult(passed=False, score=0.0, reason="No chart creation detected")
 
 
 class SQLQueryValid(BaseEvaluator):
@@ -427,19 +959,15 @@ class SQLQueryValid(BaseEvaluator):
     def description(self) -> str:
         return "Checks if generated SQL query is syntactically valid"
 
-    def evaluate(self, context: Dict[str, Any]) -> EvalResult:
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
         response = context.get("response", "")
 
         # Extract SQL from response (look for code blocks or SQL patterns)
-        sql_pattern = r'```sql\n(.*?)\n```|SELECT\s+.*?FROM\s+.*?(?:;|\n|$)'
+        sql_pattern = r"```sql\n(.*?)\n```|SELECT\s+.*?FROM\s+.*?(?:;|\n|$)"
         sql_matches = re.findall(sql_pattern, response, re.DOTALL | re.IGNORECASE)
 
         if not sql_matches:
-            return EvalResult(
-                passed=False,
-                score=0.0,
-                reason="No SQL query found in response"
-            )
+            return EvalResult(passed=False, score=0.0, reason="No SQL query found in response")
 
         # Basic SQL validation
         sql_query = sql_matches[0] if isinstance(sql_matches[0], str) else sql_matches[0][0]
@@ -447,33 +975,566 @@ class SQLQueryValid(BaseEvaluator):
 
         # Check for basic SQL structure
         required_keywords = ["SELECT", "FROM"]
-        has_required = all(
-            keyword in sql_query.upper()
-            for keyword in required_keywords
-        )
+        has_required = all(keyword in sql_query.upper() for keyword in required_keywords)
 
         if has_required:
             return EvalResult(
                 passed=True,
                 score=1.0,
                 reason="SQL query appears syntactically valid",
-                details={"query": sql_query[:200]}  # First 200 chars
+                details={"query": sql_query[:200]},  # First 200 chars
             )
         else:
             return EvalResult(
                 passed=False,
                 score=0.5,
                 reason="SQL query may have syntax issues",
-                details={"query": sql_query[:200]}
+                details={"query": sql_query[:200]},
             )
 
 
 # Composite evaluator for running multiple evaluations
 
+
+class ResponseIncludes(BaseEvaluator):
+    """Check if the response includes specific content (alias for FinalAnswerContains)."""
+
+    def __init__(
+        self,
+        content: str | list[str],
+        case_sensitive: bool = False,
+        match_all: bool = True,
+    ):
+        """
+        Check if response includes expected content.
+
+        Args:
+            content: String or list of strings that should appear in response
+            case_sensitive: Whether to match case-sensitively (default: False)
+            match_all: If True, all content items must match. If False, any match passes.
+        """
+        self.expected_content = content if isinstance(content, list) else [content]
+        self.case_sensitive = case_sensitive
+        self.match_all = match_all
+
+    @property
+    def name(self) -> str:
+        return "response_includes"
+
+    @property
+    def description(self) -> str:
+        return f"Checks if response includes: {', '.join(self.expected_content[:3])}{'...' if len(self.expected_content) > 3 else ''}"
+
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
+        response = context.get("response", "")
+
+        if not self.case_sensitive:
+            response = response.lower()
+
+        found = []
+        not_found = []
+
+        for content in self.expected_content:
+            check_content = content if self.case_sensitive else content.lower()
+            if check_content in response:
+                found.append(content)
+            else:
+                not_found.append(content)
+
+        score = len(found) / len(self.expected_content) if self.expected_content else 0.0
+
+        if self.match_all:
+            passed = score == 1.0
+            if passed:
+                return EvalResult(
+                    passed=True,
+                    score=score,
+                    reason="All expected content found in response",
+                    details={"found": found},
+                )
+            else:
+                return EvalResult(
+                    passed=False,
+                    score=score,
+                    reason=f"Missing content: {len(not_found)}/{len(self.expected_content)} items",
+                    details={"found": found, "not_found": not_found},
+                )
+        else:
+            # Any match passes
+            passed = len(found) > 0
+            if passed:
+                return EvalResult(
+                    passed=True,
+                    score=score,
+                    reason=f"Found {len(found)}/{len(self.expected_content)} expected items",
+                    details={"found": found, "not_found": not_found},
+                )
+            else:
+                return EvalResult(
+                    passed=False,
+                    score=0.0,
+                    reason="No expected content found in response",
+                    details={"not_found": not_found},
+                )
+
+
+class NoHallucination(BaseEvaluator):
+    """Check that the response doesn't contain hallucinated data not present in tool results."""
+
+    def __init__(
+        self,
+        check_numbers: bool = True,
+        check_names: bool = True,
+        check_dates: bool = True,
+        strict: bool = False,
+    ):
+        """
+        Check for hallucinations in response.
+
+        Args:
+            check_numbers: Verify numeric values in response appear in tool results
+            check_names: Verify names/identifiers in response appear in tool results
+            check_dates: Verify dates in response appear in tool results
+            strict: If True, any unverified data fails. If False, use heuristics.
+        """
+        self.check_numbers = check_numbers
+        self.check_names = check_names
+        self.check_dates = check_dates
+        self.strict = strict
+
+    @property
+    def name(self) -> str:
+        return "no_hallucination"
+
+    @property
+    def description(self) -> str:
+        return "Checks that response data is grounded in tool results"
+
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
+        response = context.get("response", "")
+        tool_results = context.get("tool_results", [])
+
+        if not tool_results:
+            # Can't verify without tool results - pass by default
+            return EvalResult(
+                passed=True,
+                score=0.5,
+                reason="No tool results to verify against",
+                details={"warning": "Unable to verify - no tool data available"},
+            )
+
+        # Collect all data from tool results
+        tool_data = self._extract_tool_data(tool_results)
+
+        # Extract claims from response
+        response_claims = self._extract_claims(response)
+
+        # Verify claims against tool data
+        verified = []
+        unverified = []
+        hallucinated = []
+
+        for claim_type, claim_value in response_claims:
+            if self._verify_claim(claim_type, claim_value, tool_data):
+                verified.append((claim_type, claim_value))
+            else:
+                if self.strict:
+                    hallucinated.append((claim_type, claim_value))
+                else:
+                    unverified.append((claim_type, claim_value))
+
+        total_claims = len(verified) + len(unverified) + len(hallucinated)
+
+        if total_claims == 0:
+            return EvalResult(
+                passed=True,
+                score=1.0,
+                reason="No verifiable claims found in response",
+                details={},
+            )
+
+        if hallucinated:
+            return EvalResult(
+                passed=False,
+                score=len(verified) / total_claims,
+                reason=f"Found {len(hallucinated)} hallucinated value(s)",
+                details={
+                    "hallucinated": [f"{t}: {v}" for t, v in hallucinated],
+                    "verified": [f"{t}: {v}" for t, v in verified],
+                },
+            )
+
+        # Score based on verified vs unverified
+        if self.strict and unverified:
+            score = len(verified) / total_claims
+            return EvalResult(
+                passed=False,
+                score=score,
+                reason=f"{len(unverified)} unverified claim(s) in strict mode",
+                details={
+                    "verified": [f"{t}: {v}" for t, v in verified],
+                    "unverified": [f"{t}: {v}" for t, v in unverified],
+                },
+            )
+
+        return EvalResult(
+            passed=True,
+            score=1.0 if not unverified else 0.8,
+            reason=f"Verified {len(verified)}/{total_claims} claims",
+            details={
+                "verified": [f"{t}: {v}" for t, v in verified],
+                "unverified": [f"{t}: {v}" for t, v in unverified] if unverified else None,
+            },
+        )
+
+    def _extract_tool_data(self, tool_results: list) -> dict[str, set]:
+        """Extract verifiable data from tool results."""
+        data = {"numbers": set(), "strings": set(), "dates": set()}
+
+        for result in tool_results:
+            content = getattr(result, "content", None) or str(result)
+            if isinstance(content, str):
+                # Extract numbers
+                numbers = re.findall(r"\b\d+(?:\.\d+)?\b", content)
+                data["numbers"].update(numbers)
+
+                # Extract potential identifiers/names (capitalized words, quoted strings)
+                names = re.findall(r'"([^"]+)"', content)
+                names.extend(re.findall(r"'([^']+)'", content))
+                data["strings"].update(names)
+
+                # Extract dates (various formats)
+                dates = re.findall(r"\d{4}-\d{2}-\d{2}", content)
+                dates.extend(re.findall(r"\d{2}/\d{2}/\d{4}", content))
+                data["dates"].update(dates)
+
+        return data
+
+    def _extract_claims(self, response: str) -> list[tuple[str, str]]:
+        """Extract verifiable claims from response."""
+        claims = []
+
+        if self.check_numbers:
+            # Extract significant numbers (skip small common numbers like 1, 2, 3)
+            numbers = re.findall(r"\b(\d{2,}(?:\.\d+)?)\b", response)
+            for num in numbers:
+                claims.append(("number", num))
+
+        if self.check_dates:
+            dates = re.findall(r"\d{4}-\d{2}-\d{2}", response)
+            dates.extend(re.findall(r"\d{2}/\d{2}/\d{4}", response))
+            for date in dates:
+                claims.append(("date", date))
+
+        return claims
+
+    def _verify_claim(self, claim_type: str, value: str, tool_data: dict[str, set]) -> bool:
+        """Check if a claim can be verified against tool data."""
+        if claim_type == "number":
+            return value in tool_data["numbers"]
+        elif claim_type == "date":
+            return value in tool_data["dates"]
+        elif claim_type == "string":
+            return value in tool_data["strings"]
+        return False
+
+
+class LLMJudge(BaseEvaluator):
+    """Use an LLM to evaluate the quality of a response."""
+
+    def __init__(
+        self,
+        criteria: str,
+        model: str = "claude-sonnet-4-20250514",
+        provider: str = "anthropic",
+        pass_threshold: float = 0.7,
+        rubric: str | None = None,
+    ):
+        """
+        Use LLM to judge response quality.
+
+        Args:
+            criteria: What to evaluate (e.g., "accuracy", "helpfulness", "completeness")
+            model: LLM model to use for judging
+            provider: LLM provider (anthropic, openai, gemini)
+            pass_threshold: Minimum score (0-1) to pass (default: 0.7)
+            rubric: Optional detailed rubric for scoring. If not provided, uses criteria.
+
+        Example YAML:
+            evaluators:
+              - type: llm_judge
+                criteria: "Response correctly answers the user's question about chart data"
+                pass_threshold: 0.8
+                rubric: |
+                  Score 1.0: Complete, accurate answer with all requested data
+                  Score 0.7: Mostly correct with minor omissions
+                  Score 0.4: Partially correct but missing key information
+                  Score 0.0: Incorrect or unrelated response
+        """
+        self.criteria = criteria
+        self.model = model
+        self.provider = provider
+        self.pass_threshold = pass_threshold
+        self.rubric = rubric or self._default_rubric()
+
+    def _default_rubric(self) -> str:
+        return f"""Evaluate based on: {self.criteria}
+
+Score 1.0: Fully meets the criteria
+Score 0.8: Mostly meets criteria with minor issues
+Score 0.6: Partially meets criteria
+Score 0.4: Significant gaps in meeting criteria
+Score 0.2: Barely addresses the criteria
+Score 0.0: Does not meet criteria at all"""
+
+    @property
+    def name(self) -> str:
+        return f"llm_judge:{self.criteria[:30]}..."
+
+    @property
+    def description(self) -> str:
+        return f"LLM judges response based on: {self.criteria}"
+
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
+        """Evaluate using LLM - runs synchronously by creating event loop if needed."""
+        import asyncio
+
+        try:
+            # Try to get existing event loop
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # We're in an async context, create a new task
+                import concurrent.futures
+
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(asyncio.run, self._async_evaluate(context))
+                    return future.result(timeout=60)
+            else:
+                return loop.run_until_complete(self._async_evaluate(context))
+        except RuntimeError:
+            # No event loop, create one
+            return asyncio.run(self._async_evaluate(context))
+
+    async def _async_evaluate(self, context: dict[str, Any]) -> EvalResult:
+        """Async evaluation using LLM."""
+        import httpx
+        import json
+        import os
+
+        prompt = context.get("prompt", "")
+        response = context.get("response", "")
+        tool_calls = context.get("tool_calls", [])
+        tool_results = context.get("tool_results", [])
+
+        # Build context for the judge
+        judge_context = f"""## Original User Request
+{prompt}
+
+## Assistant Response
+{response}
+
+## Tool Calls Made
+{json.dumps(tool_calls, indent=2) if tool_calls else "None"}
+
+## Tool Results
+{self._format_tool_results(tool_results) if tool_results else "None"}
+"""
+
+        judge_prompt = f"""You are an impartial judge evaluating an AI assistant's response.
+
+{judge_context}
+
+## Evaluation Criteria
+{self.criteria}
+
+## Scoring Rubric
+{self.rubric}
+
+## Instructions
+1. Analyze the response against the criteria
+2. Consider the tool calls and results in your evaluation
+3. Provide a score from 0.0 to 1.0
+4. Explain your reasoning
+
+Respond in this exact JSON format:
+{{"score": 0.X, "reasoning": "Your explanation here"}}"""
+
+        try:
+            result = await self._call_llm(judge_prompt)
+
+            # Parse JSON response
+            try:
+                # Extract JSON from response (handle markdown code blocks)
+                json_str = result
+                if "```json" in result:
+                    json_str = result.split("```json")[1].split("```")[0]
+                elif "```" in result:
+                    json_str = result.split("```")[1].split("```")[0]
+
+                parsed = json.loads(json_str.strip())
+                score = float(parsed.get("score", 0))
+                reasoning = parsed.get("reasoning", "No reasoning provided")
+
+            except (json.JSONDecodeError, ValueError, IndexError):
+                # Fallback: try to extract score from text
+                score = self._extract_score(result)
+                reasoning = result
+
+            passed = score >= self.pass_threshold
+
+            return EvalResult(
+                passed=passed,
+                score=score,
+                reason=f"LLM Judge score: {score:.2f} (threshold: {self.pass_threshold})",
+                details={
+                    "reasoning": reasoning,
+                    "criteria": self.criteria,
+                    "model": self.model,
+                    "threshold": self.pass_threshold,
+                },
+            )
+
+        except Exception as e:
+            return EvalResult(
+                passed=False,
+                score=0.0,
+                reason=f"LLM Judge error: {str(e)}",
+                details={"error": str(e)},
+            )
+
+    def _format_tool_results(self, tool_results: list) -> str:
+        """Format tool results for the judge."""
+        formatted = []
+        for result in tool_results:
+            content = getattr(result, "content", str(result))
+            if len(str(content)) > 500:
+                content = str(content)[:500] + "..."
+            formatted.append(f"- {content}")
+        return "\n".join(formatted) if formatted else "None"
+
+    def _extract_score(self, text: str) -> float:
+        """Try to extract a score from unstructured text."""
+        import re
+
+        # Look for patterns like "score: 0.8" or "0.8/1.0" or "8/10"
+        patterns = [
+            r"score[:\s]+([0-9.]+)",
+            r"([0-9.]+)\s*/\s*1\.?0?",
+            r"([0-9]+)\s*/\s*10",
+            r"rating[:\s]+([0-9.]+)",
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, text.lower())
+            if match:
+                try:
+                    score = float(match.group(1))
+                    # Normalize to 0-1 range
+                    if score > 1:
+                        score = score / 10
+                    return min(1.0, max(0.0, score))
+                except ValueError:
+                    continue
+
+        return 0.0
+
+    async def _call_llm(self, prompt: str) -> str:
+        """Call LLM API for judging."""
+        import httpx
+        import os
+
+        # Get config
+        try:
+            from testmcpy.config import get_config
+
+            config = get_config()
+        except ImportError:
+            config = None
+
+        if self.provider == "anthropic":
+            api_key = (
+                os.environ.get("ANTHROPIC_API_KEY")
+                or (config.get("ANTHROPIC_API_KEY") if config else None)
+                or ""
+            )
+            if not api_key:
+                raise ValueError("ANTHROPIC_API_KEY not set")
+
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers={
+                        "x-api-key": api_key,
+                        "anthropic-version": "2023-06-01",
+                        "content-type": "application/json",
+                    },
+                    json={
+                        "model": self.model,
+                        "max_tokens": 500,
+                        "messages": [{"role": "user", "content": prompt}],
+                    },
+                )
+                response.raise_for_status()
+                result = response.json()
+                return result["content"][0]["text"]
+
+        elif self.provider == "openai":
+            api_key = (
+                os.environ.get("OPENAI_API_KEY")
+                or (config.get("OPENAI_API_KEY") if config else None)
+                or ""
+            )
+            if not api_key:
+                raise ValueError("OPENAI_API_KEY not set")
+
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": self.model,
+                        "max_tokens": 500,
+                        "messages": [{"role": "user", "content": prompt}],
+                    },
+                )
+                response.raise_for_status()
+                result = response.json()
+                return result["choices"][0]["message"]["content"]
+
+        elif self.provider in ("gemini", "google"):
+            api_key = (
+                os.environ.get("GOOGLE_API_KEY")
+                or os.environ.get("GEMINI_API_KEY")
+                or (config.get("GOOGLE_API_KEY") if config else None)
+                or (config.get("GEMINI_API_KEY") if config else None)
+                or ""
+            )
+            if not api_key:
+                raise ValueError("GOOGLE_API_KEY or GEMINI_API_KEY not set")
+
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={api_key}",
+                    json={
+                        "contents": [{"parts": [{"text": prompt}]}],
+                        "generationConfig": {"maxOutputTokens": 500},
+                    },
+                )
+                response.raise_for_status()
+                result = response.json()
+                return result["candidates"][0]["content"]["parts"][0]["text"]
+
+        else:
+            raise ValueError(f"Unsupported provider for LLM judge: {self.provider}")
+
+
 class CompositeEvaluator(BaseEvaluator):
     """Run multiple evaluators and combine results."""
 
-    def __init__(self, evaluators: List[BaseEvaluator], require_all: bool = False):
+    def __init__(self, evaluators: list[BaseEvaluator], require_all: bool = False):
         self.evaluators = evaluators
         self.require_all = require_all
 
@@ -486,18 +1547,20 @@ class CompositeEvaluator(BaseEvaluator):
         mode = "all" if self.require_all else "any"
         return f"Composite evaluator requiring {mode} to pass"
 
-    def evaluate(self, context: Dict[str, Any]) -> EvalResult:
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
         results = []
         total_score = 0.0
 
         for evaluator in self.evaluators:
             result = evaluator.evaluate(context)
-            results.append({
-                "evaluator": evaluator.name,
-                "passed": result.passed,
-                "score": result.score,
-                "reason": result.reason
-            })
+            results.append(
+                {
+                    "evaluator": evaluator.name,
+                    "passed": result.passed,
+                    "score": result.score,
+                    "reason": result.reason,
+                }
+            )
             total_score += result.score
 
         avg_score = total_score / len(self.evaluators) if self.evaluators else 0.0
@@ -505,32 +1568,71 @@ class CompositeEvaluator(BaseEvaluator):
 
         if self.require_all:
             passed = passed_count == len(self.evaluators)
-            reason = f"All evaluators passed" if passed else f"{passed_count}/{len(self.evaluators)} evaluators passed"
+            reason = (
+                "All evaluators passed"
+                if passed
+                else f"{passed_count}/{len(self.evaluators)} evaluators passed"
+            )
         else:
             passed = passed_count > 0
             reason = f"{passed_count}/{len(self.evaluators)} evaluators passed"
 
         return EvalResult(
-            passed=passed,
-            score=avg_score,
-            reason=reason,
-            details={"results": results}
+            passed=passed, score=avg_score, reason=reason, details={"results": results}
         )
 
 
 # Factory function for creating evaluators
 
+
 def create_evaluator(name: str, **kwargs) -> BaseEvaluator:
-    """Factory function to create evaluators by name."""
+    """
+    Factory function to create evaluators by name.
+
+    Args:
+        name: Name of the evaluator to create
+        **kwargs: Arguments to pass to the evaluator constructor
+
+    Returns:
+        Instance of the requested evaluator
+
+    Raises:
+        ValueError: If evaluator name is unknown
+    """
+    # Import auth evaluators here to avoid circular imports
+    from testmcpy.evals.auth_evaluators import (
+        AuthErrorHandlingEvaluator,
+        AuthSuccessfulEvaluator,
+        OAuth2FlowEvaluator,
+        TokenValidEvaluator,
+    )
+
     evaluators = {
+        # Basic evaluators
         "was_mcp_tool_called": WasMCPToolCalled,
         "execution_successful": ExecutionSuccessful,
         "final_answer_contains": FinalAnswerContains,
+        "response_includes": ResponseIncludes,  # More intuitive name
+        "no_hallucination": NoHallucination,
+        "llm_judge": LLMJudge,  # LLM-as-judge evaluator
         "answer_contains_link": AnswerContainsLink,
         "within_time_limit": WithinTimeLimit,
         "token_usage_reasonable": TokenUsageReasonable,
-        "was_superset_chart_created": WasSupersetChartCreated,
+        # Parameter validation evaluators
+        "tool_called_with_parameter": ToolCalledWithParameter,
+        "tool_called_with_parameters": ToolCalledWithParameters,
+        "parameter_value_in_range": ParameterValueInRange,
+        "tool_call_count": ToolCallCount,
+        "tool_call_sequence": ToolCallSequence,
+        # Chart creation evaluators
+        "was_chart_created": WasChartCreated,
+        "was_superset_chart_created": WasChartCreated,  # Backward compatibility alias
         "sql_query_valid": SQLQueryValid,
+        # Auth evaluators
+        "auth_successful": AuthSuccessfulEvaluator,
+        "token_valid": TokenValidEvaluator,
+        "oauth2_flow_complete": OAuth2FlowEvaluator,
+        "auth_error_handling": AuthErrorHandlingEvaluator,
     }
 
     if name not in evaluators:

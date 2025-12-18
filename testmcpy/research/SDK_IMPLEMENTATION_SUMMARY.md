@@ -19,9 +19,9 @@ Successfully implemented Phase 1 (Research & Prototyping) and Phase 2 (SDK Provi
    - All dependencies resolved successfully
 
 2. **Created Proof-of-Concept Files** ✅
-   - `/Users/amin/github/preset-io/testmcpy/research/claude_sdk_poc.py`
-   - `/Users/amin/github/preset-io/testmcpy/research/claude_sdk_detailed_exploration.py`
-   - `/Users/amin/github/preset-io/testmcpy/research/claude_sdk_working_poc.py`
+   - `research/claude_sdk_poc.py`
+   - `research/claude_sdk_detailed_exploration.py`
+   - `research/claude_sdk_working_poc.py`
 
 3. **SDK API Exploration** ✅
    - Documented all available SDK components:
@@ -150,7 +150,7 @@ The ClaudeSDKProvider maintains full compatibility with the LLMProvider interfac
 
 ### Test File Created
 
-`/Users/amin/github/preset-io/testmcpy/tests/sdk_test.yaml`
+`tests/sdk_test.yaml`
 
 ### Test Command
 
@@ -256,16 +256,16 @@ Phase 1 & 2 success criteria met:
 ## Files Created/Modified
 
 ### Created Files
-1. `/Users/amin/github/preset-io/testmcpy/research/claude_sdk_poc.py`
-2. `/Users/amin/github/preset-io/testmcpy/research/claude_sdk_detailed_exploration.py`
-3. `/Users/amin/github/preset-io/testmcpy/research/claude_sdk_working_poc.py`
-4. `/Users/amin/github/preset-io/testmcpy/tests/sdk_test.yaml`
-5. `/Users/amin/github/preset-io/testmcpy/research/SDK_IMPLEMENTATION_SUMMARY.md` (this file)
+1. `research/claude_sdk_poc.py`
+2. `research/claude_sdk_detailed_exploration.py`
+3. `research/claude_sdk_working_poc.py`
+4. `tests/sdk_test.yaml`
+5. `research/SDK_IMPLEMENTATION_SUMMARY.md` (this file)
 
 ### Modified Files
-1. `/Users/amin/github/preset-io/testmcpy/pyproject.toml` - Added claude-agent-sdk dependency
-2. `/Users/amin/github/preset-io/testmcpy/src/llm_integration.py` - Added ClaudeSDKProvider class and factory update
-3. `/Users/amin/github/preset-io/testmcpy/cli.py` - Added claude_sdk to ModelProvider enum
+1. `pyproject.toml` - Added claude-agent-sdk dependency
+2. `src/llm_integration.py` - Added ClaudeSDKProvider class and factory update
+3. `cli.py` - Added claude_sdk to ModelProvider enum
 
 ## Recommendations
 
