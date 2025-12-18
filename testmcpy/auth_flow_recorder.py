@@ -235,7 +235,19 @@ class AuthFlowRecorder:
         if storage_dir is None:
             storage_dir = Path.home() / ".testmcpy" / "auth_flows"
         self.storage_dir = Path(storage_dir)
-        self.storage_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            # Check if parent path exists as a file (not directory)
+            testmcpy_dir = Path.home() / ".testmcpy"
+            if testmcpy_dir.exists() and not testmcpy_dir.is_dir():
+                # Remove the file and create directory instead
+                testmcpy_dir.unlink()
+            self.storage_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            # Fall back to temp directory if home directory fails
+            import tempfile
+
+            self.storage_dir = Path(tempfile.gettempdir()) / "testmcpy" / "auth_flows"
+            self.storage_dir.mkdir(parents=True, exist_ok=True)
         self.console = Console()
         self.current_recording: AuthFlowRecording | None = None
 
@@ -328,9 +340,7 @@ class AuthFlowRecorder:
         self.current_recording = None
         return recording
 
-    def save_recording(
-        self, recording: AuthFlowRecording, filename: str | None = None
-    ) -> Path:
+    def save_recording(self, recording: AuthFlowRecording, filename: str | None = None) -> Path:
         """Save a recording to a JSON file.
 
         Args:
@@ -341,9 +351,7 @@ class AuthFlowRecorder:
             Path to the saved file
         """
         if filename is None:
-            timestamp = datetime.fromtimestamp(recording.start_time).strftime(
-                "%Y%m%d_%H%M%S"
-            )
+            timestamp = datetime.fromtimestamp(recording.start_time).strftime("%Y%m%d_%H%M%S")
             filename = f"{recording.auth_type}_{recording.flow_name}_{timestamp}.json"
 
         # Sanitize filename
@@ -451,8 +459,7 @@ class AuthFlowRecorder:
             },
             "differences": {
                 "success_changed": recording1.success != recording2.success,
-                "step_count_delta": recording2.get_step_count()
-                - recording1.get_step_count(),
+                "step_count_delta": recording2.get_step_count() - recording1.get_step_count(),
                 "duration_delta": recording2.get_duration() - recording1.get_duration(),
                 "step_differences": [],
             },
@@ -525,8 +532,7 @@ class AuthFlowRecorder:
             icon = "✓" if step.success else "✗"
             color = "green" if step.success else "red"
             branch = tree.add(
-                f"[{color}]{i}. {icon} {step.step_name}[/{color}] "
-                f"[dim]({step.duration:.2f}s)[/dim]"
+                f"[{color}]{i}. {icon} {step.step_name}[/{color}] [dim]({step.duration:.2f}s)[/dim]"
             )
 
             # Add step details
@@ -625,9 +631,7 @@ class AuthFlowRecorder:
         else:
             self.console.print("\n[green]No step differences found[/green]")
 
-    def export_to_json(
-        self, recording: AuthFlowRecording, filepath: str | Path
-    ) -> Path:
+    def export_to_json(self, recording: AuthFlowRecording, filepath: str | Path) -> Path:
         """Export a recording to a JSON file.
 
         Args:
