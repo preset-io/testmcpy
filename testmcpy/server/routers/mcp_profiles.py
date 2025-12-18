@@ -148,6 +148,11 @@ profiles:
 
         config_file.write_text(default_template)
 
+        # Reload the profile config cache
+        from testmcpy.mcp_profiles import reload_profile_config
+
+        reload_profile_config()
+
         return {
             "success": True,
             "message": "Created .mcp_services.yaml with default template",
