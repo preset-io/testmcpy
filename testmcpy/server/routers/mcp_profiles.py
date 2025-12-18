@@ -166,15 +166,20 @@ global:
 @router.get("/profiles")
 async def list_mcp_profiles():
     """List available MCP profiles from .mcp_services.yaml."""
-    from testmcpy.mcp_profiles import get_profile_config
+    from testmcpy.mcp_profiles import reload_profile_config
 
     try:
-        profile_config = get_profile_config()
+        # Always reload to pick up file changes
+        profile_config = reload_profile_config()
         if not profile_config.has_profiles():
             return {
                 "profiles": [],
                 "default": None,
                 "message": "No .mcp_services.yaml file found",
+                "searched_path": str(Path.cwd() / ".mcp_services.yaml"),
+                "config_path": str(profile_config.config_path)
+                if profile_config.config_path
+                else None,
             }
 
         profiles_list = []
