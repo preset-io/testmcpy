@@ -97,10 +97,9 @@ def get_mcp_clients() -> dict[str, MCPClient]:
 
 @router.post("/profiles/create-config")
 async def create_mcp_config():
-    """Create .mcp_services.yaml from the example file."""
+    """Create .mcp_services.yaml with a default template."""
     try:
-        example_file = Path(".mcp_services.yaml.example")
-        config_file = Path(".mcp_services.yaml")
+        config_file = Path.cwd() / ".mcp_services.yaml"
 
         if config_file.exists():
             return {
@@ -108,14 +107,50 @@ async def create_mcp_config():
                 "error": "Configuration file already exists at .mcp_services.yaml",
             }
 
-        if not example_file.exists():
-            return {"success": False, "error": "Example file .mcp_services.yaml.example not found"}
+        # Default template
+        default_template = """# MCP Services Configuration
+# Documentation: https://github.com/preset-io/testmcpy
 
-        shutil.copy(example_file, config_file)
+# Default profile to use when none specified
+default: my-profile
+
+# Profile definitions
+profiles:
+  my-profile:
+    # Display name for the profile
+    name: My MCP Server
+
+    # MCP servers in this profile
+    mcps:
+      my-server:
+        # Server name (displayed in UI)
+        name: My Server
+
+        # How to start the server
+        # Option 1: Command to run
+        command: npx
+        args:
+          - -y
+          - "@my-org/my-mcp-server"
+
+        # Option 2: URL for remote server
+        # url: http://localhost:3000/mcp
+
+        # Environment variables (optional)
+        # env:
+        #   API_KEY: your-api-key
+
+        # Authentication (optional)
+        # auth:
+        #   type: bearer
+        #   token_env: MY_API_TOKEN
+"""
+
+        config_file.write_text(default_template)
 
         return {
             "success": True,
-            "message": "Created .mcp_services.yaml from example template",
+            "message": "Created .mcp_services.yaml with default template",
             "path": str(config_file.absolute()),
         }
 
