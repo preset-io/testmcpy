@@ -135,7 +135,7 @@ class TestStorage:
                     environment_id TEXT,
                     model TEXT NOT NULL,
                     provider TEXT NOT NULL,
-                    runner_tool TEXT DEFAULT 'preset-mcp-client',
+                    runner_tool TEXT DEFAULT 'mcp-client',
                     mcp_setup_version TEXT,
                     started_at TEXT NOT NULL,
                     completed_at TEXT,
@@ -832,7 +832,7 @@ class TestStorage:
         provider: str,
         started_at: str,
         environment_id: str | None = None,
-        runner_tool: str = "preset-mcp-client",
+        runner_tool: str = "mcp-client",
         mcp_setup_version: str | None = None,
         metadata: dict | None = None,
     ) -> None:

@@ -1,0 +1,16 @@
+version: "1.0"
+tests:
+  - name: test_get_dataset_info_by_numeric_id
+    prompt: "Can you get the detailed information for dataset ID 42? I need to see the columns, metrics, and schema details."
+    evaluators:
+      - name: execution_successful
+      - name: was_mcp_tool_called
+        args:
+          tool_name: "get_dataset_info"
+  - name: test_get_dataset_info_by_uuid
+    prompt: "I have this dataset UUID a1b2c3d4-5678-90ab-cdef-1234567890ab and need to check its metadata including all available columns and any defined metrics."
+    evaluators:
+      - name: execution_successful
+      - name: was_mcp_tool_called
+        args:
+          tool_name: "get_dataset_info"

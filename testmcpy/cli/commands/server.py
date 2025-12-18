@@ -40,7 +40,7 @@ def init(
     )
 
     # Create directories
-    dirs = ["tests", "evals", "reports"]
+    dirs = ["tests", "evals"]
     for dir_name in dirs:
         dir_path = path / dir_name
         dir_path.mkdir(parents=True, exist_ok=True)
@@ -301,7 +301,7 @@ def setup(
             console.input("  New URL (or press Enter to keep current): ").strip() or current_mcp_url
         )
     else:
-        mcp_url = console.input("MCP Service URL [https://your-workspace.preset.io/mcp]: ").strip()
+        mcp_url = console.input("MCP Service URL [https://your-instance.example.com/mcp]: ").strip()
 
     if not mcp_url:
         console.print("[yellow]Skipping MCP configuration[/yellow]")
@@ -327,7 +327,7 @@ def setup(
         elif has_static_token:
             console.print("[dim]Currently configured: Static Token[/dim]")
 
-        console.print("1. [cyan]Dynamic JWT[/cyan] - Fetch token from Preset API (recommended)")
+        console.print("1. [cyan]Dynamic JWT[/cyan] - Fetch token from auth API (recommended)")
         console.print("2. [cyan]Static Token[/cyan] - Use a pre-generated bearer token")
         console.print("3. [cyan]None[/cyan] - No authentication required")
 
@@ -347,7 +347,7 @@ def setup(
                 )
             else:
                 api_url = console.input(
-                    "Auth API URL (e.g., https://api.app.preset.io/v1/auth/): "
+                    "Auth API URL (e.g., https://api.example.com/v1/auth/): "
                 ).strip()
 
             current_api_token = current_config.get("MCP_AUTH_API_TOKEN")
@@ -411,7 +411,7 @@ def setup(
                     "description": "Production MCP service",
                     "mcps": [
                         {
-                            "name": "Preset Superset",
+                            "name": "Superset MCP",
                             "mcp_url": mcp_url,
                             "auth": auth_config,
                             "timeout": 30,
@@ -716,7 +716,7 @@ def config_mcp(
         ..., help="Target application: claude-desktop, claude-code, or chatgpt-desktop"
     ),
     server_name: str | None = typer.Option(
-        None, "--name", "-n", help="Server name in config (default: preset-superset)"
+        None, "--name", "-n", help="Server name in config (default: superset)"
     ),
     mcp_url: str | None = typer.Option(
         None, "--mcp-url", help="MCP service URL (uses config default if not provided)"
@@ -795,7 +795,7 @@ def config_mcp(
     # Get MCP configuration
     cfg = get_config()
     mcp_url = mcp_url or cfg.get_mcp_url()
-    server_name = server_name or "preset-superset"
+    server_name = server_name or "superset"
 
     if not mcp_url:
         console.print("[red]Error: MCP URL not configured[/red]")

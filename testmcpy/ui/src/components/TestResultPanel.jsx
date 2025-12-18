@@ -150,7 +150,7 @@ function TestResultPanel({ result, initialExpanded = false }) {
                             <span className={`text-sm font-medium ${
                               failed ? 'text-error' : 'text-text-primary'
                             }`}>
-                              {evaluation.evaluator}
+                              {evaluation.evaluator || evaluation.name || 'Unknown Evaluator'}
                             </span>
                             {evaluation.score !== undefined && (
                               <span className="text-xs text-text-tertiary font-mono">

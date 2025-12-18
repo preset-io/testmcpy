@@ -1189,7 +1189,7 @@ class ClaudeSDKProvider(LLMProvider):
 
             # Add our MCP server if we have config
             if self._mcp_server_config:
-                options.mcp_servers["preset-superset"] = self._mcp_server_config
+                options.mcp_servers["superset"] = self._mcp_server_config
                 # Mask token for logging
                 masked_config = dict(self._mcp_server_config)
                 if "headers" in masked_config and "Authorization" in masked_config["headers"]:
@@ -1197,7 +1197,7 @@ class ClaudeSDKProvider(LLMProvider):
                     if len(token) > 30:
                         masked_token = f"{token[:20]}...{token[-8:]}"
                         masked_config["headers"]["Authorization"] = f"Bearer {masked_token}"
-                print("[SDK] Added MCP server 'preset-superset' to SDK options")
+                print("[SDK] Added MCP server 'superset' to SDK options")
                 print(f"[SDK] URL: {masked_config.get('url')}")
                 print(f"[SDK] Auth: {'Yes (token masked)' if 'headers' in masked_config else 'No'}")
             else:

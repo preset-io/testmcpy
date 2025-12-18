@@ -86,7 +86,7 @@ class TestRunRequest(BaseModel):
     test_path: str
     model: str | None = None
     provider: str | None = None
-    profile: str | None = None  # MCP profile selection (e.g., "sandbox:Preset Sandbox 66d22a6f")
+    profile: str | None = None  # MCP profile selection (e.g., "sandbox:My Workspace")
     test_name: str | None = None  # Optional: run only a specific test by name
     stream: bool = False  # Enable streaming test output
 
@@ -116,9 +116,7 @@ class FormatSchemaRequest(BaseModel):
     format: str  # e.g., "python_client", "javascript_client", "typescript_client"
     mcp_url: str | None = None  # For curl format with actual values
     auth_token: str | None = None  # For curl format with actual values
-    profile: str | None = (
-        None  # MCP profile to get auth from (e.g., "sandbox:Preset Sandbox 66d22a6f")
-    )
+    profile: str | None = None  # MCP profile to get auth from (e.g., "sandbox:My Workspace")
 
     model_config = {"populate_by_name": True}
 

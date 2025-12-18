@@ -1,0 +1,56 @@
+{
+  "metadata": {
+    "tool_name": "get_deployment_cost",
+    "tool_description": "Calculate the estimated cost of a specific Kubernetes deployment.\n\nArgs:\n    deployment: Name of the deployment\n    namespace: Namespace where the deployment is located\n    cluster: Cluster name. Uses default cluster if not specified.\n\nReturns:\n    JSON with cost breakdown including per-replica cost.",
+    "coverage_level": "basic",
+    "provider": "claude-cli",
+    "model": "claude-sonnet-4-20250514",
+    "timestamp": "2025-12-17T16:09:17.160815",
+    "success": false,
+    "test_count": 0,
+    "total_cost": 0,
+    "error": "'NoneType' object has no attribute 'get'",
+    "log_id": "3d489619_20251217_160917"
+  },
+  "tool_schema": {
+    "properties": {
+      "deployment": {
+        "type": "string"
+      },
+      "namespace": {
+        "type": "string"
+      },
+      "cluster": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "required": [
+      "deployment",
+      "namespace"
+    ],
+    "type": "object"
+  },
+  "llm_calls": [],
+  "logs": [
+    "\ud83d\ude80 Starting test generation for get_deployment_cost",
+    "\ud83d\udccb Coverage level: basic",
+    "\ud83e\udd16 Using claude-cli/claude-sonnet-4-20250514",
+    "\ud83d\udd27 Initializing LLM provider...",
+    "\u2713 LLM provider ready",
+    "\ud83d\udcca Step 1/2: Analyzing tool schema...",
+    "   Tool: get_deployment_cost",
+    "   Description: Calculate the estimated cost of a specific Kubernetes deployment.\n\nArgs:\n    deployment: Name of the...",
+    "   Sending analysis prompt to LLM...",
+    "   \u2713 Analysis complete ($0.0000)"
+  ],
+  "analysis": null,
+  "generated_yaml": null
+}

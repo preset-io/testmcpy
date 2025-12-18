@@ -1,0 +1,226 @@
+{
+  "metadata": {
+    "run_id": "6a07219d_20251218_102650",
+    "test_file": "list_charts/basic_20251217_140254.yaml",
+    "test_file_path": "/Users/amin/github/preset-io/testmcpy/tests/list_charts/basic_20251217_140254.yaml",
+    "timestamp": "2025-12-18T10:26:50.821556",
+    "provider": "claude-cli",
+    "model": "claude-sonnet-4-20250514",
+    "mcp_profile": "sandbox",
+    "version": "1.0",
+    "total_tests": 2,
+    "passed": 2,
+    "failed": 0,
+    "total_cost": 0.0,
+    "total_tokens": 1249,
+    "total_duration": 42.32074308395386
+  },
+  "results": [
+    {
+      "test_name": "test_list_all_charts",
+      "passed": true,
+      "score": 1.0,
+      "duration": 19.77289891242981,
+      "reason": "All evaluators passed",
+      "tool_calls": [
+        {
+          "id": "toolu_01L3udajorQZxuADDPKKMyuM",
+          "name": "mcp__testmcpy__list_charts",
+          "arguments": {
+            "request": {}
+          },
+          "result": {
+            "content": "{\"charts\":[{\"id\":74,\"slice_name\":\"Line Chart - year vs global_sales\",\"viz_type\":\"echarts_timeseries_line\",\"datasource_name\":\"public.Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-04T15:07:47.264085\",\"created_on\":\"2025-10-30T23:32:28.958387\",\"uuid\":\"d9ee118e-5380-480e-8e38-b51ba6cb2ef7\"},{\"id\":1,\"slice_name\":\"# of Games That Hit 100k in Sales By Release Year\",\"viz_type\":\"treemap_v2\",\"datasource_name\":\"Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.505782\",\"created_on\":\"2025-10-23T22:43:33.541254\",\"uuid\":\"2aec7bc1-fd87-4545-947e-99b231f29d49\"},{\"id\":2,\"slice_name\":\"World's Population\",\"viz_type\":\"big_number\",\"datasource_name\":\"World Bank Health Data\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.527865\",\"created_on\":\"2025-10-23T22:43:33.552354\",\"uuid\":\"62691573-cb29-4b02-8ee6-dbc51ba00fb4\"},{\"id\":3,\"slice_name\":\"World's Pop Growth\",\"viz_type\":\"echarts_area\",\"datasource_name\":\"World Bank Health Data\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.545959\",\"created_on\":\"2025-10-23T22:43:33.561083\",\"uuid\":\"8e7b8f10-d128-4d09-b0b6-830b4f235142\"},{\"id\":4,\"slice_name\":\"Work Location Preference\",\"viz_type\":\"pie\",\"datasource_name\":\"FCC 2018 Survey\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.564160\",\"created_on\":\"2025-10-23T22:43:33.571436\",\"uuid\":\"792aea5b-2fc7-4ef7-8a53-a381cd79ee9f\"},{\"id\":5,\"slice_name\":\"Weekly Threads\",\"viz_type\":\"big_number\",\"datasource_name\":\"Slack Threads\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.582292\",\"created_on\":\"2025-10-23T22:43:33.580668\",\"uuid\":\"33a351c2-0f7c-4f6f-9a74-d1d05bdce100\"},{\"id\":6,\"slice_name\":\"Weekly Messages\",\"viz_type\":\"big_number\",\"datasource_name\":\"Slack Messages\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.601162\",\"created_on\":\"2025-10-23T22:43:33.589779\",\"uuid\":\"fa7e8998-3852-459b-9a10-550293926455\"},{\"id\":7,\"slice_name\":\"Vaccine Candidates per Phase\",\"viz_type\":\"pie\",\"datasource_name\":\"COVID Vaccines\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.621546\",\"created_on\":\"2025-10-23T22:43:33.598106\",\"uuid\":\"29e87a11-f990-45d5-bca1-601d0e1b586e\"},{\"id\":8,\"slice_name\":\"Vaccine Candidates per Phase\",\"viz_type\":\"echarts_timeseries_bar\",\"datasource_name\":\"COVID Vaccines\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.642548\",\"created_on\":\"2025-10-23T22:43:33.605847\",\"uuid\":\"638287c5-aa2b-4f26-b7ca-fa624913b768\"},{\"id\":9,\"slice_name\":\"Vaccine Candidates per Country & Stage\",\"viz_type\":\"sunburst_v2\",\"datasource_name\":\"COVID Vaccines\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.661229\",\"created_on\":\"2025-10-23T22:43:33.613675\",\"uuid\":\"6cae1766-ef85-450b-925d-e8f8c79f9b80\"}],\"count\":10,\"total_count\":78,\"page\":0,\"page_size\":10,\"total_pages\":8,\"has_previous\":false,\"has_next\":true,\"columns_requested\":[\"id\",\"slice_name\",\"viz_type\",\"datasource_name\",\"description\",\"changed_by_name\",\"created_by_name\",\"changed_on\",\"created_on\",\"uuid\"],\"columns_loaded\":[\"id\",\"slice_name\",\"viz_type\",\"datasource_name\",\"description\",\"changed_by_name\",\"created_by_name\",\"changed_on\",\"created_on\",\"uuid\"],\"filters_applied\":[],\"pagination\":{\"page\":0,\"page_size\":10,\"total_count\":78,\"total_pages\":8,\"has_next\":true,\"has_previous\":false},\"timestamp\":\"2025-12-18T15:26:18.305784Z\"}",
+            "is_error": false
+          }
+        }
+      ],
+      "tool_results": [
+        {
+          "tool_call_id": "toolu_01L3udajorQZxuADDPKKMyuM",
+          "content": "{\"charts\":[{\"id\":74,\"slice_name\":\"Line Chart - year vs global_sales\",\"viz_type\":\"echarts_timeseries_line\",\"datasource_name\":\"public.Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-04T15:07:47.264085\",\"created_on\":\"2025-10-30T23:32:28.958387\",\"uuid\":\"d9ee118e-5380-480e-8e38-b51ba6cb2ef7\"},{\"id\":1,\"slice_name\":\"# of Games That Hit 100k in Sales By Release Year\",\"viz_type\":\"treemap_v2\",\"datasource_name\":\"Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.505782\",\"created_on\":\"2025-10-23T22:43:33.541254\",\"uuid\":\"2aec7bc1-fd87-4545-947e-99b231f29d49\"},{\"id\":2,\"slice_name\":\"World's Population\",\"viz_type\":\"big_number\",\"datasource_name\":\"World Bank Health Data\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.527865\",\"created_on\":\"2025-10-23T22:43:33.552354\",\"uuid\":\"62691573-cb29-4b02-8ee6-dbc51ba00fb4\"},{\"id\":3,\"slice_name\":\"World's Pop Growth\",\"viz_type\":\"echarts_area\",\"datasource_name\":\"World Bank Health Data\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.545959\",\"created_on\":\"2025-10-23T22:43:33.561083\",\"uuid\":\"8e7b8f10-d128-4d09-b0b6-830b4f235142\"},{\"id\":4,\"slice_name\":\"Work Location Preference\",\"viz_type\":\"pie\",\"datasource_name\":\"FCC 2018 Survey\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.564160\",\"created_on\":\"2025-10-23T22:43:33.571436\",\"uuid\":\"792aea5b-2fc7-4ef7-8a53-a381cd79ee9f\"},{\"id\":5,\"slice_name\":\"Weekly Threads\",\"viz_type\":\"big_number\",\"datasource_name\":\"Slack Threads\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.582292\",\"created_on\":\"2025-10-23T22:43:33.580668\",\"uuid\":\"33a351c2-0f7c-4f6f-9a74-d1d05bdce100\"},{\"id\":6,\"slice_name\":\"Weekly Messages\",\"viz_type\":\"big_number\",\"datasource_name\":\"Slack Messages\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.601162\",\"created_on\":\"2025-10-23T22:43:33.589779\",\"uuid\":\"fa7e8998-3852-459b-9a10-550293926455\"},{\"id\":7,\"slice_name\":\"Vaccine Candidates per Phase\",\"viz_type\":\"pie\",\"datasource_name\":\"COVID Vaccines\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.621546\",\"created_on\":\"2025-10-23T22:43:33.598106\",\"uuid\":\"29e87a11-f990-45d5-bca1-601d0e1b586e\"},{\"id\":8,\"slice_name\":\"Vaccine Candidates per Phase\",\"viz_type\":\"echarts_timeseries_bar\",\"datasource_name\":\"COVID Vaccines\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.642548\",\"created_on\":\"2025-10-23T22:43:33.605847\",\"uuid\":\"638287c5-aa2b-4f26-b7ca-fa624913b768\"},{\"id\":9,\"slice_name\":\"Vaccine Candidates per Country & Stage\",\"viz_type\":\"sunburst_v2\",\"datasource_name\":\"COVID Vaccines\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.661229\",\"created_on\":\"2025-10-23T22:43:33.613675\",\"uuid\":\"6cae1766-ef85-450b-925d-e8f8c79f9b80\"}],\"count\":10,\"total_count\":78,\"page\":0,\"page_size\":10,\"total_pages\":8,\"has_previous\":false,\"has_next\":true,\"columns_requested\":[\"id\",\"slice_name\",\"viz_type\",\"datasource_name\",\"description\",\"changed_by_name\",\"created_by_name\",\"changed_on\",\"created_on\",\"uuid\"],\"columns_loaded\":[\"id\",\"slice_name\",\"viz_type\",\"datasource_name\",\"description\",\"changed_by_name\",\"created_by_name\",\"changed_on\",\"created_on\",\"uuid\"],\"filters_applied\":[],\"pagination\":{\"page\":0,\"page_size\":10,\"total_count\":78,\"total_pages\":8,\"has_next\":true,\"has_previous\":false},\"timestamp\":\"2025-12-18T15:26:18.305784Z\"}",
+          "is_error": false,
+          "error_message": null
+        }
+      ],
+      "response": "I'll show you all charts in the system using the Superset MCP service.I can see there are **78 charts total** in the system. Here are the first 10 charts displayed:\n\n## Charts Overview (Page 1 of 8)\n\n| ID | Chart Name | Visualization Type | Dataset |\n|----|-----------|--------------------|---------|\n| 74 | Line Chart - year vs global_sales | Time Series Line | public.Video Game Sales |\n| 1  | # of Games That Hit 100k in Sales By Release Year | Treemap | Video Game Sales |\n| 2  | World's Population | Big Number | World Bank Health Data |\n| 3  | World's Pop Growth | Area Chart | World Bank Health Data |\n| 4  | Work Location Preference | Pie Chart | FCC 2018 Survey |\n| 5  | Weekly Threads | Big Number | Slack Threads |\n| 6  | Weekly Messages | Big Number | Slack Messages |\n| 7  | Vaccine Candidates per Phase | Pie Chart | COVID Vaccines |\n| 8  | Vaccine Candidates per Phase | Time Series Bar | COVID Vaccines |\n| 9  | Vaccine Candidates per Country & Stage | Sunburst | COVID Vaccines |\n\n### Chart Types in this view:\n- **Time Series Charts**: Line (1), Bar (1), Area (1) \n- **Summary Charts**: Big Number (3)\n- **Categorical Charts**: Pie (2), Treemap (1), Sunburst (1)\n\n**Total: 78 charts across 8 pages**\n\nWould you like me to show you more charts from the remaining pages, or would you prefer to see charts filtered by a specific type or dataset?",
+      "evaluations": [
+        {
+          "evaluator": "execution_successful",
+          "passed": true,
+          "score": 1.0,
+          "reason": "All tool executions completed successfully",
+          "details": {
+            "successful_executions": 1
+          }
+        },
+        {
+          "evaluator": "was_tool_called:list_charts",
+          "passed": true,
+          "score": 1.0,
+          "reason": "Tool 'list_charts' was called (actual: 'mcp__testmcpy__list_charts')",
+          "details": {
+            "tool_call": {
+              "id": "toolu_01L3udajorQZxuADDPKKMyuM",
+              "name": "mcp__testmcpy__list_charts",
+              "arguments": {
+                "request": {}
+              },
+              "result": {
+                "content": "{\"charts\":[{\"id\":74,\"slice_name\":\"Line Chart - year vs global_sales\",\"viz_type\":\"echarts_timeseries_line\",\"datasource_name\":\"public.Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-04T15:07:47.264085\",\"created_on\":\"2025-10-30T23:32:28.958387\",\"uuid\":\"d9ee118e-5380-480e-8e38-b51ba6cb2ef7\"},{\"id\":1,\"slice_name\":\"# of Games That Hit 100k in Sales By Release Year\",\"viz_type\":\"treemap_v2\",\"datasource_name\":\"Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.505782\",\"created_on\":\"2025-10-23T22:43:33.541254\",\"uuid\":\"2aec7bc1-fd87-4545-947e-99b231f29d49\"},{\"id\":2,\"slice_name\":\"World's Population\",\"viz_type\":\"big_number\",\"datasource_name\":\"World Bank Health Data\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.527865\",\"created_on\":\"2025-10-23T22:43:33.552354\",\"uuid\":\"62691573-cb29-4b02-8ee6-dbc51ba00fb4\"},{\"id\":3,\"slice_name\":\"World's Pop Growth\",\"viz_type\":\"echarts_area\",\"datasource_name\":\"World Bank Health Data\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.545959\",\"created_on\":\"2025-10-23T22:43:33.561083\",\"uuid\":\"8e7b8f10-d128-4d09-b0b6-830b4f235142\"},{\"id\":4,\"slice_name\":\"Work Location Preference\",\"viz_type\":\"pie\",\"datasource_name\":\"FCC 2018 Survey\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.564160\",\"created_on\":\"2025-10-23T22:43:33.571436\",\"uuid\":\"792aea5b-2fc7-4ef7-8a53-a381cd79ee9f\"},{\"id\":5,\"slice_name\":\"Weekly Threads\",\"viz_type\":\"big_number\",\"datasource_name\":\"Slack Threads\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.582292\",\"created_on\":\"2025-10-23T22:43:33.580668\",\"uuid\":\"33a351c2-0f7c-4f6f-9a74-d1d05bdce100\"},{\"id\":6,\"slice_name\":\"Weekly Messages\",\"viz_type\":\"big_number\",\"datasource_name\":\"Slack Messages\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.601162\",\"created_on\":\"2025-10-23T22:43:33.589779\",\"uuid\":\"fa7e8998-3852-459b-9a10-550293926455\"},{\"id\":7,\"slice_name\":\"Vaccine Candidates per Phase\",\"viz_type\":\"pie\",\"datasource_name\":\"COVID Vaccines\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.621546\",\"created_on\":\"2025-10-23T22:43:33.598106\",\"uuid\":\"29e87a11-f990-45d5-bca1-601d0e1b586e\"},{\"id\":8,\"slice_name\":\"Vaccine Candidates per Phase\",\"viz_type\":\"echarts_timeseries_bar\",\"datasource_name\":\"COVID Vaccines\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.642548\",\"created_on\":\"2025-10-23T22:43:33.605847\",\"uuid\":\"638287c5-aa2b-4f26-b7ca-fa624913b768\"},{\"id\":9,\"slice_name\":\"Vaccine Candidates per Country & Stage\",\"viz_type\":\"sunburst_v2\",\"datasource_name\":\"COVID Vaccines\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.661229\",\"created_on\":\"2025-10-23T22:43:33.613675\",\"uuid\":\"6cae1766-ef85-450b-925d-e8f8c79f9b80\"}],\"count\":10,\"total_count\":78,\"page\":0,\"page_size\":10,\"total_pages\":8,\"has_previous\":false,\"has_next\":true,\"columns_requested\":[\"id\",\"slice_name\",\"viz_type\",\"datasource_name\",\"description\",\"changed_by_name\",\"created_by_name\",\"changed_on\",\"created_on\",\"uuid\"],\"columns_loaded\":[\"id\",\"slice_name\",\"viz_type\",\"datasource_name\",\"description\",\"changed_by_name\",\"created_by_name\",\"changed_on\",\"created_on\",\"uuid\"],\"filters_applied\":[],\"pagination\":{\"page\":0,\"page_size\":10,\"total_count\":78,\"total_pages\":8,\"has_next\":true,\"has_previous\":false},\"timestamp\":\"2025-12-18T15:26:18.305784Z\"}",
+                "is_error": false
+              }
+            }
+          }
+        }
+      ],
+      "cost": 0.0,
+      "token_usage": {
+        "prompt": 9,
+        "completion": 465,
+        "total": 474,
+        "cache_creation": 45541,
+        "cache_read": 44118
+      },
+      "error": null,
+      "step_results": null,
+      "auth_success": null,
+      "auth_token": null,
+      "auth_error": null,
+      "auth_error_message": null,
+      "auth_flow_steps": [],
+      "logs": [
+        "[ClaudeCode] Running with timeout=120.0s, output_format=stream-json",
+        "[ClaudeCode] Fetched JWT token (length: 1453)",
+        "[ClaudeCode] MCP config file: /var/folders/q0/ssr0_jbj79q4h29n0rl0zr8w0000gn/T/tmp4uvlns3x.json",
+        "[ClaudeCode] MCP URL: https://66d22a6f.us1a.app-sdx.preset.io/mcp",
+        "[ClaudeCode] Full command: /Users/amin/.nvm/versions/node/v20.19.5/bin/claude -p --output-format stream-json --verbose --dangerously-skip-permissions --model claude-sonnet-4-20250514 --mcp-config /var/folders/q0/ssr0_jbj79q4h29n0rl0zr8w0000gn/T/tmp4uvlns3x.json -- <prompt>",
+        "[ClaudeCode] Prompt (32 chars):\nShow me all charts in the system",
+        "[ClaudeCode] Tools provided: 21",
+        "[ClaudeCode] Tool names (first 10): ['generate_chart', 'get_chart_available_filters', 'get_chart_data', 'get_chart_info', 'get_chart_preview', 'list_charts', 'update_chart', 'update_chart_preview', 'add_chart_to_existing_dashboard', 'generate_dashboard']",
+        "[ClaudeCode] Waiting for response...",
+        "[ClaudeCode] Got response after 19.0s, returncode=0",
+        "[ClaudeCode] Response size: 16266 chars",
+        "[ClaudeCode] Raw response:\n{\"type\":\"system\",\"subtype\":\"init\",\"cwd\":\"/Users/amin/github/preset-io/testmcpy\",\"session_id\":\"382d7b4b-23f8-4852-afe3-8aeddd216a57\",\"tools\":[\"Task\",\"TaskOutput\",\"Bash\",\"Glob\",\"Grep\",\"ExitPlanMode\",\"Read\",\"Edit\",\"Write\",\"NotebookEdit\",\"WebFetch\",\"TodoWrite\",\"WebSearch\",\"KillShell\",\"AskUserQuestion\",\"Skill\",\"SlashCommand\",\"EnterPlanMode\",\"mcp__agentmcp__find_similar_agents\",\"mcp__agentmcp__find_similar_skills\",\"mcp__agentmcp__get_agent\",\"mcp__agentmcp__get_agent_reputation\",\"mcp__agentmcp__get_command\",\"mcp__agentmcp__get_skill\",\"mcp__agentmcp__get_top_agents\",\"mcp__agentmcp__governance_action\",\"mcp__agentmcp__governance_stats\",\"mcp__agentmcp__list_agents\",\"mcp__agentmcp__list_commands\",\"mcp__agentmcp__list_skills\",\"mcp__agentmcp__register_agent\",\"mcp__agentmcp__register_command\",\"mcp__agentmcp__register_skill\",\"mcp__agentmcp__report_agent\",\"mcp__agentmcp__request_agent_by_skills\",\"mcp__agentmcp__review_reports\",\"mcp__agentmcp__search_agents\",\"mcp__agentmcp__search_commands\",\"mcp__agentm...",
+        "[ClaudeCode] Parsing 6 stream-json lines",
+        "[ClaudeCode] \ud83d\udcdd Text (70 chars)",
+        "[ClaudeCode] \ud83d\udd27 Tool Call: mcp__testmcpy__list_charts (id=toolu_01L3udajorQZxu...)",
+        "[ClaudeCode]    Args: {\"request\": {}}",
+        "[ClaudeCode] \u2705 Success Tool Result (id=toolu_01L3udajorQZxu...)",
+        "[ClaudeCode]    Content: {\"charts\":[{\"id\":74,\"slice_name\":\"Line Chart - year vs global_sales\",\"viz_type\":\"echarts_timeseries_line\",\"datasource_name\":\"public.Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed...",
+        "[ClaudeCode] \ud83d\udcdd Text (1290 chars)",
+        "[ClaudeCode] \ud83d\udcca Result: 474 tokens, $0.0000",
+        "[ClaudeCode] \u2713 Parsed: 1360 chars response, 1 tool calls, 1 tool results, 0 chars thinking"
+      ]
+    },
+    {
+      "test_name": "test_search_bar_charts",
+      "passed": true,
+      "score": 1.0,
+      "duration": 22.547844171524048,
+      "reason": "All evaluators passed",
+      "tool_calls": [
+        {
+          "id": "toolu_01SKNeS7z7Ng5V9gUu3uUTq2",
+          "name": "mcp__testmcpy__list_charts",
+          "arguments": {
+            "request": {
+              "search": "sales",
+              "page_size": 50
+            }
+          },
+          "result": {
+            "content": "{\"charts\":[{\"id\":74,\"slice_name\":\"Line Chart - year vs global_sales\",\"viz_type\":\"echarts_timeseries_line\",\"datasource_name\":\"public.Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-04T15:07:47.264085\",\"created_on\":\"2025-10-30T23:32:28.958387\",\"uuid\":\"d9ee118e-5380-480e-8e38-b51ba6cb2ef7\"},{\"id\":1,\"slice_name\":\"# of Games That Hit 100k in Sales By Release Year\",\"viz_type\":\"treemap_v2\",\"datasource_name\":\"Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.505782\",\"created_on\":\"2025-10-23T22:43:33.541254\",\"uuid\":\"2aec7bc1-fd87-4545-947e-99b231f29d49\"},{\"id\":15,\"slice_name\":\"Total Sales per Market (Grouped by Genre)\",\"viz_type\":\"echarts_timeseries_bar\",\"datasource_name\":\"Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.773929\",\"created_on\":\"2025-10-23T22:43:33.663649\",\"uuid\":\"f03d64b3-eaa1-4f75-ad8b-f4fe4be3747b\"},{\"id\":21,\"slice_name\":\"Top 10 Games: Proportion of Sales in Markets\",\"viz_type\":\"echarts_timeseries_bar\",\"datasource_name\":\"Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.906105\",\"created_on\":\"2025-10-23T22:43:33.712026\",\"uuid\":\"82991665-979f-4406-9d0d-4fb747fb5b14\"},{\"id\":31,\"slice_name\":\"Quarterly Sales (By Product Line)\",\"viz_type\":\"echarts_timeseries_bar\",\"datasource_name\":\"Vehicle Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:21.140462\",\"created_on\":\"2025-10-23T22:43:33.811577\",\"uuid\":\"16b0afd5-a3cc-4dc5-b7be-b1e0c2d0760a\"},{\"id\":32,\"slice_name\":\"Quarterly Sales\",\"viz_type\":\"echarts_timeseries_bar\",\"datasource_name\":\"Vehicle Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:21.158275\",\"created_on\":\"2025-10-23T22:43:33.820449\",\"uuid\":\"4e5cbf58-ff79-4651-a5ce-baaa22c67dc0\"},{\"id\":39,\"slice_name\":\"Overall Sales (By Product Line)\",\"viz_type\":\"pie\",\"datasource_name\":\"Vehicle Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:21.318868\",\"created_on\":\"2025-10-23T22:43:33.886815\",\"uuid\":\"46914afc-f057-441e-bcc6-d02f91921fd9\"},{\"id\":77,\"slice_name\":\"Bar Chart - genre vs global_sales\",\"viz_type\":\"echarts_timeseries_bar\",\"datasource_name\":\"public.Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-12-08T19:53:44.790524\",\"created_on\":\"2025-12-08T19:53:07.211696\",\"uuid\":\"d76f8d48-7432-4f87-9fe7-3ad3dca8a4cd\"},{\"id\":78,\"slice_name\":\"Bar Chart - year vs global_sales\",\"viz_type\":\"echarts_timeseries_bar\",\"datasource_name\":\"public.Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-12-08T21:43:30.887624\",\"created_on\":\"2025-12-08T21:43:06.212170\",\"uuid\":\"10c7078b-3a48-4886-9e60-076f42b14c64\"},{\"id\":75,\"slice_name\":\"Bar Chart - order_date vs sales\",\"viz_type\":\"echarts_timeseries_bar\",\"datasource_name\":\"public.Vehicle Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-12-17T19:53:47.582956\",\"created_on\":\"2025-11-27T00:09:23.604500\",\"uuid\":\"fc905541-51cc-4a2d-8cd1-294f43b44bd2\"}],\"count\":10,\"total_count\":10,\"page\":0,\"page_size\":50,\"total_pages\":1,\"has_previous\":false,\"has_next\":false,\"columns_requested\":[\"id\",\"slice_name\",\"viz_type\",\"datasource_name\",\"description\",\"changed_by_name\",\"created_by_name\",\"changed_on\",\"created_on\",\"uuid\"],\"columns_loaded\":[\"id\",\"slice_name\",\"viz_type\",\"datasource_name\",\"description\",\"changed_by_name\",\"created_by_name\",\"changed_on\",\"created_on\",\"uuid\"],\"filters_applied\":[],\"pagination\":{\"page\":0,\"page_size\":50,\"total_count\":10,\"total_pages\":1,\"has_next\":false,\"has_previous\":false},\"timestamp\":\"2025-12-18T15:26:36.629925Z\"}",
+            "is_error": false
+          }
+        }
+      ],
+      "tool_results": [
+        {
+          "tool_call_id": "toolu_01SKNeS7z7Ng5V9gUu3uUTq2",
+          "content": "{\"charts\":[{\"id\":74,\"slice_name\":\"Line Chart - year vs global_sales\",\"viz_type\":\"echarts_timeseries_line\",\"datasource_name\":\"public.Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-04T15:07:47.264085\",\"created_on\":\"2025-10-30T23:32:28.958387\",\"uuid\":\"d9ee118e-5380-480e-8e38-b51ba6cb2ef7\"},{\"id\":1,\"slice_name\":\"# of Games That Hit 100k in Sales By Release Year\",\"viz_type\":\"treemap_v2\",\"datasource_name\":\"Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.505782\",\"created_on\":\"2025-10-23T22:43:33.541254\",\"uuid\":\"2aec7bc1-fd87-4545-947e-99b231f29d49\"},{\"id\":15,\"slice_name\":\"Total Sales per Market (Grouped by Genre)\",\"viz_type\":\"echarts_timeseries_bar\",\"datasource_name\":\"Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.773929\",\"created_on\":\"2025-10-23T22:43:33.663649\",\"uuid\":\"f03d64b3-eaa1-4f75-ad8b-f4fe4be3747b\"},{\"id\":21,\"slice_name\":\"Top 10 Games: Proportion of Sales in Markets\",\"viz_type\":\"echarts_timeseries_bar\",\"datasource_name\":\"Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.906105\",\"created_on\":\"2025-10-23T22:43:33.712026\",\"uuid\":\"82991665-979f-4406-9d0d-4fb747fb5b14\"},{\"id\":31,\"slice_name\":\"Quarterly Sales (By Product Line)\",\"viz_type\":\"echarts_timeseries_bar\",\"datasource_name\":\"Vehicle Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:21.140462\",\"created_on\":\"2025-10-23T22:43:33.811577\",\"uuid\":\"16b0afd5-a3cc-4dc5-b7be-b1e0c2d0760a\"},{\"id\":32,\"slice_name\":\"Quarterly Sales\",\"viz_type\":\"echarts_timeseries_bar\",\"datasource_name\":\"Vehicle Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:21.158275\",\"created_on\":\"2025-10-23T22:43:33.820449\",\"uuid\":\"4e5cbf58-ff79-4651-a5ce-baaa22c67dc0\"},{\"id\":39,\"slice_name\":\"Overall Sales (By Product Line)\",\"viz_type\":\"pie\",\"datasource_name\":\"Vehicle Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:21.318868\",\"created_on\":\"2025-10-23T22:43:33.886815\",\"uuid\":\"46914afc-f057-441e-bcc6-d02f91921fd9\"},{\"id\":77,\"slice_name\":\"Bar Chart - genre vs global_sales\",\"viz_type\":\"echarts_timeseries_bar\",\"datasource_name\":\"public.Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-12-08T19:53:44.790524\",\"created_on\":\"2025-12-08T19:53:07.211696\",\"uuid\":\"d76f8d48-7432-4f87-9fe7-3ad3dca8a4cd\"},{\"id\":78,\"slice_name\":\"Bar Chart - year vs global_sales\",\"viz_type\":\"echarts_timeseries_bar\",\"datasource_name\":\"public.Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-12-08T21:43:30.887624\",\"created_on\":\"2025-12-08T21:43:06.212170\",\"uuid\":\"10c7078b-3a48-4886-9e60-076f42b14c64\"},{\"id\":75,\"slice_name\":\"Bar Chart - order_date vs sales\",\"viz_type\":\"echarts_timeseries_bar\",\"datasource_name\":\"public.Vehicle Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-12-17T19:53:47.582956\",\"created_on\":\"2025-11-27T00:09:23.604500\",\"uuid\":\"fc905541-51cc-4a2d-8cd1-294f43b44bd2\"}],\"count\":10,\"total_count\":10,\"page\":0,\"page_size\":50,\"total_pages\":1,\"has_previous\":false,\"has_next\":false,\"columns_requested\":[\"id\",\"slice_name\",\"viz_type\",\"datasource_name\",\"description\",\"changed_by_name\",\"created_by_name\",\"changed_on\",\"created_on\",\"uuid\"],\"columns_loaded\":[\"id\",\"slice_name\",\"viz_type\",\"datasource_name\",\"description\",\"changed_by_name\",\"created_by_name\",\"changed_on\",\"created_on\",\"uuid\"],\"filters_applied\":[],\"pagination\":{\"page\":0,\"page_size\":50,\"total_count\":10,\"total_pages\":1,\"has_next\":false,\"has_previous\":false},\"timestamp\":\"2025-12-18T15:26:36.629925Z\"}",
+          "is_error": false,
+          "error_message": null
+        }
+      ],
+      "response": "I'll help you find all charts with 'sales' in the name that are bar charts. Let me use the Superset MCP service to search for these charts.Perfect! I found all charts with 'sales' in the name. Now let me filter for the bar charts specifically. From the results, I can see the bar charts are those with `viz_type` of `echarts_timeseries_bar`.\n\nHere are the **bar charts** with 'sales' in the name:\n\n## Bar Charts with 'Sales' in Name\n\n1. **Total Sales per Market (Grouped by Genre)**\n   - ID: 15\n   - Type: `echarts_timeseries_bar`\n   - Dataset: Video Game Sales\n   - UUID: f03d64b3-eaa1-4f75-ad8b-f4fe4be3747b\n\n2. **Top 10 Games: Proportion of Sales in Markets**\n   - ID: 21\n   - Type: `echarts_timeseries_bar` \n   - Dataset: Video Game Sales\n   - UUID: 82991665-979f-4406-9d0d-4fb747fb5b14\n\n3. **Quarterly Sales (By Product Line)**\n   - ID: 31\n   - Type: `echarts_timeseries_bar`\n   - Dataset: Vehicle Sales\n   - UUID: 16b0afd5-a3cc-4dc5-b7be-b1e0c2d0760a\n\n4. **Quarterly Sales**\n   - ID: 32\n   - Type: `echarts_timeseries_bar`\n   - Dataset: Vehicle Sales\n   - UUID: 4e5cbf58-ff79-4651-a5ce-baaa22c67dc0\n\n5. **Bar Chart - genre vs global_sales**\n   - ID: 77\n   - Type: `echarts_timeseries_bar`\n   - Dataset: public.Video Game Sales\n   - UUID: d76f8d48-7432-4f87-9fe7-3ad3dca8a4cd\n\n6. **Bar Chart - year vs global_sales**\n   - ID: 78\n   - Type: `echarts_timeseries_bar`\n   - Dataset: public.Video Game Sales\n   - UUID: 10c7078b-3a48-4886-9e60-076f42b14c64\n\n7. **Bar Chart - order_date vs sales**\n   - ID: 75\n   - Type: `echarts_timeseries_bar`\n   - Dataset: public.Vehicle Sales\n   - UUID: fc905541-51cc-4a2d-8cd1-294f43b44bd2\n\nFound **7 bar charts** total that contain 'sales' in their names. These charts span across Video Game Sales and Vehicle Sales datasets and use the `echarts_timeseries_bar` visualization type.",
+      "evaluations": [
+        {
+          "evaluator": "execution_successful",
+          "passed": true,
+          "score": 1.0,
+          "reason": "All tool executions completed successfully",
+          "details": {
+            "successful_executions": 1
+          }
+        },
+        {
+          "evaluator": "was_tool_called:list_charts",
+          "passed": true,
+          "score": 1.0,
+          "reason": "Tool 'list_charts' was called (actual: 'mcp__testmcpy__list_charts')",
+          "details": {
+            "tool_call": {
+              "id": "toolu_01SKNeS7z7Ng5V9gUu3uUTq2",
+              "name": "mcp__testmcpy__list_charts",
+              "arguments": {
+                "request": {
+                  "search": "sales",
+                  "page_size": 50
+                }
+              },
+              "result": {
+                "content": "{\"charts\":[{\"id\":74,\"slice_name\":\"Line Chart - year vs global_sales\",\"viz_type\":\"echarts_timeseries_line\",\"datasource_name\":\"public.Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-04T15:07:47.264085\",\"created_on\":\"2025-10-30T23:32:28.958387\",\"uuid\":\"d9ee118e-5380-480e-8e38-b51ba6cb2ef7\"},{\"id\":1,\"slice_name\":\"# of Games That Hit 100k in Sales By Release Year\",\"viz_type\":\"treemap_v2\",\"datasource_name\":\"Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.505782\",\"created_on\":\"2025-10-23T22:43:33.541254\",\"uuid\":\"2aec7bc1-fd87-4545-947e-99b231f29d49\"},{\"id\":15,\"slice_name\":\"Total Sales per Market (Grouped by Genre)\",\"viz_type\":\"echarts_timeseries_bar\",\"datasource_name\":\"Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.773929\",\"created_on\":\"2025-10-23T22:43:33.663649\",\"uuid\":\"f03d64b3-eaa1-4f75-ad8b-f4fe4be3747b\"},{\"id\":21,\"slice_name\":\"Top 10 Games: Proportion of Sales in Markets\",\"viz_type\":\"echarts_timeseries_bar\",\"datasource_name\":\"Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.906105\",\"created_on\":\"2025-10-23T22:43:33.712026\",\"uuid\":\"82991665-979f-4406-9d0d-4fb747fb5b14\"},{\"id\":31,\"slice_name\":\"Quarterly Sales (By Product Line)\",\"viz_type\":\"echarts_timeseries_bar\",\"datasource_name\":\"Vehicle Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:21.140462\",\"created_on\":\"2025-10-23T22:43:33.811577\",\"uuid\":\"16b0afd5-a3cc-4dc5-b7be-b1e0c2d0760a\"},{\"id\":32,\"slice_name\":\"Quarterly Sales\",\"viz_type\":\"echarts_timeseries_bar\",\"datasource_name\":\"Vehicle Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:21.158275\",\"created_on\":\"2025-10-23T22:43:33.820449\",\"uuid\":\"4e5cbf58-ff79-4651-a5ce-baaa22c67dc0\"},{\"id\":39,\"slice_name\":\"Overall Sales (By Product Line)\",\"viz_type\":\"pie\",\"datasource_name\":\"Vehicle Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:21.318868\",\"created_on\":\"2025-10-23T22:43:33.886815\",\"uuid\":\"46914afc-f057-441e-bcc6-d02f91921fd9\"},{\"id\":77,\"slice_name\":\"Bar Chart - genre vs global_sales\",\"viz_type\":\"echarts_timeseries_bar\",\"datasource_name\":\"public.Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-12-08T19:53:44.790524\",\"created_on\":\"2025-12-08T19:53:07.211696\",\"uuid\":\"d76f8d48-7432-4f87-9fe7-3ad3dca8a4cd\"},{\"id\":78,\"slice_name\":\"Bar Chart - year vs global_sales\",\"viz_type\":\"echarts_timeseries_bar\",\"datasource_name\":\"public.Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-12-08T21:43:30.887624\",\"created_on\":\"2025-12-08T21:43:06.212170\",\"uuid\":\"10c7078b-3a48-4886-9e60-076f42b14c64\"},{\"id\":75,\"slice_name\":\"Bar Chart - order_date vs sales\",\"viz_type\":\"echarts_timeseries_bar\",\"datasource_name\":\"public.Vehicle Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-12-17T19:53:47.582956\",\"created_on\":\"2025-11-27T00:09:23.604500\",\"uuid\":\"fc905541-51cc-4a2d-8cd1-294f43b44bd2\"}],\"count\":10,\"total_count\":10,\"page\":0,\"page_size\":50,\"total_pages\":1,\"has_previous\":false,\"has_next\":false,\"columns_requested\":[\"id\",\"slice_name\",\"viz_type\",\"datasource_name\",\"description\",\"changed_by_name\",\"created_by_name\",\"changed_on\",\"created_on\",\"uuid\"],\"columns_loaded\":[\"id\",\"slice_name\",\"viz_type\",\"datasource_name\",\"description\",\"changed_by_name\",\"created_by_name\",\"changed_on\",\"created_on\",\"uuid\"],\"filters_applied\":[],\"pagination\":{\"page\":0,\"page_size\":50,\"total_count\":10,\"total_pages\":1,\"has_next\":false,\"has_previous\":false},\"timestamp\":\"2025-12-18T15:26:36.629925Z\"}",
+                "is_error": false
+              }
+            }
+          }
+        }
+      ],
+      "cost": 0.0,
+      "token_usage": {
+        "prompt": 9,
+        "completion": 766,
+        "total": 775,
+        "cache_creation": 4089,
+        "cache_read": 85673
+      },
+      "error": null,
+      "step_results": null,
+      "auth_success": null,
+      "auth_token": null,
+      "auth_error": null,
+      "auth_error_message": null,
+      "auth_flow_steps": [],
+      "logs": [
+        "[ClaudeCode] Running with timeout=120.0s, output_format=stream-json",
+        "[ClaudeCode] Fetched JWT token (length: 1453)",
+        "[ClaudeCode] MCP config file: /var/folders/q0/ssr0_jbj79q4h29n0rl0zr8w0000gn/T/tmpndgxc0l0.json",
+        "[ClaudeCode] MCP URL: https://66d22a6f.us1a.app-sdx.preset.io/mcp",
+        "[ClaudeCode] Full command: /Users/amin/.nvm/versions/node/v20.19.5/bin/claude -p --output-format stream-json --verbose --dangerously-skip-permissions --model claude-sonnet-4-20250514 --mcp-config /var/folders/q0/ssr0_jbj79q4h29n0rl0zr8w0000gn/T/tmpndgxc0l0.json -- <prompt>",
+        "[ClaudeCode] Prompt (60 chars):\nFind all charts with 'sales' in the name that are bar charts",
+        "[ClaudeCode] Tools provided: 21",
+        "[ClaudeCode] Tool names (first 10): ['generate_chart', 'get_chart_available_filters', 'get_chart_data', 'get_chart_info', 'get_chart_preview', 'list_charts', 'update_chart', 'update_chart_preview', 'add_chart_to_existing_dashboard', 'generate_dashboard']",
+        "[ClaudeCode] Waiting for response...",
+        "[ClaudeCode] Got response after 22.5s, returncode=0",
+        "[ClaudeCode] Response size: 17564 chars",
+        "[ClaudeCode] Raw response:\n{\"type\":\"system\",\"subtype\":\"init\",\"cwd\":\"/Users/amin/github/preset-io/testmcpy\",\"session_id\":\"e48da7e4-d87f-49ec-81fb-2f9d49f0937b\",\"tools\":[\"Task\",\"TaskOutput\",\"Bash\",\"Glob\",\"Grep\",\"ExitPlanMode\",\"Read\",\"Edit\",\"Write\",\"NotebookEdit\",\"WebFetch\",\"TodoWrite\",\"WebSearch\",\"KillShell\",\"AskUserQuestion\",\"Skill\",\"SlashCommand\",\"EnterPlanMode\",\"mcp__agentmcp__find_similar_agents\",\"mcp__agentmcp__find_similar_skills\",\"mcp__agentmcp__get_agent\",\"mcp__agentmcp__get_agent_reputation\",\"mcp__agentmcp__get_command\",\"mcp__agentmcp__get_skill\",\"mcp__agentmcp__get_top_agents\",\"mcp__agentmcp__governance_action\",\"mcp__agentmcp__governance_stats\",\"mcp__agentmcp__list_agents\",\"mcp__agentmcp__list_commands\",\"mcp__agentmcp__list_skills\",\"mcp__agentmcp__register_agent\",\"mcp__agentmcp__register_command\",\"mcp__agentmcp__register_skill\",\"mcp__agentmcp__report_agent\",\"mcp__agentmcp__request_agent_by_skills\",\"mcp__agentmcp__review_reports\",\"mcp__agentmcp__search_agents\",\"mcp__agentmcp__search_commands\",\"mcp__agentm...",
+        "[ClaudeCode] Parsing 6 stream-json lines",
+        "[ClaudeCode] \ud83d\udcdd Text (139 chars)",
+        "[ClaudeCode] \ud83d\udd27 Tool Call: mcp__testmcpy__list_charts (id=toolu_01SKNeS7z7Ng5V...)",
+        "[ClaudeCode]    Args: {\"request\": {\"search\": \"sales\", \"page_size\": 50}}",
+        "[ClaudeCode] \u2705 Success Tool Result (id=toolu_01SKNeS7z7Ng5V...)",
+        "[ClaudeCode]    Content: {\"charts\":[{\"id\":74,\"slice_name\":\"Line Chart - year vs global_sales\",\"viz_type\":\"echarts_timeseries_line\",\"datasource_name\":\"public.Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed...",
+        "[ClaudeCode] \ud83d\udcdd Text (1680 chars)",
+        "[ClaudeCode] \ud83d\udcca Result: 775 tokens, $0.0000",
+        "[ClaudeCode] \u2713 Parsed: 1819 chars response, 1 tool calls, 1 tool results, 0 chars thinking"
+      ]
+    }
+  ],
+  "summary": {
+    "total": 2,
+    "passed": 2,
+    "failed": 0,
+    "total_cost": 0.0
+  }
+}

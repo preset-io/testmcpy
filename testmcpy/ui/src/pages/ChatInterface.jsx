@@ -836,7 +836,7 @@ ${evaluators}
                                 <CheckCircle size={14} className={evalItem.passed ? 'text-success mt-0.5' : 'text-error mt-0.5'} />
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2 mb-1">
-                                    <span className="text-xs font-medium text-white/90">{evalItem.evaluator}</span>
+                                    <span className="text-xs font-medium text-white/90">{evalItem.evaluator || evalItem.name || 'Unknown Evaluator'}</span>
                                     <span className="text-[10px] text-white/50">
                                       {evalItem.passed ? '✓' : '✗'} Score: {evalItem.score?.toFixed(2)}
                                     </span>

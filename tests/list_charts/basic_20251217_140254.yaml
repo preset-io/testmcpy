@@ -1,0 +1,16 @@
+version: "1.0"
+tests:
+  - name: test_list_all_charts
+    prompt: "Show me all charts in the system"
+    evaluators:
+      - name: execution_successful
+      - name: was_mcp_tool_called
+        args:
+          tool_name: "list_charts"
+  - name: test_search_bar_charts
+    prompt: "Find all charts with 'sales' in the name that are bar charts"
+    evaluators:
+      - name: execution_successful
+      - name: was_mcp_tool_called
+        args:
+          tool_name: "list_charts"

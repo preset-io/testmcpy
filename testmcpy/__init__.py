@@ -6,4 +6,4 @@ capabilities with MCP (Model Context Protocol) services.
 """
 
 __version__ = "0.2.0"
-__author__ = "Preset Team"
+__author__ = "testmcpy Contributors"

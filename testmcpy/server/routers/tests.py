@@ -8,10 +8,12 @@ from typing import Any
 
 import yaml
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from testmcpy.config import get_config
 from testmcpy.evals.base_evaluators import create_evaluator
+from testmcpy.server.routers.generation_logs import save_generation_log
 from testmcpy.server.state import get_or_create_mcp_client
 from testmcpy.src.llm_integration import create_llm_provider
 from testmcpy.src.test_runner import TestCase, TestRunner
@@ -121,6 +123,571 @@ async def list_tests():
     root_files = sorted(root_files, key=lambda x: x["modified"], reverse=True)
 
     return {"folders": folders, "files": root_files}
+
+
+# NOTE: Generate endpoints must be defined BEFORE the catch-all /tests/{filename:path}
+# routes to avoid 405 errors (path parameter matching takes precedence)
+
+
+@router.post("/tests/generate")
+async def generate_tests(request: GenerateTestsRequest):
+    """Generate tests for an MCP tool using LLM."""
+    model = request.model or config.default_model
+    provider = request.provider or config.default_provider
+
+    try:
+        # Initialize LLM provider
+        llm_provider = create_llm_provider(provider, model)
+        await llm_provider.initialize()
+
+        # Step 1: Analyze tool and suggest strategies
+        analysis_prompt = f"""You are a test engineer analyzing an MCP tool to suggest test strategies.
+
+Tool Name: {request.tool_name}
+Description: {request.tool_description}
+Schema: {json.dumps(request.tool_schema, indent=2)}
+
+Analyze this tool and suggest:
+1. What are the key scenarios to test? (e.g., valid inputs, edge cases, error conditions)
+2. What parameters should be varied in tests?
+3. What are potential failure modes?
+4. What outputs should be validated?
+
+Respond with a structured analysis in JSON format:
+{{
+  "test_scenarios": [
+    {{"name": "scenario name", "description": "what to test", "priority": "high|medium|low"}}
+  ],
+  "key_parameters": ["param1", "param2"],
+  "edge_cases": ["edge case 1", "edge case 2"],
+  "validation_points": ["what to check in output"]
+}}"""
+
+        analysis_result = await llm_provider.generate_with_tools(
+            prompt=analysis_prompt, tools=[], timeout=120.0
+        )
+
+        # Parse the analysis
+        try:
+            # Extract JSON from response
+            analysis_text = analysis_result.response
+            # Try to find JSON in the response
+            json_match = re.search(r"\{[\s\S]*\}", analysis_text)
+            if json_match:
+                analysis = json.loads(json_match.group())
+            else:
+                # Fallback to basic structure
+                analysis = {
+                    "test_scenarios": [
+                        {
+                            "name": "Basic functionality",
+                            "description": "Test basic tool execution",
+                            "priority": "high",
+                        }
+                    ],
+                    "key_parameters": [],
+                    "edge_cases": [],
+                    "validation_points": ["Tool executes successfully"],
+                }
+        except Exception as e:
+            print(f"Failed to parse analysis: {e}")
+            analysis = {
+                "test_scenarios": [
+                    {
+                        "name": "Basic functionality",
+                        "description": "Test basic tool execution",
+                        "priority": "high",
+                    }
+                ],
+                "key_parameters": [],
+                "edge_cases": [],
+                "validation_points": ["Tool executes successfully"],
+            }
+
+        # Step 2: Generate tests based on coverage level
+        coverage_config = {
+            "basic": {"count": 2, "include_edge_cases": False, "include_errors": False},
+            "mid": {"count": 5, "include_edge_cases": True, "include_errors": True},
+            "comprehensive": {"count": 12, "include_edge_cases": True, "include_errors": True},
+        }
+
+        config_for_level = coverage_config.get(request.coverage_level, coverage_config["basic"])
+
+        # Build the test generation prompt
+        test_gen_prompt = f"""You are generating test cases for an MCP tool. Generate {config_for_level["count"]} test cases in YAML format.
+
+Tool Name: {request.tool_name}
+Description: {request.tool_description}
+Schema: {json.dumps(request.tool_schema, indent=2)}
+
+Analysis: {json.dumps(analysis, indent=2)}
+
+{"Include edge cases and error scenarios." if config_for_level["include_edge_cases"] else "Focus on common use cases."}
+{f"Custom Instructions: {request.custom_instructions}" if request.custom_instructions else ""}
+
+YAML FORMAT (follow this structure exactly):
+```yaml
+version: "1.0"
+tests:
+  - name: test_descriptive_name_here
+    prompt: "Write a realistic user request here - e.g., 'Show me all charts in the system' or 'Get the data for chart ID 5'"
+    evaluators:
+      - name: execution_successful
+      - name: was_mcp_tool_called
+        args:
+          tool_name: "{request.tool_name}"
+```
+
+CRITICAL REQUIREMENTS:
+1. The "prompt" field MUST be a realistic natural language request that a user would actually type
+2. DO NOT use placeholder text like "A natural language prompt" - write REAL prompts based on what this tool does
+3. Each prompt should be different and test different aspects of the tool
+4. Use the tool description to understand what prompts would trigger this tool
+5. Examples of GOOD prompts: "List all available charts", "Get data for chart with ID 123", "Show me the sales dashboard"
+6. Examples of BAD prompts: "A prompt that triggers this tool", "Test the tool", "Call the function"
+
+IMPORTANT: Your response must be ONLY valid YAML starting with "version:" - no explanations, no summaries, no markdown.
+
+version: "1.0"
+tests:"""
+
+        test_gen_result = await llm_provider.generate_with_tools(
+            prompt=test_gen_prompt, tools=[], timeout=60.0
+        )
+
+        # Extract YAML from response
+        yaml_content = test_gen_result.response
+
+        # If response starts with tests (continuing from our prompt), prepend the header
+        if yaml_content.strip().startswith("- name:") or yaml_content.strip().startswith(
+            "  - name:"
+        ):
+            yaml_content = 'version: "1.0"\ntests:\n' + yaml_content
+
+        # Try to extract YAML from code blocks (handles various formats)
+        yaml_match = re.search(r"```(?:yaml)?\s*([\s\S]*?)\s*```", yaml_content)
+        if yaml_match:
+            yaml_content = yaml_match.group(1).strip()
+        else:
+            # Fallback: strip leading/trailing markdown fences manually
+            yaml_content = yaml_content.strip()
+            if yaml_content.startswith("```yaml"):
+                yaml_content = yaml_content[7:]
+            elif yaml_content.startswith("```"):
+                yaml_content = yaml_content[3:]
+            if yaml_content.endswith("```"):
+                yaml_content = yaml_content[:-3]
+            yaml_content = yaml_content.strip()
+
+        # Validate YAML
+        try:
+            yaml.safe_load(yaml_content)
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Generated invalid YAML: {str(e)}\n\nGenerated content:\n{yaml_content}",
+            )
+
+        # Generate filename and folder structure
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Sanitize tool name for folder name (remove special chars)
+        safe_tool_name = "".join(
+            c if c.isalnum() or c in ("_", "-") else "_" for c in request.tool_name
+        )
+
+        # Create folder structure: tests/<tool_name>/
+        tests_dir = Path.cwd() / "tests"
+        tool_dir = tests_dir / safe_tool_name
+        tool_dir.mkdir(parents=True, exist_ok=True)
+
+        filename = f"{request.coverage_level}_{timestamp}.yaml"
+        file_path = tool_dir / filename
+        relative_path = f"{safe_tool_name}/{filename}"
+
+        with open(file_path, "w") as f:
+            f.write(yaml_content)
+
+        await llm_provider.close()
+
+        return {
+            "success": True,
+            "filename": relative_path,
+            "path": str(file_path),
+            "analysis": analysis,
+            "test_count": len(yaml.safe_load(yaml_content).get("tests", [])),
+            "cost": test_gen_result.cost + analysis_result.cost,
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/tests/generate/stream")
+async def generate_tests_stream(request: GenerateTestsRequest):
+    """Generate tests for an MCP tool using LLM with streaming logs."""
+    model = request.model or config.default_model
+    provider = request.provider or config.default_provider
+
+    async def generate():
+        """Generator that yields SSE events with progress logs."""
+        # Track logs and LLM calls for history
+        log_messages = []
+        llm_calls = []
+        analysis = None
+        yaml_content = None
+        output_file = None
+        test_count = 0
+        total_cost = 0.0
+        success = False
+        error_msg = None
+
+        def send_log(message: str, log_type: str = "log"):
+            """Format a log message as SSE event."""
+            log_messages.append(message)
+            data = json.dumps({"type": log_type, "message": message})
+            return f"data: {data}\n\n"
+
+        def send_result(result: dict):
+            """Format final result as SSE event."""
+            data = json.dumps({"type": "complete", "result": result})
+            return f"data: {data}\n\n"
+
+        def send_error(error: str):
+            """Format error as SSE event."""
+            log_messages.append(f"ERROR: {error}")
+            data = json.dumps({"type": "error", "message": error})
+            return f"data: {data}\n\n"
+
+        try:
+            yield send_log(f"🚀 Starting test generation for {request.tool_name}")
+            yield send_log(f"📋 Coverage level: {request.coverage_level}")
+            yield send_log(f"🤖 Using {provider}/{model}")
+
+            # Initialize LLM provider
+            yield send_log("🔧 Initializing LLM provider...")
+            llm_provider = create_llm_provider(provider, model)
+            await llm_provider.initialize()
+            yield send_log("✓ LLM provider ready")
+
+            # Step 1: Analyze tool
+            yield send_log("📊 Step 1/2: Analyzing tool schema...")
+            yield send_log(f"   Tool: {request.tool_name}")
+            if request.tool_description:
+                desc_preview = (
+                    request.tool_description[:100] + "..."
+                    if len(request.tool_description) > 100
+                    else request.tool_description
+                )
+                yield send_log(f"   Description: {desc_preview}")
+
+            analysis_prompt = f"""You are a test engineer analyzing an MCP tool to suggest test strategies.
+
+Tool Name: {request.tool_name}
+Description: {request.tool_description}
+Schema: {json.dumps(request.tool_schema, indent=2)}
+
+Analyze this tool and suggest:
+1. What are the key scenarios to test? (e.g., valid inputs, edge cases, error conditions)
+2. What parameters should be varied in tests?
+3. What are potential failure modes?
+4. What outputs should be validated?
+
+Respond with a structured analysis in JSON format:
+{{
+  "test_scenarios": [
+    {{"name": "scenario name", "description": "what to test", "priority": "high|medium|low"}}
+  ],
+  "key_parameters": ["param1", "param2"],
+  "edge_cases": ["edge case 1", "edge case 2"],
+  "validation_points": ["what to check in output"]
+}}"""
+
+            yield send_log("   Sending analysis prompt to LLM...")
+            analysis_start = datetime.now()
+            analysis_result = await llm_provider.generate_with_tools(
+                prompt=analysis_prompt, tools=[], timeout=120.0
+            )
+            analysis_duration = (datetime.now() - analysis_start).total_seconds()
+            yield send_log(f"   ✓ Analysis complete (${analysis_result.cost:.4f})")
+
+            # Record analysis LLM call
+            token_usage = getattr(analysis_result, "token_usage", None) or {}
+            llm_calls.append(
+                {
+                    "step": "analysis",
+                    "prompt": analysis_prompt,
+                    "response": analysis_result.response,
+                    "cost": analysis_result.cost,
+                    "tokens": token_usage.get("total", 0),
+                    "duration": analysis_duration,
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
+
+            # Parse analysis
+            try:
+                analysis_text = analysis_result.response
+                json_match = re.search(r"\{[\s\S]*\}", analysis_text)
+                if json_match:
+                    analysis = json.loads(json_match.group())
+                    yield send_log(
+                        f"   Found {len(analysis.get('test_scenarios', []))} test scenarios"
+                    )
+                else:
+                    analysis = {
+                        "test_scenarios": [
+                            {
+                                "name": "Basic functionality",
+                                "description": "Test basic tool execution",
+                                "priority": "high",
+                            }
+                        ],
+                        "key_parameters": [],
+                        "edge_cases": [],
+                        "validation_points": ["Tool executes successfully"],
+                    }
+                    yield send_log("   Using fallback analysis structure")
+            except Exception as e:
+                yield send_log(f"   ⚠ Parse warning: {str(e)[:50]}")
+                analysis = {
+                    "test_scenarios": [
+                        {
+                            "name": "Basic functionality",
+                            "description": "Test basic tool execution",
+                            "priority": "high",
+                        }
+                    ],
+                    "key_parameters": [],
+                    "edge_cases": [],
+                    "validation_points": ["Tool executes successfully"],
+                }
+
+            # Step 2: Generate tests
+            coverage_config = {
+                "basic": {"count": 2, "include_edge_cases": False, "include_errors": False},
+                "mid": {"count": 5, "include_edge_cases": True, "include_errors": True},
+                "comprehensive": {
+                    "count": 12,
+                    "include_edge_cases": True,
+                    "include_errors": True,
+                },
+            }
+            config_for_level = coverage_config.get(request.coverage_level, coverage_config["basic"])
+
+            yield send_log(f"📝 Step 2/2: Generating {config_for_level['count']} test cases...")
+
+            test_gen_prompt = f"""You are generating test cases for an MCP tool. Generate {config_for_level["count"]} test cases in YAML format.
+
+Tool Name: {request.tool_name}
+Description: {request.tool_description}
+Schema: {json.dumps(request.tool_schema, indent=2)}
+
+Analysis: {json.dumps(analysis, indent=2)}
+
+{"Include edge cases and error scenarios." if config_for_level["include_edge_cases"] else "Focus on common use cases."}
+{f"Custom Instructions: {request.custom_instructions}" if request.custom_instructions else ""}
+
+YAML FORMAT (follow this structure exactly):
+```yaml
+version: "1.0"
+tests:
+  - name: test_descriptive_name_here
+    prompt: "Write a realistic user request here"
+    evaluators:
+      - name: execution_successful
+      - name: was_mcp_tool_called
+        args:
+          tool_name: "{request.tool_name}"
+```
+
+CRITICAL REQUIREMENTS:
+1. The "prompt" field MUST be a realistic natural language request that a user would actually type
+2. DO NOT use placeholder text - write REAL prompts based on what this tool does
+3. Each prompt should be different and test different aspects of the tool
+
+IMPORTANT: Your response must be ONLY valid YAML starting with "version:" - no explanations.
+
+version: "1.0"
+tests:"""
+
+            yield send_log("   Sending generation prompt to LLM...")
+            gen_start = datetime.now()
+            test_gen_result = await llm_provider.generate_with_tools(
+                prompt=test_gen_prompt, tools=[], timeout=120.0
+            )
+            gen_duration = (datetime.now() - gen_start).total_seconds()
+            yield send_log(f"   ✓ Generation complete (${test_gen_result.cost:.4f})")
+
+            # Record generation LLM call
+            gen_token_usage = getattr(test_gen_result, "token_usage", None) or {}
+            llm_calls.append(
+                {
+                    "step": "generation",
+                    "prompt": test_gen_prompt,
+                    "response": test_gen_result.response,
+                    "cost": test_gen_result.cost,
+                    "tokens": gen_token_usage.get("total", 0),
+                    "duration": gen_duration,
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
+
+            # Process YAML
+            yield send_log("🔍 Processing generated YAML...")
+            yaml_content = test_gen_result.response
+
+            if yaml_content.strip().startswith("- name:") or yaml_content.strip().startswith(
+                "  - name:"
+            ):
+                yaml_content = 'version: "1.0"\ntests:\n' + yaml_content
+
+            yaml_match = re.search(r"```(?:yaml)?\s*([\s\S]*?)\s*```", yaml_content)
+            if yaml_match:
+                yaml_content = yaml_match.group(1).strip()
+            else:
+                yaml_content = yaml_content.strip()
+                if yaml_content.startswith("```yaml"):
+                    yaml_content = yaml_content[7:]
+                elif yaml_content.startswith("```"):
+                    yaml_content = yaml_content[3:]
+                if yaml_content.endswith("```"):
+                    yaml_content = yaml_content[:-3]
+                yaml_content = yaml_content.strip()
+
+            # Validate YAML
+            try:
+                parsed_yaml = yaml.safe_load(yaml_content)
+                test_count = len(parsed_yaml.get("tests", []))
+                yield send_log(f"   ✓ Valid YAML with {test_count} tests")
+            except Exception as e:
+                error_msg = f"Generated invalid YAML: {str(e)}"
+                # Save log even on error
+                save_generation_log(
+                    {
+                        "metadata": {
+                            "tool_name": request.tool_name,
+                            "tool_description": request.tool_description,
+                            "coverage_level": request.coverage_level,
+                            "provider": provider,
+                            "model": model,
+                            "timestamp": datetime.now().isoformat(),
+                            "success": False,
+                            "test_count": 0,
+                            "total_cost": sum(c.get("cost", 0) for c in llm_calls),
+                            "error": error_msg,
+                        },
+                        "tool_schema": request.tool_schema,
+                        "llm_calls": llm_calls,
+                        "logs": log_messages,
+                        "analysis": analysis,
+                        "generated_yaml": yaml_content,
+                    }
+                )
+                yield send_error(error_msg)
+                return
+
+            # Save file
+            yield send_log("💾 Saving test file...")
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            safe_tool_name = "".join(
+                c if c.isalnum() or c in ("_", "-") else "_" for c in request.tool_name
+            )
+
+            tests_dir = Path.cwd() / "tests"
+            tool_dir = tests_dir / safe_tool_name
+            tool_dir.mkdir(parents=True, exist_ok=True)
+
+            filename = f"{request.coverage_level}_{timestamp}.yaml"
+            file_path = tool_dir / filename
+            relative_path = f"{safe_tool_name}/{filename}"
+            output_file = relative_path
+
+            with open(file_path, "w") as f:
+                f.write(yaml_content)
+
+            yield send_log(f"   ✓ Saved to {relative_path}")
+
+            await llm_provider.close()
+
+            total_cost = test_gen_result.cost + analysis_result.cost
+            success = True
+            yield send_log(f"✅ Complete! Total cost: ${total_cost:.4f}")
+
+            # Save generation log
+            log_id = save_generation_log(
+                {
+                    "metadata": {
+                        "tool_name": request.tool_name,
+                        "tool_description": request.tool_description,
+                        "coverage_level": request.coverage_level,
+                        "provider": provider,
+                        "model": model,
+                        "timestamp": datetime.now().isoformat(),
+                        "success": True,
+                        "test_count": test_count,
+                        "total_cost": total_cost,
+                        "output_file": output_file,
+                    },
+                    "tool_schema": request.tool_schema,
+                    "llm_calls": llm_calls,
+                    "logs": log_messages,
+                    "analysis": analysis,
+                    "generated_yaml": yaml_content,
+                }
+            )
+            yield send_log(f"📋 Log saved: {log_id}")
+
+            # Send final result
+            yield send_result(
+                {
+                    "success": True,
+                    "filename": relative_path,
+                    "path": str(file_path),
+                    "analysis": analysis,
+                    "test_count": test_count,
+                    "cost": total_cost,
+                    "log_id": log_id,
+                }
+            )
+
+        except Exception as e:
+            error_msg = str(e)
+            # Save log even on error
+            try:
+                save_generation_log(
+                    {
+                        "metadata": {
+                            "tool_name": request.tool_name,
+                            "tool_description": request.tool_description,
+                            "coverage_level": request.coverage_level,
+                            "provider": provider,
+                            "model": model,
+                            "timestamp": datetime.now().isoformat(),
+                            "success": False,
+                            "test_count": 0,
+                            "total_cost": sum(c.get("cost", 0) for c in llm_calls),
+                            "error": error_msg,
+                        },
+                        "tool_schema": request.tool_schema,
+                        "llm_calls": llm_calls,
+                        "logs": log_messages,
+                        "analysis": analysis,
+                        "generated_yaml": yaml_content,
+                    }
+                )
+            except Exception:
+                pass  # Don't fail if log saving fails
+            yield send_error(error_msg)
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get("/tests/{filename:path}")
@@ -586,44 +1153,6 @@ async def run_tool_tests(
 # Eval endpoints
 
 
-@router.get("/reports")
-async def get_reports():
-    """Get list of test execution reports."""
-    reports_dir = Path.cwd() / "reports"
-
-    if not reports_dir.exists():
-        return {"reports": []}
-
-    try:
-        reports = []
-        for report_file in reports_dir.glob("*.json"):
-            try:
-                with open(report_file) as f:
-                    report_data = json.load(f)
-                    reports.append(
-                        {
-                            "filename": report_file.name,
-                            "path": str(report_file),
-                            "created": datetime.fromtimestamp(
-                                report_file.stat().st_mtime
-                            ).isoformat(),
-                            "summary": report_data.get("summary", {}),
-                            "test_name": report_data.get("test_name", ""),
-                        }
-                    )
-            except Exception as e:
-                print(f"Warning: Failed to read report {report_file}: {e}")
-                continue
-
-        # Sort by creation time, newest first
-        reports.sort(key=lambda x: x["created"], reverse=True)
-
-        return {"reports": reports}
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to list reports: {str(e)}")
-
-
 @router.post("/eval/run")
 async def run_eval(request: EvalRunRequest):
     """Run evaluators on a prompt/response pair from chat."""
@@ -742,202 +1271,6 @@ async def run_eval(request: EvalRunRequest):
             "score": avg_score,
             "reason": "All evaluators passed" if all_passed else "Some evaluators failed",
             "evaluations": evaluations,
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# Test generation endpoint
-
-
-@router.post("/tests/generate")
-async def generate_tests(request: GenerateTestsRequest):
-    """Generate tests for an MCP tool using LLM."""
-    model = request.model or config.default_model
-    provider = request.provider or config.default_provider
-
-    try:
-        # Initialize LLM provider
-        llm_provider = create_llm_provider(provider, model)
-        await llm_provider.initialize()
-
-        # Step 1: Analyze tool and suggest strategies
-        analysis_prompt = f"""You are a test engineer analyzing an MCP tool to suggest test strategies.
-
-Tool Name: {request.tool_name}
-Description: {request.tool_description}
-Schema: {json.dumps(request.tool_schema, indent=2)}
-
-Analyze this tool and suggest:
-1. What are the key scenarios to test? (e.g., valid inputs, edge cases, error conditions)
-2. What parameters should be varied in tests?
-3. What are potential failure modes?
-4. What outputs should be validated?
-
-Respond with a structured analysis in JSON format:
-{{
-  "test_scenarios": [
-    {{"name": "scenario name", "description": "what to test", "priority": "high|medium|low"}}
-  ],
-  "key_parameters": ["param1", "param2"],
-  "edge_cases": ["edge case 1", "edge case 2"],
-  "validation_points": ["what to check in output"]
-}}"""
-
-        analysis_result = await llm_provider.generate_with_tools(
-            prompt=analysis_prompt, tools=[], timeout=30.0
-        )
-
-        # Parse the analysis
-        try:
-            # Extract JSON from response
-            analysis_text = analysis_result.response
-            # Try to find JSON in the response
-            json_match = re.search(r"\{[\s\S]*\}", analysis_text)
-            if json_match:
-                analysis = json.loads(json_match.group())
-            else:
-                # Fallback to basic structure
-                analysis = {
-                    "test_scenarios": [
-                        {
-                            "name": "Basic functionality",
-                            "description": "Test basic tool execution",
-                            "priority": "high",
-                        }
-                    ],
-                    "key_parameters": [],
-                    "edge_cases": [],
-                    "validation_points": ["Tool executes successfully"],
-                }
-        except Exception as e:
-            print(f"Failed to parse analysis: {e}")
-            analysis = {
-                "test_scenarios": [
-                    {
-                        "name": "Basic functionality",
-                        "description": "Test basic tool execution",
-                        "priority": "high",
-                    }
-                ],
-                "key_parameters": [],
-                "edge_cases": [],
-                "validation_points": ["Tool executes successfully"],
-            }
-
-        # Step 2: Generate tests based on coverage level
-        coverage_config = {
-            "basic": {"count": 2, "include_edge_cases": False, "include_errors": False},
-            "mid": {"count": 5, "include_edge_cases": True, "include_errors": True},
-            "comprehensive": {"count": 12, "include_edge_cases": True, "include_errors": True},
-        }
-
-        config_for_level = coverage_config.get(request.coverage_level, coverage_config["basic"])
-
-        # Build the test generation prompt
-        test_gen_prompt = f"""You are generating test cases for an MCP tool. Generate {config_for_level["count"]} test cases in YAML format.
-
-Tool Name: {request.tool_name}
-Description: {request.tool_description}
-Schema: {json.dumps(request.tool_schema, indent=2)}
-
-Analysis: {json.dumps(analysis, indent=2)}
-
-{"Include edge cases and error scenarios." if config_for_level["include_edge_cases"] else "Focus on common use cases."}
-{f"Custom Instructions: {request.custom_instructions}" if request.custom_instructions else ""}
-
-YAML FORMAT (follow this structure exactly):
-```yaml
-version: "1.0"
-tests:
-  - name: test_descriptive_name_here
-    prompt: "Write a realistic user request here - e.g., 'Show me all charts in the system' or 'Get the data for chart ID 5'"
-    evaluators:
-      - name: execution_successful
-      - name: was_mcp_tool_called
-        args:
-          tool_name: "{request.tool_name}"
-```
-
-CRITICAL REQUIREMENTS:
-1. The "prompt" field MUST be a realistic natural language request that a user would actually type
-2. DO NOT use placeholder text like "A natural language prompt" - write REAL prompts based on what this tool does
-3. Each prompt should be different and test different aspects of the tool
-4. Use the tool description to understand what prompts would trigger this tool
-5. Examples of GOOD prompts: "List all available charts", "Get data for chart with ID 123", "Show me the sales dashboard"
-6. Examples of BAD prompts: "A prompt that triggers this tool", "Test the tool", "Call the function"
-
-IMPORTANT: Your response must be ONLY valid YAML starting with "version:" - no explanations, no summaries, no markdown.
-
-version: "1.0"
-tests:"""
-
-        test_gen_result = await llm_provider.generate_with_tools(
-            prompt=test_gen_prompt, tools=[], timeout=60.0
-        )
-
-        # Extract YAML from response
-        yaml_content = test_gen_result.response
-
-        # If response starts with tests (continuing from our prompt), prepend the header
-        if yaml_content.strip().startswith("- name:") or yaml_content.strip().startswith(
-            "  - name:"
-        ):
-            yaml_content = 'version: "1.0"\ntests:\n' + yaml_content
-
-        # Try to extract YAML from code blocks (handles various formats)
-        yaml_match = re.search(r"```(?:yaml)?\s*([\s\S]*?)\s*```", yaml_content)
-        if yaml_match:
-            yaml_content = yaml_match.group(1).strip()
-        else:
-            # Fallback: strip leading/trailing markdown fences manually
-            yaml_content = yaml_content.strip()
-            if yaml_content.startswith("```yaml"):
-                yaml_content = yaml_content[7:]
-            elif yaml_content.startswith("```"):
-                yaml_content = yaml_content[3:]
-            if yaml_content.endswith("```"):
-                yaml_content = yaml_content[:-3]
-            yaml_content = yaml_content.strip()
-
-        # Validate YAML
-        try:
-            yaml.safe_load(yaml_content)
-        except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Generated invalid YAML: {str(e)}\n\nGenerated content:\n{yaml_content}",
-            )
-
-        # Generate filename and folder structure
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        # Sanitize tool name for folder name (remove special chars)
-        safe_tool_name = "".join(
-            c if c.isalnum() or c in ("_", "-") else "_" for c in request.tool_name
-        )
-
-        # Create folder structure: tests/<tool_name>/
-        tests_dir = Path.cwd() / "tests"
-        tool_dir = tests_dir / safe_tool_name
-        tool_dir.mkdir(parents=True, exist_ok=True)
-
-        filename = f"{request.coverage_level}_{timestamp}.yaml"
-        file_path = tool_dir / filename
-        relative_path = f"{safe_tool_name}/{filename}"
-
-        with open(file_path, "w") as f:
-            f.write(yaml_content)
-
-        await llm_provider.close()
-
-        return {
-            "success": True,
-            "filename": relative_path,
-            "path": str(file_path),
-            "analysis": analysis,
-            "test_count": len(yaml.safe_load(yaml_content).get("tests", [])),
-            "cost": test_gen_result.cost + analysis_result.cost,
         }
 
     except Exception as e:

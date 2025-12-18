@@ -1026,7 +1026,7 @@ function AuthDebugger() {
                         type="text"
                         value={mcpUrl}
                         onChange={(e) => setMcpUrl(e.target.value)}
-                        placeholder="https://example.preset.io/mcp"
+                        placeholder="https://your-instance.example.com/mcp"
                         className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-text-primary placeholder-text-disabled focus:outline-none focus:ring-2 focus:ring-primary"
                       />
                       <p className="text-xs text-text-tertiary mt-1">

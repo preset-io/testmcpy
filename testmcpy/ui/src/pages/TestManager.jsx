@@ -23,6 +23,7 @@ import Editor from '@monaco-editor/react'
 import TestStatusIndicator from '../components/TestStatusIndicator'
 import TestResultPanel from '../components/TestResultPanel'
 import { useKeyboardShortcuts, useAnnounce } from '../hooks/useKeyboardShortcuts'
+import { useTestRun } from '../contexts/TestRunContext'
 
 // Parse YAML content to find test locations (line numbers)
 function parseTestLocations(content) {
@@ -75,6 +76,27 @@ function parseTestLocations(content) {
 }
 
 function TestManager({ selectedProfiles = [] }) {
+  // Get test run state from context (persists across navigation)
+  const {
+    running,
+    runningTestName,
+    testResults,
+    streamingLogs,
+    runningTests,
+    testStatuses,
+    activeTestFile,
+    runTests: contextRunTests,
+    runSingleTest: contextRunSingleTest,
+    clearLogs,
+    clearResults,
+    resetTestStatuses,
+    setTestStatuses,
+    setTestResults,
+    setRunning,
+    setRunningTests,
+  } = useTestRun()
+
+  // Local UI state (doesn't need to persist)
   const [testData, setTestData] = useState({ folders: {}, files: [] })
   const [expandedFolders, setExpandedFolders] = useState(new Set())
   const [selectedFile, setSelectedFile] = useState(null)
@@ -82,22 +104,10 @@ function TestManager({ selectedProfiles = [] }) {
   const [editMode, setEditMode] = useState(false)
   const [newFileName, setNewFileName] = useState('')
   const [showNewFileDialog, setShowNewFileDialog] = useState(false)
-  const [testResults, setTestResults] = useState(null)
-  const [running, setRunning] = useState(false)
-  const [runningTestName, setRunningTestName] = useState(null)
   const [testLocations, setTestLocations] = useState([])
-  const [testStatuses, setTestStatuses] = useState({}) // { testName: 'idle' | 'running' | 'passed' | 'failed' }
   const editorRef = useRef(null)
   const monacoRef = useRef(null)
   const testLocationsRef = useRef([]) // Ref to avoid stale closure in click handler
-  const [runningTests, setRunningTests] = useState({
-    current: null,
-    total: 0,
-    completed: 0,
-    status: 'idle'
-  })
-  const [streamingLogs, setStreamingLogs] = useState([])
-  const wsRef = useRef(null)
   const logsEndRef = useRef(null)
   const [testProfiles, setTestProfiles] = useState([])
   const [selectedTestProfile, setSelectedTestProfile] = useState(null)
@@ -339,16 +349,18 @@ function TestManager({ selectedProfiles = [] }) {
       const locations = parseTestLocations(fileContent)
       setTestLocations(locations)
       testLocationsRef.current = locations // Keep ref in sync
-      // Reset test statuses when content changes
-      const initialStatuses = {}
-      locations.forEach(t => initialStatuses[t.name] = 'idle')
-      setTestStatuses(initialStatuses)
+      // Reset test statuses when content changes (only if not running)
+      if (!running) {
+        resetTestStatuses(locations.map(t => t.name))
+      }
     } else {
       setTestLocations([])
       testLocationsRef.current = []
-      setTestStatuses({})
+      if (!running) {
+        resetTestStatuses([])
+      }
     }
-  }, [fileContent])
+  }, [fileContent, running, resetTestStatuses])
 
   // Update editor decorations when test statuses change
   const updateEditorDecorations = useCallback(() => {
@@ -513,102 +525,12 @@ function TestManager({ selectedProfiles = [] }) {
     attemptDecorations()
   }
 
-  // Run a single test by name (uses WebSocket for streaming logs)
+  // Run a single test by name (uses context for state management)
   const runSingleTest = async (testName) => {
     if (!selectedFile || running) return
-
-    setRunning(true)
-    setRunningTestName(testName)
-    setTestStatuses(prev => ({ ...prev, [testName]: 'running' }))
-    setStreamingLogs([`🚀 Running test: ${testName}`])
-
     const llmConfig = getLlmConfig()
-
-    // Use WebSocket for streaming logs
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsUrl = `${wsProtocol}//${window.location.host}/ws/tests`
-    try {
-      const ws = new WebSocket(wsUrl)
-      wsRef.current = ws
-
-      ws.onopen = () => {
-        setStreamingLogs(prev => [...prev, '🔌 Connected to test runner'])
-        ws.send(JSON.stringify({
-          type: 'run_test',
-          test_path: selectedFile.path,
-          test_name: testName,
-          model: llmConfig.model,
-          provider: llmConfig.provider,
-          profile: selectedMcpProfile,
-        }))
-      }
-
-      ws.onmessage = (event) => {
-        const data = JSON.parse(event.data)
-
-        switch (data.type) {
-          case 'log':
-            setStreamingLogs(prev => [...prev, data.message])
-            break
-          case 'test_start':
-            setStreamingLogs(prev => [...prev, `🧪 Starting: ${data.test_name}`])
-            break
-          case 'test_complete':
-            const result = data.result
-            setTestStatuses(prev => ({
-              ...prev,
-              [testName]: result.passed ? 'passed' : 'failed'
-            }))
-            setTestResults(prev => {
-              if (!prev) return { results: [result], summary: { total: 1, passed: result.passed ? 1 : 0, failed: result.passed ? 0 : 1 } }
-              const existingResults = prev.results.filter(r => r.test_name !== testName)
-              const newResults = [...existingResults, result]
-              return {
-                results: newResults,
-                summary: {
-                  total: newResults.length,
-                  passed: newResults.filter(r => r.passed).length,
-                  failed: newResults.filter(r => !r.passed).length,
-                  total_cost: newResults.reduce((sum, r) => sum + (r.cost || 0), 0)
-                }
-              }
-            })
-            break
-          case 'all_complete':
-            setStreamingLogs(prev => [...prev, `✅ Test complete`])
-            setRunning(false)
-            setRunningTestName(null)
-            ws.close()
-            break
-          case 'error':
-            setStreamingLogs(prev => [...prev, `❌ ERROR: ${data.message}`])
-            setTestStatuses(prev => ({ ...prev, [testName]: 'failed' }))
-            setRunning(false)
-            setRunningTestName(null)
-            ws.close()
-            break
-        }
-      }
-
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error)
-        setStreamingLogs(prev => [...prev, `❌ WebSocket error`])
-        setTestStatuses(prev => ({ ...prev, [testName]: 'failed' }))
-        setRunning(false)
-        setRunningTestName(null)
-      }
-
-      ws.onclose = () => {
-        wsRef.current = null
-      }
-
-    } catch (error) {
-      console.error('Failed to run test:', error)
-      setStreamingLogs(prev => [...prev, `❌ Failed: ${error.message}`])
-      setTestStatuses(prev => ({ ...prev, [testName]: 'failed' }))
-      setRunning(false)
-      setRunningTestName(null)
-    }
+    const testFile = selectedFile.relative_path || selectedFile.filename
+    contextRunSingleTest(testName, testFile, selectedFile.path, llmConfig, selectedMcpProfile)
   }
 
   const loadTestFiles = async () => {
@@ -743,145 +665,23 @@ tests:
 
   const runTests = async () => {
     if (!selectedFile) return
-
-    setRunning(true)
-    setTestResults(null)
-    setStreamingLogs(['🚀 Starting test run...'])
-
-    const tests = testLocations.length > 0 ? testLocations : [{ name: 'test' }]
-    const totalTests = tests.length
-
-    // Initialize running tests state
-    setRunningTests({
-      current: 'Connecting...',
-      total: totalTests,
-      completed: 0,
-      status: 'running'
-    })
-
-    // Reset all test statuses to idle
-    const initialStatuses = {}
-    tests.forEach(t => initialStatuses[t.name] = 'idle')
-    setTestStatuses(initialStatuses)
-
-    // Get LLM config
     const llmConfig = getLlmConfig()
-
-    // Create WebSocket connection
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsUrl = `${wsProtocol}//${window.location.host}/ws/tests`
-    try {
-      const ws = new WebSocket(wsUrl)
-      wsRef.current = ws
-
-      ws.onopen = () => {
-        setStreamingLogs(prev => [...prev, '🔌 Connected to test runner'])
-
-        // Send run_test message
-        ws.send(JSON.stringify({
-          type: 'run_test',
-          test_path: selectedFile.path,
-          model: llmConfig.model,
-          provider: llmConfig.provider,
-          profile: selectedMcpProfile,
-        }))
-      }
-
-      ws.onmessage = (event) => {
-        const data = JSON.parse(event.data)
-
-        switch (data.type) {
-          case 'log':
-            setStreamingLogs(prev => [...prev, data.message])
-            break
-
-          case 'test_start':
-            setRunningTests(prev => ({
-              ...prev,
-              current: data.test_name,
-              completed: data.index,
-              total: data.total,
-            }))
-            setTestStatuses(prev => ({ ...prev, [data.test_name]: 'running' }))
-            break
-
-          case 'test_complete':
-            const result = data.result
-            setTestStatuses(prev => ({
-              ...prev,
-              [data.test_name]: result.passed ? 'passed' : 'failed'
-            }))
-            setTestResults(prev => {
-              const prevResults = prev?.results || []
-              const newResults = [...prevResults, result]
-              return {
-                summary: {
-                  total: newResults.length,
-                  passed: newResults.filter(r => r.passed).length,
-                  failed: newResults.filter(r => !r.passed).length,
-                  total_cost: newResults.reduce((sum, r) => sum + (r.cost || 0), 0),
-                  total_tokens: newResults.reduce((sum, r) => sum + (r.token_usage?.total || 0), 0),
-                },
-                results: newResults
-              }
-            })
-            break
-
-          case 'all_complete':
-            setTestResults({
-              summary: data.summary,
-              results: data.results
-            })
-            setRunningTests(prev => ({
-              ...prev,
-              current: null,
-              completed: data.summary.total,
-              status: 'completed'
-            }))
-            setRunning(false)
-            setBottomPanelTab('results') // Switch to results tab
-            // Refresh history after test completes
-            if (selectedFile) {
-              const testFile = selectedFile.relative_path || selectedFile.filename
-              loadResultsHistory(testFile)
-            }
-            ws.close()
-            break
-
-          case 'error':
-            setStreamingLogs(prev => [...prev, `❌ ERROR: ${data.message}`])
-            if (data.traceback) {
-              setStreamingLogs(prev => [...prev, data.traceback])
-            }
-            setRunning(false)
-            ws.close()
-            break
-        }
-      }
-
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error)
-        setStreamingLogs(prev => [...prev, `❌ WebSocket error: ${error.message || 'Connection failed'}`])
-        setRunning(false)
-      }
-
-      ws.onclose = () => {
-        setStreamingLogs(prev => [...prev, '🔌 Disconnected'])
-        wsRef.current = null
-      }
-
-    } catch (error) {
-      console.error('Failed to run tests:', error)
-      setStreamingLogs(prev => [...prev, `❌ Failed: ${error.message}`])
-      setRunning(false)
-      setRunningTests({
-        current: null,
-        total: 0,
-        completed: 0,
-        status: 'idle'
-      })
-    }
+    const testFile = selectedFile.relative_path || selectedFile.filename
+    contextRunTests(testFile, selectedFile.path, llmConfig, selectedMcpProfile, testLocations)
+    setBottomPanelTab('logs') // Show logs while running
   }
+
+  // Switch to results tab when tests complete
+  useEffect(() => {
+    if (runningTests.status === 'completed' && testResults) {
+      setBottomPanelTab('results')
+      // Refresh history after test completes
+      if (selectedFile) {
+        const testFile = selectedFile.relative_path || selectedFile.filename
+        loadResultsHistory(testFile)
+      }
+    }
+  }, [runningTests.status, testResults, selectedFile])
 
   // Auto-scroll logs to bottom
   useEffect(() => {
@@ -1387,14 +1187,14 @@ tests:
                     {/* Clear/Close buttons */}
                     {bottomPanelTab === 'logs' && !running && streamingLogs.length > 0 && (
                       <button
-                        onClick={() => setStreamingLogs([])}
+                        onClick={clearLogs}
                         className="px-2 py-1 text-xs text-text-tertiary hover:text-text-primary hover:bg-surface-hover rounded transition-colors"
                       >
                         Clear
                       </button>
                     )}
                     <button
-                      onClick={() => { setTestResults(null); setStreamingLogs([]); setBottomPanelTab('logs'); }}
+                      onClick={() => { clearResults(); setBottomPanelTab('logs'); }}
                       className="p-1.5 text-text-tertiary hover:text-text-primary hover:bg-surface-hover rounded transition-colors"
                       title="Close panel"
                     >

@@ -360,12 +360,17 @@ async def handle_test_websocket(websocket: WebSocket):
 
                     # Save results to history
                     try:
-                        from testmcpy.server.routers.results import save_test_run
+                        from testmcpy.server.routers.results import save_test_run_to_file
+
+                        # Get relative path from tests directory if possible
+                        tests_dir = Path.cwd() / "tests"
+                        if test_path.is_relative_to(tests_dir):
+                            test_file_name = str(test_path.relative_to(tests_dir))
+                        else:
+                            test_file_name = test_path.name
 
                         save_data = {
-                            "test_file": str(test_path.relative_to(config.tests_dir))
-                            if str(test_path).startswith(str(config.tests_dir))
-                            else test_path.name,
+                            "test_file": test_file_name,
                             "test_file_path": str(test_path),
                             "provider": provider,
                             "model": model,
@@ -373,7 +378,7 @@ async def handle_test_websocket(websocket: WebSocket):
                             "results": results_list,
                             "summary": summary,
                         }
-                        save_result = await save_test_run(save_data)
+                        save_result = save_test_run_to_file(save_data)
                         await send_log(f"💾 Results saved: {save_result.get('run_id')}")
                     except Exception as save_err:
                         await send_log(f"⚠️ Failed to save results: {save_err}")

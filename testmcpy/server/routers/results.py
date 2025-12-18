@@ -53,10 +53,10 @@ def get_result_file(run_id: str) -> Path:
     return get_results_dir() / f"{run_id}.json"
 
 
-@router.post("/save")
-async def save_test_run(data: dict[str, Any]) -> dict[str, Any]:
+def save_test_run_to_file(data: dict[str, Any]) -> dict[str, Any]:
     """
-    Save a test run result.
+    Save a test run result to file.
+    This function can be called directly (not as an HTTP endpoint).
 
     Expected data format:
     {
@@ -103,6 +103,12 @@ async def save_test_run(data: dict[str, Any]) -> dict[str, Any]:
         json.dump(run_result.model_dump(), f, indent=2, default=str)
 
     return {"run_id": run_id, "saved": True, "path": str(result_file)}
+
+
+@router.post("/save")
+async def save_test_run(data: dict[str, Any]) -> dict[str, Any]:
+    """HTTP endpoint to save a test run result."""
+    return save_test_run_to_file(data)
 
 
 @router.get("/list")

@@ -1,0 +1,231 @@
+{
+  "metadata": {
+    "tool_name": "get_dataset_info",
+    "tool_description": "Get dataset metadata by ID or UUID.\n\nReturns columns, metrics, and schema details.\n\nIMPORTANT FOR LLM CLIENTS:\n- Use numeric ID (e.g., 123) or UUID string (e.g., \"a1b2c3d4-...\")\n- DO NOT use schema.table_name format (e.g., \"public.customers\")\n- To find a dataset ID, use the list_datasets tool first\n\nExample usage:\n```json\n{\n    \"identifier\": 123\n}\n```\n\nOr with UUID:\n```json\n{\n    \"identifier\": \"a1b2c3d4-5678-90ab-cdef-1234567890ab\"\n}\n```",
+    "coverage_level": "basic",
+    "provider": "claude-cli",
+    "model": "claude-sonnet-4-20250514",
+    "timestamp": "2025-12-17T18:41:49.158866",
+    "success": true,
+    "test_count": 2,
+    "total_cost": 0.0,
+    "output_file": "get_dataset_info/basic_20251217_184149.yaml",
+    "log_id": "e15708f3_20251217_184149"
+  },
+  "tool_schema": {
+    "$defs": {
+      "GetDatasetInfoRequest": {
+        "description": "Request schema for get_dataset_info with support for ID or UUID.",
+        "properties": {
+          "use_cache": {
+            "default": true,
+            "description": "Whether to use Superset's cache layers. When True, will serve from cache if available (query results, metadata, form data). When False, will bypass cache and fetch fresh data.",
+            "title": "Use Cache",
+            "type": "boolean"
+          },
+          "force_refresh": {
+            "default": false,
+            "description": "Whether to force refresh cached data. When True, will invalidate existing cache entries and fetch fresh data, then update the cache. Overrides use_cache=True if both are specified.",
+            "title": "Force Refresh",
+            "type": "boolean"
+          },
+          "refresh_metadata": {
+            "default": false,
+            "description": "Whether to refresh metadata cache for datasets, tables, and columns. Useful when database schema has changed and you need fresh metadata.",
+            "title": "Refresh Metadata",
+            "type": "boolean"
+          },
+          "identifier": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "description": "Dataset identifier - can be numeric ID or UUID string",
+            "title": "Identifier"
+          }
+        },
+        "required": [
+          "identifier"
+        ],
+        "title": "GetDatasetInfoRequest",
+        "type": "object"
+      }
+    },
+    "properties": {
+      "request": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "$ref": "#/$defs/GetDatasetInfoRequest"
+          }
+        ],
+        "title": "Request"
+      }
+    },
+    "required": [
+      "request"
+    ],
+    "type": "object"
+  },
+  "llm_calls": [
+    {
+      "step": "analysis",
+      "prompt": "You are a test engineer analyzing an MCP tool to suggest test strategies.\n\nTool Name: get_dataset_info\nDescription: Get dataset metadata by ID or UUID.\n\nReturns columns, metrics, and schema details.\n\nIMPORTANT FOR LLM CLIENTS:\n- Use numeric ID (e.g., 123) or UUID string (e.g., \"a1b2c3d4-...\")\n- DO NOT use schema.table_name format (e.g., \"public.customers\")\n- To find a dataset ID, use the list_datasets tool first\n\nExample usage:\n```json\n{\n    \"identifier\": 123\n}\n```\n\nOr with UUID:\n```json\n{\n    \"identifier\": \"a1b2c3d4-5678-90ab-cdef-1234567890ab\"\n}\n```\nSchema: {\n  \"$defs\": {\n    \"GetDatasetInfoRequest\": {\n      \"description\": \"Request schema for get_dataset_info with support for ID or UUID.\",\n      \"properties\": {\n        \"use_cache\": {\n          \"default\": true,\n          \"description\": \"Whether to use Superset's cache layers. When True, will serve from cache if available (query results, metadata, form data). When False, will bypass cache and fetch fresh data.\",\n          \"title\": \"Use Cache\",\n          \"type\": \"boolean\"\n        },\n        \"force_refresh\": {\n          \"default\": false,\n          \"description\": \"Whether to force refresh cached data. When True, will invalidate existing cache entries and fetch fresh data, then update the cache. Overrides use_cache=True if both are specified.\",\n          \"title\": \"Force Refresh\",\n          \"type\": \"boolean\"\n        },\n        \"refresh_metadata\": {\n          \"default\": false,\n          \"description\": \"Whether to refresh metadata cache for datasets, tables, and columns. Useful when database schema has changed and you need fresh metadata.\",\n          \"title\": \"Refresh Metadata\",\n          \"type\": \"boolean\"\n        },\n        \"identifier\": {\n          \"anyOf\": [\n            {\n              \"type\": \"integer\"\n            },\n            {\n              \"type\": \"string\"\n            }\n          ],\n          \"description\": \"Dataset identifier - can be numeric ID or UUID string\",\n          \"title\": \"Identifier\"\n        }\n      },\n      \"required\": [\n        \"identifier\"\n      ],\n      \"title\": \"GetDatasetInfoRequest\",\n      \"type\": \"object\"\n    }\n  },\n  \"properties\": {\n    \"request\": {\n      \"anyOf\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"$ref\": \"#/$defs/GetDatasetInfoRequest\"\n        }\n      ],\n      \"title\": \"Request\"\n    }\n  },\n  \"required\": [\n    \"request\"\n  ],\n  \"type\": \"object\"\n}\n\nAnalyze this tool and suggest:\n1. What are the key scenarios to test? (e.g., valid inputs, edge cases, error conditions)\n2. What parameters should be varied in tests?\n3. What are potential failure modes?\n4. What outputs should be validated?\n\nRespond with a structured analysis in JSON format:\n{\n  \"test_scenarios\": [\n    {\"name\": \"scenario name\", \"description\": \"what to test\", \"priority\": \"high|medium|low\"}\n  ],\n  \"key_parameters\": [\"param1\", \"param2\"],\n  \"edge_cases\": [\"edge case 1\", \"edge case 2\"],\n  \"validation_points\": [\"what to check in output\"]\n}",
+      "response": "Looking at this MCP tool for getting dataset metadata, I'll analyze the testing requirements based on the schema and description.\n\n```json\n{\n  \"test_scenarios\": [\n    {\n      \"name\": \"valid_numeric_id\",\n      \"description\": \"Test with valid numeric dataset ID to retrieve dataset metadata\",\n      \"priority\": \"high\"\n    },\n    {\n      \"name\": \"valid_uuid_string\",\n      \"description\": \"Test with valid UUID string identifier to retrieve dataset metadata\",\n      \"priority\": \"high\"\n    },\n    {\n      \"name\": \"nonexistent_numeric_id\",\n      \"description\": \"Test with numeric ID that doesn't exist in the system\",\n      \"priority\": \"high\"\n    },\n    {\n      \"name\": \"nonexistent_uuid\",\n      \"description\": \"Test with UUID that doesn't exist in the system\",\n      \"priority\": \"high\"\n    },\n    {\n      \"name\": \"invalid_identifier_format\",\n      \"description\": \"Test with invalid identifier formats (e.g., schema.table_name which is explicitly not supported)\",\n      \"priority\": \"high\"\n    },\n    {\n      \"name\": \"cache_behavior_enabled\",\n      \"description\": \"Test with use_cache=true to verify cached data is returned when available\",\n      \"priority\": \"medium\"\n    },\n    {\n      \"name\": \"cache_behavior_disabled\",\n      \"description\": \"Test with use_cache=false to verify fresh data is fetched\",\n      \"priority\": \"medium\"\n    },\n    {\n      \"name\": \"force_refresh_behavior\",\n      \"description\": \"Test with force_refresh=true to verify cache invalidation and fresh data fetch\",\n      \"priority\": \"medium\"\n    },\n    {\n      \"name\": \"metadata_refresh\",\n      \"description\": \"Test with refresh_metadata=true to verify schema metadata is refreshed\",\n      \"priority\": \"medium\"\n    },\n    {\n      \"name\": \"empty_or_null_identifier\",\n      \"description\": \"Test with empty string, null, or missing identifier\",\n      \"priority\": \"high\"\n    },\n    {\n      \"name\": \"malformed_uuid\",\n      \"description\": \"Test with malformed UUID strings (wrong format, invalid characters)\",\n      \"priority\": \"medium\"\n    },\n    {\n      \"name\": \"negative_numeric_id\",\n      \"description\": \"Test with negative numeric IDs\",\n      \"priority\": \"medium\"\n    },\n    {\n      \"name\": \"zero_numeric_id\",\n      \"description\": \"Test with zero as numeric ID\",\n      \"priority\": \"medium\"\n    },\n    {\n      \"name\": \"very_large_numeric_id\",\n      \"description\": \"Test with extremely large numeric IDs (boundary testing)\",\n      \"priority\": \"low\"\n    },\n    {\n      \"name\": \"conflicting_cache_parameters\",\n      \"description\": \"Test with conflicting cache parameters (use_cache=true, force_refresh=true)\",\n      \"priority\": \"low\"\n    }\n  ],\n  \"key_parameters\": [\n    \"identifier\",\n    \"use_cache\",\n    \"force_refresh\", \n    \"refresh_metadata\"\n  ],\n  \"edge_cases\": [\n    \"Empty or null identifier\",\n    \"Malformed UUID format\",\n    \"Negative numeric IDs\",\n    \"Zero as identifier\",\n    \"Very large integer values\",\n    \"Schema.table_name format (explicitly unsupported)\",\n    \"Mixed case UUID strings\",\n    \"UUID with/without hyphens\",\n    \"Conflicting cache parameters (use_cache=true with force_refresh=true)\",\n    \"Datasets with no metadata available\",\n    \"Datasets with incomplete schema information\"\n  ],\n  \"validation_points\": [\n    \"Response contains columns information\",\n    \"Response contains metrics information\", \n    \"Response contains schema details\",\n    \"Dataset ID/UUID matches requested identifier\",\n    \"Column data types are properly formatted\",\n    \"Metric definitions are complete\",\n    \"Cache behavior matches requested parameters\",\n    \"Error messages are descriptive for invalid inputs\",\n    \"Response time is reasonable for cache vs non-cache requests\",\n    \"Metadata freshness when refresh_metadata=true\",\n    \"No sensitive information is exposed in responses\",\n    \"Response format is consistent across identifier types\",\n    \"Proper HTTP status codes for different scenarios\"\n  ]\n}\n```",
+      "cost": 0.0,
+      "tokens": 1046,
+      "duration": 18.943377,
+      "timestamp": "2025-12-17T18:41:41.714385"
+    },
+    {
+      "step": "generation",
+      "prompt": "You are generating test cases for an MCP tool. Generate 2 test cases in YAML format.\n\nTool Name: get_dataset_info\nDescription: Get dataset metadata by ID or UUID.\n\nReturns columns, metrics, and schema details.\n\nIMPORTANT FOR LLM CLIENTS:\n- Use numeric ID (e.g., 123) or UUID string (e.g., \"a1b2c3d4-...\")\n- DO NOT use schema.table_name format (e.g., \"public.customers\")\n- To find a dataset ID, use the list_datasets tool first\n\nExample usage:\n```json\n{\n    \"identifier\": 123\n}\n```\n\nOr with UUID:\n```json\n{\n    \"identifier\": \"a1b2c3d4-5678-90ab-cdef-1234567890ab\"\n}\n```\nSchema: {\n  \"$defs\": {\n    \"GetDatasetInfoRequest\": {\n      \"description\": \"Request schema for get_dataset_info with support for ID or UUID.\",\n      \"properties\": {\n        \"use_cache\": {\n          \"default\": true,\n          \"description\": \"Whether to use Superset's cache layers. When True, will serve from cache if available (query results, metadata, form data). When False, will bypass cache and fetch fresh data.\",\n          \"title\": \"Use Cache\",\n          \"type\": \"boolean\"\n        },\n        \"force_refresh\": {\n          \"default\": false,\n          \"description\": \"Whether to force refresh cached data. When True, will invalidate existing cache entries and fetch fresh data, then update the cache. Overrides use_cache=True if both are specified.\",\n          \"title\": \"Force Refresh\",\n          \"type\": \"boolean\"\n        },\n        \"refresh_metadata\": {\n          \"default\": false,\n          \"description\": \"Whether to refresh metadata cache for datasets, tables, and columns. Useful when database schema has changed and you need fresh metadata.\",\n          \"title\": \"Refresh Metadata\",\n          \"type\": \"boolean\"\n        },\n        \"identifier\": {\n          \"anyOf\": [\n            {\n              \"type\": \"integer\"\n            },\n            {\n              \"type\": \"string\"\n            }\n          ],\n          \"description\": \"Dataset identifier - can be numeric ID or UUID string\",\n          \"title\": \"Identifier\"\n        }\n      },\n      \"required\": [\n        \"identifier\"\n      ],\n      \"title\": \"GetDatasetInfoRequest\",\n      \"type\": \"object\"\n    }\n  },\n  \"properties\": {\n    \"request\": {\n      \"anyOf\": [\n        {\n          \"type\": \"string\"\n        },\n        {\n          \"$ref\": \"#/$defs/GetDatasetInfoRequest\"\n        }\n      ],\n      \"title\": \"Request\"\n    }\n  },\n  \"required\": [\n    \"request\"\n  ],\n  \"type\": \"object\"\n}\n\nAnalysis: {\n  \"test_scenarios\": [\n    {\n      \"name\": \"valid_numeric_id\",\n      \"description\": \"Test with valid numeric dataset ID to retrieve dataset metadata\",\n      \"priority\": \"high\"\n    },\n    {\n      \"name\": \"valid_uuid_string\",\n      \"description\": \"Test with valid UUID string identifier to retrieve dataset metadata\",\n      \"priority\": \"high\"\n    },\n    {\n      \"name\": \"nonexistent_numeric_id\",\n      \"description\": \"Test with numeric ID that doesn't exist in the system\",\n      \"priority\": \"high\"\n    },\n    {\n      \"name\": \"nonexistent_uuid\",\n      \"description\": \"Test with UUID that doesn't exist in the system\",\n      \"priority\": \"high\"\n    },\n    {\n      \"name\": \"invalid_identifier_format\",\n      \"description\": \"Test with invalid identifier formats (e.g., schema.table_name which is explicitly not supported)\",\n      \"priority\": \"high\"\n    },\n    {\n      \"name\": \"cache_behavior_enabled\",\n      \"description\": \"Test with use_cache=true to verify cached data is returned when available\",\n      \"priority\": \"medium\"\n    },\n    {\n      \"name\": \"cache_behavior_disabled\",\n      \"description\": \"Test with use_cache=false to verify fresh data is fetched\",\n      \"priority\": \"medium\"\n    },\n    {\n      \"name\": \"force_refresh_behavior\",\n      \"description\": \"Test with force_refresh=true to verify cache invalidation and fresh data fetch\",\n      \"priority\": \"medium\"\n    },\n    {\n      \"name\": \"metadata_refresh\",\n      \"description\": \"Test with refresh_metadata=true to verify schema metadata is refreshed\",\n      \"priority\": \"medium\"\n    },\n    {\n      \"name\": \"empty_or_null_identifier\",\n      \"description\": \"Test with empty string, null, or missing identifier\",\n      \"priority\": \"high\"\n    },\n    {\n      \"name\": \"malformed_uuid\",\n      \"description\": \"Test with malformed UUID strings (wrong format, invalid characters)\",\n      \"priority\": \"medium\"\n    },\n    {\n      \"name\": \"negative_numeric_id\",\n      \"description\": \"Test with negative numeric IDs\",\n      \"priority\": \"medium\"\n    },\n    {\n      \"name\": \"zero_numeric_id\",\n      \"description\": \"Test with zero as numeric ID\",\n      \"priority\": \"medium\"\n    },\n    {\n      \"name\": \"very_large_numeric_id\",\n      \"description\": \"Test with extremely large numeric IDs (boundary testing)\",\n      \"priority\": \"low\"\n    },\n    {\n      \"name\": \"conflicting_cache_parameters\",\n      \"description\": \"Test with conflicting cache parameters (use_cache=true, force_refresh=true)\",\n      \"priority\": \"low\"\n    }\n  ],\n  \"key_parameters\": [\n    \"identifier\",\n    \"use_cache\",\n    \"force_refresh\",\n    \"refresh_metadata\"\n  ],\n  \"edge_cases\": [\n    \"Empty or null identifier\",\n    \"Malformed UUID format\",\n    \"Negative numeric IDs\",\n    \"Zero as identifier\",\n    \"Very large integer values\",\n    \"Schema.table_name format (explicitly unsupported)\",\n    \"Mixed case UUID strings\",\n    \"UUID with/without hyphens\",\n    \"Conflicting cache parameters (use_cache=true with force_refresh=true)\",\n    \"Datasets with no metadata available\",\n    \"Datasets with incomplete schema information\"\n  ],\n  \"validation_points\": [\n    \"Response contains columns information\",\n    \"Response contains metrics information\",\n    \"Response contains schema details\",\n    \"Dataset ID/UUID matches requested identifier\",\n    \"Column data types are properly formatted\",\n    \"Metric definitions are complete\",\n    \"Cache behavior matches requested parameters\",\n    \"Error messages are descriptive for invalid inputs\",\n    \"Response time is reasonable for cache vs non-cache requests\",\n    \"Metadata freshness when refresh_metadata=true\",\n    \"No sensitive information is exposed in responses\",\n    \"Response format is consistent across identifier types\",\n    \"Proper HTTP status codes for different scenarios\"\n  ]\n}\n\nFocus on common use cases.\n\n\nYAML FORMAT (follow this structure exactly):\n```yaml\nversion: \"1.0\"\ntests:\n  - name: test_descriptive_name_here\n    prompt: \"Write a realistic user request here\"\n    evaluators:\n      - name: execution_successful\n      - name: was_mcp_tool_called\n        args:\n          tool_name: \"get_dataset_info\"\n```\n\nCRITICAL REQUIREMENTS:\n1. The \"prompt\" field MUST be a realistic natural language request that a user would actually type\n2. DO NOT use placeholder text - write REAL prompts based on what this tool does\n3. Each prompt should be different and test different aspects of the tool\n\nIMPORTANT: Your response must be ONLY valid YAML starting with \"version:\" - no explanations.\n\nversion: \"1.0\"\ntests:",
+      "response": "```yaml\nversion: \"1.0\"\ntests:\n  - name: test_get_dataset_info_by_numeric_id\n    prompt: \"Can you get the detailed information for dataset ID 42? I need to see the columns, metrics, and schema details.\"\n    evaluators:\n      - name: execution_successful\n      - name: was_mcp_tool_called\n        args:\n          tool_name: \"get_dataset_info\"\n  - name: test_get_dataset_info_by_uuid\n    prompt: \"I have this dataset UUID a1b2c3d4-5678-90ab-cdef-1234567890ab and need to check its metadata including all available columns and any defined metrics.\"\n    evaluators:\n      - name: execution_successful\n      - name: was_mcp_tool_called\n        args:\n          tool_name: \"get_dataset_info\"\n```",
+      "cost": 0.0,
+      "tokens": 219,
+      "duration": 7.441003,
+      "timestamp": "2025-12-17T18:41:49.156039"
+    }
+  ],
+  "logs": [
+    "\ud83d\ude80 Starting test generation for get_dataset_info",
+    "\ud83d\udccb Coverage level: basic",
+    "\ud83e\udd16 Using claude-cli/claude-sonnet-4-20250514",
+    "\ud83d\udd27 Initializing LLM provider...",
+    "\u2713 LLM provider ready",
+    "\ud83d\udcca Step 1/2: Analyzing tool schema...",
+    "   Tool: get_dataset_info",
+    "   Description: Get dataset metadata by ID or UUID.\n\nReturns columns, metrics, and schema details.\n\nIMPORTANT FOR LL...",
+    "   Sending analysis prompt to LLM...",
+    "   \u2713 Analysis complete ($0.0000)",
+    "   Found 15 test scenarios",
+    "\ud83d\udcdd Step 2/2: Generating 2 test cases...",
+    "   Sending generation prompt to LLM...",
+    "   \u2713 Generation complete ($0.0000)",
+    "\ud83d\udd0d Processing generated YAML...",
+    "   \u2713 Valid YAML with 2 tests",
+    "\ud83d\udcbe Saving test file...",
+    "   \u2713 Saved to get_dataset_info/basic_20251217_184149.yaml",
+    "\u2705 Complete! Total cost: $0.0000"
+  ],
+  "analysis": {
+    "test_scenarios": [
+      {
+        "name": "valid_numeric_id",
+        "description": "Test with valid numeric dataset ID to retrieve dataset metadata",
+        "priority": "high"
+      },
+      {
+        "name": "valid_uuid_string",
+        "description": "Test with valid UUID string identifier to retrieve dataset metadata",
+        "priority": "high"
+      },
+      {
+        "name": "nonexistent_numeric_id",
+        "description": "Test with numeric ID that doesn't exist in the system",
+        "priority": "high"
+      },
+      {
+        "name": "nonexistent_uuid",
+        "description": "Test with UUID that doesn't exist in the system",
+        "priority": "high"
+      },
+      {
+        "name": "invalid_identifier_format",
+        "description": "Test with invalid identifier formats (e.g., schema.table_name which is explicitly not supported)",
+        "priority": "high"
+      },
+      {
+        "name": "cache_behavior_enabled",
+        "description": "Test with use_cache=true to verify cached data is returned when available",
+        "priority": "medium"
+      },
+      {
+        "name": "cache_behavior_disabled",
+        "description": "Test with use_cache=false to verify fresh data is fetched",
+        "priority": "medium"
+      },
+      {
+        "name": "force_refresh_behavior",
+        "description": "Test with force_refresh=true to verify cache invalidation and fresh data fetch",
+        "priority": "medium"
+      },
+      {
+        "name": "metadata_refresh",
+        "description": "Test with refresh_metadata=true to verify schema metadata is refreshed",
+        "priority": "medium"
+      },
+      {
+        "name": "empty_or_null_identifier",
+        "description": "Test with empty string, null, or missing identifier",
+        "priority": "high"
+      },
+      {
+        "name": "malformed_uuid",
+        "description": "Test with malformed UUID strings (wrong format, invalid characters)",
+        "priority": "medium"
+      },
+      {
+        "name": "negative_numeric_id",
+        "description": "Test with negative numeric IDs",
+        "priority": "medium"
+      },
+      {
+        "name": "zero_numeric_id",
+        "description": "Test with zero as numeric ID",
+        "priority": "medium"
+      },
+      {
+        "name": "very_large_numeric_id",
+        "description": "Test with extremely large numeric IDs (boundary testing)",
+        "priority": "low"
+      },
+      {
+        "name": "conflicting_cache_parameters",
+        "description": "Test with conflicting cache parameters (use_cache=true, force_refresh=true)",
+        "priority": "low"
+      }
+    ],
+    "key_parameters": [
+      "identifier",
+      "use_cache",
+      "force_refresh",
+      "refresh_metadata"
+    ],
+    "edge_cases": [
+      "Empty or null identifier",
+      "Malformed UUID format",
+      "Negative numeric IDs",
+      "Zero as identifier",
+      "Very large integer values",
+      "Schema.table_name format (explicitly unsupported)",
+      "Mixed case UUID strings",
+      "UUID with/without hyphens",
+      "Conflicting cache parameters (use_cache=true with force_refresh=true)",
+      "Datasets with no metadata available",
+      "Datasets with incomplete schema information"
+    ],
+    "validation_points": [
+      "Response contains columns information",
+      "Response contains metrics information",
+      "Response contains schema details",
+      "Dataset ID/UUID matches requested identifier",
+      "Column data types are properly formatted",
+      "Metric definitions are complete",
+      "Cache behavior matches requested parameters",
+      "Error messages are descriptive for invalid inputs",
+      "Response time is reasonable for cache vs non-cache requests",
+      "Metadata freshness when refresh_metadata=true",
+      "No sensitive information is exposed in responses",
+      "Response format is consistent across identifier types",
+      "Proper HTTP status codes for different scenarios"
+    ]
+  },
+  "generated_yaml": "version: \"1.0\"\ntests:\n  - name: test_get_dataset_info_by_numeric_id\n    prompt: \"Can you get the detailed information for dataset ID 42? I need to see the columns, metrics, and schema details.\"\n    evaluators:\n      - name: execution_successful\n      - name: was_mcp_tool_called\n        args:\n          tool_name: \"get_dataset_info\"\n  - name: test_get_dataset_info_by_uuid\n    prompt: \"I have this dataset UUID a1b2c3d4-5678-90ab-cdef-1234567890ab and need to check its metadata including all available columns and any defined metrics.\"\n    evaluators:\n      - name: execution_successful\n      - name: was_mcp_tool_called\n        args:\n          tool_name: \"get_dataset_info\""
+}

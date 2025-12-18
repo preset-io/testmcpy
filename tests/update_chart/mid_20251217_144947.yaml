@@ -1,0 +1,41 @@
+version: "1.0"
+tests:
+  - name: update_chart_change_visualization_type
+    prompt: "Update chart 123 to change from a line chart to a bar chart showing sales data by date"
+    evaluators:
+      - name: execution_successful
+      - name: was_mcp_tool_called
+        args:
+          tool_name: "update_chart"
+  
+  - name: update_chart_with_uuid_identifier
+    prompt: "Please update the chart a1b2c3d4-5678-90ab-cdef-1234567890ab to show revenue data grouped by product category"
+    evaluators:
+      - name: execution_successful
+      - name: was_mcp_tool_called
+        args:
+          tool_name: "update_chart"
+  
+  - name: update_table_chart_add_columns
+    prompt: "Modify chart 456 to include additional columns for customer name and order total in the table view"
+    evaluators:
+      - name: execution_successful
+      - name: was_mcp_tool_called
+        args:
+          tool_name: "update_chart"
+  
+  - name: update_chart_with_filters_and_title
+    prompt: "Update chart 789 to only show data from 2023 and change the title to 'Annual Sales Report'"
+    evaluators:
+      - name: execution_successful
+      - name: was_mcp_tool_called
+        args:
+          tool_name: "update_chart"
+  
+  - name: update_chart_invalid_identifier
+    prompt: "Update chart with ID 'nonexistent-chart-123' to show different metrics"
+    evaluators:
+      - name: execution_successful
+      - name: was_mcp_tool_called
+        args:
+          tool_name: "update_chart"

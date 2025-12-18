@@ -1,0 +1,252 @@
+{
+  "metadata": {
+    "run_id": "ac347b9d_20251217_183902",
+    "test_file": "get_chart_info/basic_20251217_153303.yaml",
+    "test_file_path": "/Users/amin/github/preset-io/testmcpy/tests/get_chart_info/basic_20251217_153303.yaml",
+    "timestamp": "2025-12-17T18:39:02.721353",
+    "provider": "claude-cli",
+    "model": "claude-sonnet-4-20250514",
+    "mcp_profile": "sandbox",
+    "version": "1.0",
+    "total_tests": 2,
+    "passed": 2,
+    "failed": 0,
+    "total_cost": 0.0,
+    "total_tokens": 630,
+    "total_duration": 31.990509033203125
+  },
+  "results": [
+    {
+      "test_name": "test_get_chart_info_by_numeric_id",
+      "passed": true,
+      "score": 1.0,
+      "duration": 18.699612855911255,
+      "reason": "All evaluators passed",
+      "tool_calls": [
+        {
+          "id": "toolu_018i2VZ8dTNkye4SNnYMJY65",
+          "name": "mcp__testmcpy__get_chart_info",
+          "arguments": {
+            "request": {
+              "identifier": 123
+            }
+          },
+          "result": {
+            "content": "{\"result\":{\"error\":\"ChartInfo with identifier '123' not found\",\"error_type\":\"not_found\",\"timestamp\":\"2025-12-17T23:38:38.974846Z\"}}",
+            "is_error": false
+          }
+        },
+        {
+          "id": "toolu_01Kj64eLzj9mbFacXc36FGL2",
+          "name": "mcp__testmcpy__list_charts",
+          "arguments": {
+            "request": {
+              "page_size": 10
+            }
+          },
+          "result": {
+            "content": "{\"charts\":[{\"id\":74,\"slice_name\":\"Line Chart - year vs global_sales\",\"viz_type\":\"echarts_timeseries_line\",\"datasource_name\":\"public.Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-04T15:07:47.264085\",\"created_on\":\"2025-10-30T23:32:28.958387\",\"uuid\":\"d9ee118e-5380-480e-8e38-b51ba6cb2ef7\"},{\"id\":1,\"slice_name\":\"# of Games That Hit 100k in Sales By Release Year\",\"viz_type\":\"treemap_v2\",\"datasource_name\":\"Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.505782\",\"created_on\":\"2025-10-23T22:43:33.541254\",\"uuid\":\"2aec7bc1-fd87-4545-947e-99b231f29d49\"},{\"id\":2,\"slice_name\":\"World's Population\",\"viz_type\":\"big_number\",\"datasource_name\":\"World Bank Health Data\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.527865\",\"created_on\":\"2025-10-23T22:43:33.552354\",\"uuid\":\"62691573-cb29-4b02-8ee6-dbc51ba00fb4\"},{\"id\":3,\"slice_name\":\"World's Pop Growth\",\"viz_type\":\"echarts_area\",\"datasource_name\":\"World Bank Health Data\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.545959\",\"created_on\":\"2025-10-23T22:43:33.561083\",\"uuid\":\"8e7b8f10-d128-4d09-b0b6-830b4f235142\"},{\"id\":4,\"slice_name\":\"Work Location Preference\",\"viz_type\":\"pie\",\"datasource_name\":\"FCC 2018 Survey\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.564160\",\"created_on\":\"2025-10-23T22:43:33.571436\",\"uuid\":\"792aea5b-2fc7-4ef7-8a53-a381cd79ee9f\"},{\"id\":5,\"slice_name\":\"Weekly Threads\",\"viz_type\":\"big_number\",\"datasource_name\":\"Slack Threads\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.582292\",\"created_on\":\"2025-10-23T22:43:33.580668\",\"uuid\":\"33a351c2-0f7c-4f6f-9a74-d1d05bdce100\"},{\"id\":6,\"slice_name\":\"Weekly Messages\",\"viz_type\":\"big_number\",\"datasource_name\":\"Slack Messages\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.601162\",\"created_on\":\"2025-10-23T22:43:33.589779\",\"uuid\":\"fa7e8998-3852-459b-9a10-550293926455\"},{\"id\":7,\"slice_name\":\"Vaccine Candidates per Phase\",\"viz_type\":\"pie\",\"datasource_name\":\"COVID Vaccines\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.621546\",\"created_on\":\"2025-10-23T22:43:33.598106\",\"uuid\":\"29e87a11-f990-45d5-bca1-601d0e1b586e\"},{\"id\":8,\"slice_name\":\"Vaccine Candidates per Phase\",\"viz_type\":\"echarts_timeseries_bar\",\"datasource_name\":\"COVID Vaccines\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.642548\",\"created_on\":\"2025-10-23T22:43:33.605847\",\"uuid\":\"638287c5-aa2b-4f26-b7ca-fa624913b768\"},{\"id\":9,\"slice_name\":\"Vaccine Candidates per Country & Stage\",\"viz_type\":\"sunburst_v2\",\"datasource_name\":\"COVID Vaccines\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.661229\",\"created_on\":\"2025-10-23T22:43:33.613675\",\"uuid\":\"6cae1766-ef85-450b-925d-e8f8c79f9b80\"}],\"count\":10,\"total_count\":78,\"page\":0,\"page_size\":10,\"total_pages\":8,\"has_previous\":false,\"has_next\":true,\"columns_requested\":[\"id\",\"slice_name\",\"viz_type\",\"datasource_name\",\"description\",\"changed_by_name\",\"created_by_name\",\"changed_on\",\"created_on\",\"uuid\"],\"columns_loaded\":[\"id\",\"slice_name\",\"viz_type\",\"datasource_name\",\"description\",\"changed_by_name\",\"created_by_name\",\"changed_on\",\"created_on\",\"uuid\"],\"filters_applied\":[],\"pagination\":{\"page\":0,\"page_size\":10,\"total_count\":78,\"total_pages\":8,\"has_next\":true,\"has_previous\":false},\"timestamp\":\"2025-12-17T23:38:42.552174Z\"}",
+            "is_error": false
+          }
+        }
+      ],
+      "tool_results": [
+        {
+          "tool_call_id": "toolu_018i2VZ8dTNkye4SNnYMJY65",
+          "content": "{\"result\":{\"error\":\"ChartInfo with identifier '123' not found\",\"error_type\":\"not_found\",\"timestamp\":\"2025-12-17T23:38:38.974846Z\"}}",
+          "is_error": false,
+          "error_message": null
+        },
+        {
+          "tool_call_id": "toolu_01Kj64eLzj9mbFacXc36FGL2",
+          "content": "{\"charts\":[{\"id\":74,\"slice_name\":\"Line Chart - year vs global_sales\",\"viz_type\":\"echarts_timeseries_line\",\"datasource_name\":\"public.Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-04T15:07:47.264085\",\"created_on\":\"2025-10-30T23:32:28.958387\",\"uuid\":\"d9ee118e-5380-480e-8e38-b51ba6cb2ef7\"},{\"id\":1,\"slice_name\":\"# of Games That Hit 100k in Sales By Release Year\",\"viz_type\":\"treemap_v2\",\"datasource_name\":\"Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.505782\",\"created_on\":\"2025-10-23T22:43:33.541254\",\"uuid\":\"2aec7bc1-fd87-4545-947e-99b231f29d49\"},{\"id\":2,\"slice_name\":\"World's Population\",\"viz_type\":\"big_number\",\"datasource_name\":\"World Bank Health Data\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.527865\",\"created_on\":\"2025-10-23T22:43:33.552354\",\"uuid\":\"62691573-cb29-4b02-8ee6-dbc51ba00fb4\"},{\"id\":3,\"slice_name\":\"World's Pop Growth\",\"viz_type\":\"echarts_area\",\"datasource_name\":\"World Bank Health Data\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.545959\",\"created_on\":\"2025-10-23T22:43:33.561083\",\"uuid\":\"8e7b8f10-d128-4d09-b0b6-830b4f235142\"},{\"id\":4,\"slice_name\":\"Work Location Preference\",\"viz_type\":\"pie\",\"datasource_name\":\"FCC 2018 Survey\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.564160\",\"created_on\":\"2025-10-23T22:43:33.571436\",\"uuid\":\"792aea5b-2fc7-4ef7-8a53-a381cd79ee9f\"},{\"id\":5,\"slice_name\":\"Weekly Threads\",\"viz_type\":\"big_number\",\"datasource_name\":\"Slack Threads\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.582292\",\"created_on\":\"2025-10-23T22:43:33.580668\",\"uuid\":\"33a351c2-0f7c-4f6f-9a74-d1d05bdce100\"},{\"id\":6,\"slice_name\":\"Weekly Messages\",\"viz_type\":\"big_number\",\"datasource_name\":\"Slack Messages\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.601162\",\"created_on\":\"2025-10-23T22:43:33.589779\",\"uuid\":\"fa7e8998-3852-459b-9a10-550293926455\"},{\"id\":7,\"slice_name\":\"Vaccine Candidates per Phase\",\"viz_type\":\"pie\",\"datasource_name\":\"COVID Vaccines\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.621546\",\"created_on\":\"2025-10-23T22:43:33.598106\",\"uuid\":\"29e87a11-f990-45d5-bca1-601d0e1b586e\"},{\"id\":8,\"slice_name\":\"Vaccine Candidates per Phase\",\"viz_type\":\"echarts_timeseries_bar\",\"datasource_name\":\"COVID Vaccines\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.642548\",\"created_on\":\"2025-10-23T22:43:33.605847\",\"uuid\":\"638287c5-aa2b-4f26-b7ca-fa624913b768\"},{\"id\":9,\"slice_name\":\"Vaccine Candidates per Country & Stage\",\"viz_type\":\"sunburst_v2\",\"datasource_name\":\"COVID Vaccines\",\"description\":null,\"changed_by_name\":null,\"changed_on\":\"2025-11-26T04:12:20.661229\",\"created_on\":\"2025-10-23T22:43:33.613675\",\"uuid\":\"6cae1766-ef85-450b-925d-e8f8c79f9b80\"}],\"count\":10,\"total_count\":78,\"page\":0,\"page_size\":10,\"total_pages\":8,\"has_previous\":false,\"has_next\":true,\"columns_requested\":[\"id\",\"slice_name\",\"viz_type\",\"datasource_name\",\"description\",\"changed_by_name\",\"created_by_name\",\"changed_on\",\"created_on\",\"uuid\"],\"columns_loaded\":[\"id\",\"slice_name\",\"viz_type\",\"datasource_name\",\"description\",\"changed_by_name\",\"created_by_name\",\"changed_on\",\"created_on\",\"uuid\"],\"filters_applied\":[],\"pagination\":{\"page\":0,\"page_size\":10,\"total_count\":78,\"total_pages\":8,\"has_next\":true,\"has_previous\":false},\"timestamp\":\"2025-12-17T23:38:42.552174Z\"}",
+          "is_error": false,
+          "error_message": null
+        }
+      ],
+      "response": "I'll get the chart details for ID 123, including metadata and preview URL.It looks like chart ID 123 doesn't exist. Let me check what charts are available by listing the charts to help you find the correct ID.Chart ID 123 doesn't exist in this Superset instance. The available chart IDs range from 1 to 78 based on the listing. Here are some of the available charts:\n\n- **Chart ID 74**: \"Line Chart - year vs global_sales\" (Line chart)\n- **Chart ID 1**: \"# of Games That Hit 100k in Sales By Release Year\" (Treemap)\n- **Chart ID 2**: \"World's Population\" (Big Number)\n- **Chart ID 3**: \"World's Pop Growth\" (Area chart)\n\nWould you like me to get the details and preview for one of these existing charts instead? Just let me know which chart ID you'd like to examine (any ID from 1-78), or if you'd like to see more charts from the list.",
+      "evaluations": [
+        {
+          "evaluator": "execution_successful",
+          "passed": true,
+          "score": 1.0,
+          "reason": "All tool executions completed successfully",
+          "details": {
+            "successful_executions": 2
+          }
+        },
+        {
+          "evaluator": "was_tool_called:get_chart_info",
+          "passed": true,
+          "score": 1.0,
+          "reason": "Tool 'get_chart_info' was called (actual: 'mcp__testmcpy__get_chart_info')",
+          "details": {
+            "tool_call": {
+              "id": "toolu_018i2VZ8dTNkye4SNnYMJY65",
+              "name": "mcp__testmcpy__get_chart_info",
+              "arguments": {
+                "request": {
+                  "identifier": 123
+                }
+              },
+              "result": {
+                "content": "{\"result\":{\"error\":\"ChartInfo with identifier '123' not found\",\"error_type\":\"not_found\",\"timestamp\":\"2025-12-17T23:38:38.974846Z\"}}",
+                "is_error": false
+              }
+            }
+          }
+        }
+      ],
+      "cost": 0.0,
+      "token_usage": {
+        "prompt": 13,
+        "completion": 367,
+        "total": 380,
+        "cache_creation": 3923,
+        "cache_read": 129455
+      },
+      "error": null,
+      "step_results": null,
+      "auth_success": null,
+      "auth_token": null,
+      "auth_error": null,
+      "auth_error_message": null,
+      "auth_flow_steps": [],
+      "logs": [
+        "[ClaudeCode] Running with timeout=120.0s, output_format=stream-json",
+        "[ClaudeCode] Fetched JWT token (length: 1453)",
+        "[ClaudeCode] MCP config file: /var/folders/q0/ssr0_jbj79q4h29n0rl0zr8w0000gn/T/tmpz1eeiioa.json",
+        "[ClaudeCode] MCP URL: https://66d22a6f.us1a.app-sdx.preset.io/mcp",
+        "[ClaudeCode] Full command: /Users/amin/.nvm/versions/node/v20.19.5/bin/claude -p --output-format stream-json --verbose --dangerously-skip-permissions --model claude-sonnet-4-20250514 --mcp-config /var/folders/q0/ssr0_jbj79q4h29n0rl0zr8w0000gn/T/tmpz1eeiioa.json -- <prompt>",
+        "[ClaudeCode] Prompt (91 chars):\nCan you get the details for chart ID 123? I need to see the chart metadata and preview URL.",
+        "[ClaudeCode] Tools provided: 21",
+        "[ClaudeCode] Tool names (first 10): ['generate_chart', 'get_chart_available_filters', 'get_chart_data', 'get_chart_info', 'get_chart_preview', 'list_charts', 'update_chart', 'update_chart_preview', 'add_chart_to_existing_dashboard', 'generate_dashboard']",
+        "[ClaudeCode] Waiting for response...",
+        "[ClaudeCode] Got response after 18.7s, returncode=0",
+        "[ClaudeCode] Response size: 16742 chars",
+        "[ClaudeCode] Raw response:\n{\"type\":\"system\",\"subtype\":\"init\",\"cwd\":\"/Users/amin/github/preset-io/testmcpy\",\"session_id\":\"bb1b0844-9528-42bc-9cb8-7bc4f71f19e6\",\"tools\":[\"Task\",\"TaskOutput\",\"Bash\",\"Glob\",\"Grep\",\"ExitPlanMode\",\"Read\",\"Edit\",\"Write\",\"NotebookEdit\",\"WebFetch\",\"TodoWrite\",\"WebSearch\",\"KillShell\",\"AskUserQuestion\",\"Skill\",\"SlashCommand\",\"EnterPlanMode\",\"mcp__agentmcp__find_similar_agents\",\"mcp__agentmcp__find_similar_skills\",\"mcp__agentmcp__get_agent\",\"mcp__agentmcp__get_agent_reputation\",\"mcp__agentmcp__get_command\",\"mcp__agentmcp__get_skill\",\"mcp__agentmcp__get_top_agents\",\"mcp__agentmcp__governance_action\",\"mcp__agentmcp__governance_stats\",\"mcp__agentmcp__list_agents\",\"mcp__agentmcp__list_commands\",\"mcp__agentmcp__list_skills\",\"mcp__agentmcp__register_agent\",\"mcp__agentmcp__register_command\",\"mcp__agentmcp__register_skill\",\"mcp__agentmcp__report_agent\",\"mcp__agentmcp__request_agent_by_skills\",\"mcp__agentmcp__review_reports\",\"mcp__agentmcp__search_agents\",\"mcp__agentmcp__search_commands\",\"mcp__agentm...",
+        "[ClaudeCode] Parsing 9 stream-json lines",
+        "[ClaudeCode] \ud83d\udcdd Text (74 chars)",
+        "[ClaudeCode] \ud83d\udd27 Tool Call: mcp__testmcpy__get_chart_info (id=toolu_018i2VZ8dTNkye...)",
+        "[ClaudeCode]    Args: {\"request\": {\"identifier\": 123}}",
+        "[ClaudeCode] \u2705 Success Tool Result (id=toolu_018i2VZ8dTNkye...)",
+        "[ClaudeCode]    Content: {\"result\":{\"error\":\"ChartInfo with identifier '123' not found\",\"error_type\":\"not_found\",\"timestamp\":\"2025-12-17T23:38:38.974846Z\"}}",
+        "[ClaudeCode] \ud83d\udcdd Text (135 chars)",
+        "[ClaudeCode] \ud83d\udd27 Tool Call: mcp__testmcpy__list_charts (id=toolu_01Kj64eLzj9mbF...)",
+        "[ClaudeCode]    Args: {\"request\": {\"page_size\": 10}}",
+        "[ClaudeCode] \u2705 Success Tool Result (id=toolu_01Kj64eLzj9mbF...)",
+        "[ClaudeCode]    Content: {\"charts\":[{\"id\":74,\"slice_name\":\"Line Chart - year vs global_sales\",\"viz_type\":\"echarts_timeseries_line\",\"datasource_name\":\"public.Video Game Sales\",\"description\":null,\"changed_by_name\":null,\"changed...",
+        "[ClaudeCode] \ud83d\udcdd Text (627 chars)",
+        "[ClaudeCode] \ud83d\udcca Result: 380 tokens, $0.0000",
+        "[ClaudeCode] \u2713 Parsed: 836 chars response, 2 tool calls, 2 tool results, 0 chars thinking"
+      ]
+    },
+    {
+      "test_name": "test_get_chart_info_by_uuid",
+      "passed": true,
+      "score": 1.0,
+      "duration": 13.29089617729187,
+      "reason": "All evaluators passed",
+      "tool_calls": [
+        {
+          "id": "toolu_01F83sBC3iZUNLXN3BorhYyJ",
+          "name": "mcp__testmcpy__get_chart_info",
+          "arguments": {
+            "request": {
+              "identifier": "a1b2c3d4-5678-90ab-cdef-1234567890ab"
+            }
+          },
+          "result": {
+            "content": "{\"result\":{\"error\":\"ChartInfo with identifier 'a1b2c3d4-5678-90ab-cdef-1234567890ab' not found\",\"error_type\":\"not_found\",\"timestamp\":\"2025-12-17T23:38:57.184425Z\"}}",
+            "is_error": false
+          }
+        }
+      ],
+      "tool_results": [
+        {
+          "tool_call_id": "toolu_01F83sBC3iZUNLXN3BorhYyJ",
+          "content": "{\"result\":{\"error\":\"ChartInfo with identifier 'a1b2c3d4-5678-90ab-cdef-1234567890ab' not found\",\"error_type\":\"not_found\",\"timestamp\":\"2025-12-17T23:38:57.184425Z\"}}",
+          "is_error": false,
+          "error_message": null
+        }
+      ],
+      "response": "I'll get the chart information for you, including the screenshot URL.The chart with UUID `a1b2c3d4-5678-90ab-cdef-1234567890ab` was not found in your Superset instance. This could mean:\n\n1. The UUID is incorrect or the chart doesn't exist\n2. You might not have access to this chart\n3. The chart may have been deleted\n\nWould you like me to:\n- List available charts to help you find the correct one?\n- Search for charts by name if you know part of the chart title?\n- Help you create a new chart if needed?\n\nLet me know how you'd like to proceed!",
+      "evaluations": [
+        {
+          "evaluator": "execution_successful",
+          "passed": true,
+          "score": 1.0,
+          "reason": "All tool executions completed successfully",
+          "details": {
+            "successful_executions": 1
+          }
+        },
+        {
+          "evaluator": "was_tool_called:get_chart_info",
+          "passed": true,
+          "score": 1.0,
+          "reason": "Tool 'get_chart_info' was called (actual: 'mcp__testmcpy__get_chart_info')",
+          "details": {
+            "tool_call": {
+              "id": "toolu_01F83sBC3iZUNLXN3BorhYyJ",
+              "name": "mcp__testmcpy__get_chart_info",
+              "arguments": {
+                "request": {
+                  "identifier": "a1b2c3d4-5678-90ab-cdef-1234567890ab"
+                }
+              },
+              "result": {
+                "content": "{\"result\":{\"error\":\"ChartInfo with identifier 'a1b2c3d4-5678-90ab-cdef-1234567890ab' not found\",\"error_type\":\"not_found\",\"timestamp\":\"2025-12-17T23:38:57.184425Z\"}}",
+                "is_error": false
+              }
+            }
+          }
+        }
+      ],
+      "cost": 0.0,
+      "token_usage": {
+        "prompt": 8,
+        "completion": 242,
+        "total": 250,
+        "cache_creation": 2539,
+        "cache_read": 85449
+      },
+      "error": null,
+      "step_results": null,
+      "auth_success": null,
+      "auth_token": null,
+      "auth_error": null,
+      "auth_error_message": null,
+      "auth_flow_steps": [],
+      "logs": [
+        "[ClaudeCode] Running with timeout=120.0s, output_format=stream-json",
+        "[ClaudeCode] Fetched JWT token (length: 1453)",
+        "[ClaudeCode] MCP config file: /var/folders/q0/ssr0_jbj79q4h29n0rl0zr8w0000gn/T/tmp_rgw6qio.json",
+        "[ClaudeCode] MCP URL: https://66d22a6f.us1a.app-sdx.preset.io/mcp",
+        "[ClaudeCode] Full command: /Users/amin/.nvm/versions/node/v20.19.5/bin/claude -p --output-format stream-json --verbose --dangerously-skip-permissions --model claude-sonnet-4-20250514 --mcp-config /var/folders/q0/ssr0_jbj79q4h29n0rl0zr8w0000gn/T/tmp_rgw6qio.json -- <prompt>",
+        "[ClaudeCode] Prompt (123 chars):\nI have a chart with UUID a1b2c3d4-5678-90ab-cdef-1234567890ab, please show me its information including the screenshot URL.",
+        "[ClaudeCode] Tools provided: 21",
+        "[ClaudeCode] Tool names (first 10): ['generate_chart', 'get_chart_available_filters', 'get_chart_data', 'get_chart_info', 'get_chart_preview', 'list_charts', 'update_chart', 'update_chart_preview', 'add_chart_to_existing_dashboard', 'generate_dashboard']",
+        "[ClaudeCode] Waiting for response...",
+        "[ClaudeCode] Got response after 13.3s, returncode=0",
+        "[ClaudeCode] Response size: 7170 chars",
+        "[ClaudeCode] Raw response:\n{\"type\":\"system\",\"subtype\":\"init\",\"cwd\":\"/Users/amin/github/preset-io/testmcpy\",\"session_id\":\"30db13ef-3d08-4fee-bd26-ba8d32159ce3\",\"tools\":[\"Task\",\"TaskOutput\",\"Bash\",\"Glob\",\"Grep\",\"ExitPlanMode\",\"Read\",\"Edit\",\"Write\",\"NotebookEdit\",\"WebFetch\",\"TodoWrite\",\"WebSearch\",\"KillShell\",\"AskUserQuestion\",\"Skill\",\"SlashCommand\",\"EnterPlanMode\",\"mcp__agentmcp__find_similar_agents\",\"mcp__agentmcp__find_similar_skills\",\"mcp__agentmcp__get_agent\",\"mcp__agentmcp__get_agent_reputation\",\"mcp__agentmcp__get_command\",\"mcp__agentmcp__get_skill\",\"mcp__agentmcp__get_top_agents\",\"mcp__agentmcp__governance_action\",\"mcp__agentmcp__governance_stats\",\"mcp__agentmcp__list_agents\",\"mcp__agentmcp__list_commands\",\"mcp__agentmcp__list_skills\",\"mcp__agentmcp__register_agent\",\"mcp__agentmcp__register_command\",\"mcp__agentmcp__register_skill\",\"mcp__agentmcp__report_agent\",\"mcp__agentmcp__request_agent_by_skills\",\"mcp__agentmcp__review_reports\",\"mcp__agentmcp__search_agents\",\"mcp__agentmcp__search_commands\",\"mcp__agentm...",
+        "[ClaudeCode] Parsing 6 stream-json lines",
+        "[ClaudeCode] \ud83d\udcdd Text (69 chars)",
+        "[ClaudeCode] \ud83d\udd27 Tool Call: mcp__testmcpy__get_chart_info (id=toolu_01F83sBC3iZUNL...)",
+        "[ClaudeCode]    Args: {\"request\": {\"identifier\": \"a1b2c3d4-5678-90ab-cdef-1234567890ab\"}}",
+        "[ClaudeCode] \u2705 Success Tool Result (id=toolu_01F83sBC3iZUNL...)",
+        "[ClaudeCode]    Content: {\"result\":{\"error\":\"ChartInfo with identifier 'a1b2c3d4-5678-90ab-cdef-1234567890ab' not found\",\"error_type\":\"not_found\",\"timestamp\":\"2025-12-17T23:38:57.184425Z\"}}",
+        "[ClaudeCode] \ud83d\udcdd Text (474 chars)",
+        "[ClaudeCode] \ud83d\udcca Result: 250 tokens, $0.0000",
+        "[ClaudeCode] \u2713 Parsed: 543 chars response, 1 tool calls, 1 tool results, 0 chars thinking"
+      ]
+    }
+  ],
+  "summary": {
+    "total": 2,
+    "passed": 2,
+    "failed": 0,
+    "total_cost": 0.0
+  }
+}

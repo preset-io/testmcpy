@@ -27,9 +27,7 @@ class FormatSchemaRequest(BaseModel):
     format: str  # e.g., "python_client", "javascript_client", "typescript_client"
     mcp_url: str | None = None  # For curl format with actual values
     auth_token: str | None = None  # For curl format with actual values
-    profile: str | None = (
-        None  # MCP profile to get auth from (e.g., "sandbox:Preset Sandbox 66d22a6f")
-    )
+    profile: str | None = None  # MCP profile to get auth from (e.g., "sandbox:My Workspace")
 
     model_config = {"populate_by_name": True}
 
@@ -756,9 +754,11 @@ async def debug_tool(tool_name: str, request: ToolDebugRequest):
 @router.post("/smoke-test")
 async def run_smoke_test_endpoint(request: SmokeTestRequest):
     """Run smoke tests on an MCP server."""
+    from testmcpy.server.routers.smoke_reports import save_smoke_report
     from testmcpy.smoke_test import run_smoke_test
 
     # Determine MCP URL and auth config
+    profile_name = None
     if request.profile_id:
         profile = load_profile(request.profile_id)
         if not profile or not profile.mcps:
@@ -770,6 +770,7 @@ async def run_smoke_test_endpoint(request: SmokeTestRequest):
         mcp_server = profile.mcps[0]
         mcp_url = mcp_server.mcp_url
         auth_config = mcp_server.auth.to_dict() if mcp_server.auth else None
+        profile_name = profile.name
     elif request.mcp_url:
         mcp_url = request.mcp_url
         auth_config = None
@@ -784,4 +785,17 @@ async def run_smoke_test_endpoint(request: SmokeTestRequest):
         max_tools_to_test=request.max_tools_to_test,
     )
 
-    return report.to_dict()
+    # Convert to dict and add profile info
+    report_dict = report.to_dict()
+    report_dict["profile_id"] = request.profile_id
+    report_dict["profile_name"] = profile_name
+
+    # Save the report
+    try:
+        report_id = save_smoke_report(report_dict)
+        report_dict["report_id"] = report_id
+    except Exception as e:
+        # Don't fail if saving fails, just log it
+        print(f"Warning: Failed to save smoke test report: {e}")
+
+    return report_dict

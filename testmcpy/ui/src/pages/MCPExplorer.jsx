@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { ChevronDown, ChevronRight, Copy, Check, EyeOff, Sparkles, Code2, Search, Command, HelpCircle, CheckSquare, Square, MessageSquare, Wand2, TestTube2, Play, Clock, Bug, AlertCircle, GitCompare, LayoutList, LayoutGrid } from 'lucide-react'
+import { ChevronDown, ChevronRight, Copy, Check, EyeOff, Sparkles, Code2, Search, Command, HelpCircle, CheckSquare, Square, MessageSquare, Wand2, TestTube2, Play, Clock, Bug, AlertCircle, GitCompare, LayoutList, LayoutGrid, History } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import ReactJson from '@microlink/react-json-view'
 import ParameterCard from '../components/ParameterCard'
@@ -38,6 +38,8 @@ function MCPExplorer({ selectedProfiles = [] }) {
   const [smokeTestReport, setSmokeTestReport] = useState(null)
   const [runningSmokeTest, setRunningSmokeTest] = useState(false)
   const [showSmokeTestResults, setShowSmokeTestResults] = useState(false)
+  const [smokeTestHistory, setSmokeTestHistory] = useState([])
+  const [showSmokeTestHistory, setShowSmokeTestHistory] = useState(false)
 
   // Comparison mode state
   const [compareProfile1, setCompareProfile1] = useState([])
@@ -285,6 +287,37 @@ function MCPExplorer({ selectedProfiles = [] }) {
       alert(`Failed to run smoke test: ${error.message}`)
     } finally {
       setRunningSmokeTest(false)
+    }
+  }
+
+  const loadSmokeTestHistory = async () => {
+    try {
+      const profileId = activeProfile?.split(':')[0]
+      const url = profileId
+        ? `/api/smoke-reports/list?profile_id=${encodeURIComponent(profileId)}&limit=20`
+        : '/api/smoke-reports/list?limit=20'
+
+      const res = await fetch(url)
+      if (res.ok) {
+        const data = await res.json()
+        setSmokeTestHistory(data.reports || [])
+      }
+    } catch (error) {
+      console.error('Failed to load smoke test history:', error)
+    }
+  }
+
+  const viewSmokeTestReport = async (reportId) => {
+    try {
+      const res = await fetch(`/api/smoke-reports/report/${reportId}`)
+      if (res.ok) {
+        const report = await res.json()
+        setSmokeTestReport(report)
+        setShowSmokeTestHistory(false)
+        setShowSmokeTestResults(true)
+      }
+    } catch (error) {
+      console.error('Failed to load smoke test report:', error)
     }
   }
 
@@ -539,6 +572,17 @@ function MCPExplorer({ selectedProfiles = [] }) {
                   <span>Smoke Test</span>
                 </>
               )}
+            </button>
+            <button
+              onClick={() => {
+                loadSmokeTestHistory()
+                setShowSmokeTestHistory(true)
+              }}
+              className="btn btn-secondary text-sm flex items-center gap-2"
+              title="View smoke test history"
+            >
+              <History size={16} />
+              <span>History</span>
             </button>
             <button
               onClick={() => {
@@ -1690,8 +1734,8 @@ function MCPExplorer({ selectedProfiles = [] }) {
       {/* Smoke Test Results Modal */}
       {showSmokeTestResults && smokeTestReport && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowSmokeTestResults(false)}>
-          <div className="bg-surface border border-border rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className="p-4 border-b border-border flex items-center justify-between bg-surface-elevated">
+          <div className="bg-surface border border-border rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b border-border flex items-center justify-between bg-surface-elevated flex-shrink-0">
               <div>
                 <h2 className="text-xl font-bold">Smoke Test Results</h2>
                 <p className="text-sm text-text-secondary mt-1">{smokeTestReport.server_url}</p>
@@ -1704,7 +1748,7 @@ function MCPExplorer({ selectedProfiles = [] }) {
               </button>
             </div>
 
-            <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+            <div className="p-6 overflow-y-auto flex-1 min-h-0">
               {/* Summary */}
               <div className={`p-4 rounded-lg border mb-6 ${
                 smokeTestReport.failed === 0
@@ -1754,47 +1798,85 @@ function MCPExplorer({ selectedProfiles = [] }) {
                 <h4 className="font-bold mb-3">Test Details</h4>
                 <div className="space-y-2">
                   {smokeTestReport.results.map((result, idx) => (
-                    <div
+                    <details
                       key={idx}
-                      className={`p-3 rounded border ${
+                      className={`rounded border ${
                         result.success
                           ? 'bg-success/5 border-success/20'
                           : 'bg-error/5 border-error/20'
                       }`}
                     >
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-start gap-3 flex-1">
-                          <span className={`text-lg ${result.success ? 'text-success-light' : 'text-error-light'}`}>
-                            {result.success ? '✓' : '✗'}
-                          </span>
-                          <div className="flex-1">
-                            <p className="font-medium">{result.test_name}</p>
-                            {result.error_message && (
-                              <p className="text-sm text-error-light mt-1">{result.error_message}</p>
-                            )}
-                            {result.details && result.success && (
-                              <div className="text-xs text-text-secondary mt-1">
-                                {result.details.tool_count !== undefined && (
-                                  <span>{result.details.tool_count} tools available</span>
-                                )}
-                                {result.details.tool && (
-                                  <span>Called {result.details.tool} with {Object.keys(result.details.parameters || {}).length} params</span>
-                                )}
-                              </div>
-                            )}
+                      <summary className="p-3 cursor-pointer hover:bg-black/5">
+                        <div className="flex items-start justify-between inline-flex w-[calc(100%-1rem)]">
+                          <div className="flex items-start gap-3 flex-1">
+                            <span className={`text-lg ${result.success ? 'text-success-light' : 'text-error-light'}`}>
+                              {result.success ? '✓' : '✗'}
+                            </span>
+                            <div className="flex-1">
+                              <p className="font-medium">{result.test_name}</p>
+                              {result.error_message && (
+                                <p className="text-sm text-error-light mt-1">{result.error_message}</p>
+                              )}
+                              {result.details && (
+                                <div className="text-xs text-text-secondary mt-1">
+                                  {result.details.tool_count !== undefined && (
+                                    <span>{result.details.tool_count} tools available</span>
+                                  )}
+                                  {result.details.tool && (
+                                    <span>Called {result.details.tool} with {Object.keys(result.details.parameters || {}).length} params</span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                           </div>
+                          <span className="text-xs text-text-tertiary whitespace-nowrap ml-4">
+                            {result.duration_ms.toFixed(0)}ms
+                          </span>
                         </div>
-                        <span className="text-xs text-text-tertiary whitespace-nowrap ml-4">
-                          {result.duration_ms.toFixed(0)}ms
-                        </span>
+                      </summary>
+
+                      {/* Expanded details showing input/output */}
+                      <div className="px-3 pb-3 border-t border-border/50 mt-2 pt-2">
+                        {result.tool_input && (
+                          <div className="mb-3">
+                            <p className="text-xs font-medium text-text-secondary mb-1">Input Parameters:</p>
+                            <pre className="text-xs bg-surface p-2 rounded border border-border overflow-x-auto max-h-32">
+                              {JSON.stringify(result.tool_input, null, 2)}
+                            </pre>
+                          </div>
+                        )}
+
+                        {result.tool_output !== undefined && result.tool_output !== null && (
+                          <div className="mb-3">
+                            <p className="text-xs font-medium text-text-secondary mb-1">Output:</p>
+                            <pre className="text-xs bg-surface p-2 rounded border border-border overflow-x-auto max-h-48">
+                              {typeof result.tool_output === 'string'
+                                ? result.tool_output.substring(0, 2000) + (result.tool_output.length > 2000 ? '...' : '')
+                                : JSON.stringify(result.tool_output, null, 2)?.substring(0, 2000)}
+                            </pre>
+                          </div>
+                        )}
+
+                        {result.tool_schema && (
+                          <div>
+                            <p className="text-xs font-medium text-text-secondary mb-1">Tool Schema:</p>
+                            <pre className="text-xs bg-surface p-2 rounded border border-border overflow-x-auto max-h-32">
+                              {JSON.stringify(result.tool_schema, null, 2)}
+                            </pre>
+                          </div>
+                        )}
+
+                        {!result.tool_input && !result.tool_output && !result.tool_schema && (
+                          <p className="text-xs text-text-tertiary italic">No additional details available</p>
+                        )}
                       </div>
-                    </div>
+                    </details>
                   ))}
                 </div>
               </div>
             </div>
 
-            <div className="p-4 border-t border-border bg-surface-elevated flex justify-end gap-2">
+            <div className="p-4 border-t border-border bg-surface-elevated flex justify-end gap-2 flex-shrink-0">
               <button
                 onClick={() => {
                   const blob = new Blob([JSON.stringify(smokeTestReport, null, 2)], { type: 'application/json' })
@@ -1811,6 +1893,93 @@ function MCPExplorer({ selectedProfiles = [] }) {
               </button>
               <button
                 onClick={() => setShowSmokeTestResults(false)}
+                className="btn btn-primary text-sm"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Smoke Test History Modal */}
+      {showSmokeTestHistory && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowSmokeTestHistory(false)}>
+          <div className="bg-surface border border-border rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b border-border flex items-center justify-between bg-surface-elevated flex-shrink-0">
+              <div>
+                <h2 className="text-xl font-bold">Smoke Test History</h2>
+                <p className="text-sm text-text-secondary mt-1">
+                  {activeProfile ? `Showing reports for current profile` : 'All smoke test reports'}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowSmokeTestHistory(false)}
+                className="text-text-secondary hover:text-text-primary"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto min-h-0 p-4">
+              {smokeTestHistory.length === 0 ? (
+                <div className="text-center py-8 text-text-secondary">
+                  <History size={48} className="mx-auto mb-3 opacity-50" />
+                  <p>No smoke test reports found</p>
+                  <p className="text-sm mt-1">Run a smoke test to create a report</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {smokeTestHistory.map((report) => (
+                    <div
+                      key={report.report_id}
+                      onClick={() => viewSmokeTestReport(report.report_id)}
+                      className={`p-3 rounded border cursor-pointer hover:bg-surface-hover transition-colors ${
+                        report.failed === 0
+                          ? 'border-success/30 hover:border-success/50'
+                          : report.passed === 0
+                          ? 'border-error/30 hover:border-error/50'
+                          : 'border-warning/30 hover:border-warning/50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <span className={`text-lg ${
+                            report.failed === 0
+                              ? 'text-success-light'
+                              : report.passed === 0
+                              ? 'text-error-light'
+                              : 'text-warning-light'
+                          }`}>
+                            {report.failed === 0 ? '✓' : report.passed === 0 ? '✗' : '⚠'}
+                          </span>
+                          <div>
+                            <p className="font-medium text-sm">
+                              {report.profile_name || report.server_url || 'Unknown Server'}
+                            </p>
+                            <p className="text-xs text-text-secondary">
+                              {report.passed}/{report.total_tests} passed • {report.duration_ms?.toFixed(0)}ms
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs text-text-tertiary">
+                            {new Date(report.timestamp).toLocaleDateString()}
+                          </p>
+                          <p className="text-xs text-text-tertiary">
+                            {new Date(report.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-border bg-surface-elevated flex justify-end flex-shrink-0">
+              <button
+                onClick={() => setShowSmokeTestHistory(false)}
                 className="btn btn-primary text-sm"
               >
                 Close

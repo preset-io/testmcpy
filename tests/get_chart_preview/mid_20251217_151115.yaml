@@ -1,0 +1,9 @@
+version: "1.0"
+tests:
+  - name: get_chart_preview_basic_id
+    prompt: "Show me a preview of chart 42"
+    evaluators:
+      - name: execution_successful
+      - name: was_mcp_tool_called
+        args:
+          tool_name: "get_chart_preview"

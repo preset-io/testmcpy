@@ -13,6 +13,22 @@ from typing import Any
 from testmcpy.src.mcp_client import MCPClient, MCPToolCall
 
 
+class ToolTestError(Exception):
+    """Exception for tool test failures that includes input/output details."""
+
+    def __init__(
+        self,
+        message: str,
+        tool_input: dict[str, Any] | None = None,
+        tool_output: Any | None = None,
+        tool_schema: dict[str, Any] | None = None,
+    ):
+        super().__init__(message)
+        self.tool_input = tool_input
+        self.tool_output = tool_output
+        self.tool_schema = tool_schema
+
+
 @dataclass
 class SmokeTestResult:
     """Result from a single smoke test."""
@@ -22,6 +38,10 @@ class SmokeTestResult:
     duration_ms: float
     error_message: str | None = None
     details: dict[str, Any] | None = None
+    # Detailed tool call information
+    tool_input: dict[str, Any] | None = None  # Parameters sent to tool
+    tool_output: Any | None = None  # Response from tool
+    tool_schema: dict[str, Any] | None = None  # Tool's input schema
 
 
 @dataclass
@@ -60,6 +80,9 @@ class SmokeTestReport:
                     "duration_ms": round(r.duration_ms, 2),
                     "error_message": r.error_message,
                     "details": r.details,
+                    "tool_input": r.tool_input,
+                    "tool_output": r.tool_output,
+                    "tool_schema": r.tool_schema,
                 }
                 for r in self.results
             ],
@@ -73,17 +96,48 @@ class SmokeTestRunner:
         self.client = mcp_client
         self.results: list[SmokeTestResult] = []
 
-    async def _run_test(self, test_name: str, test_func) -> SmokeTestResult:
+    async def _run_test(
+        self,
+        test_name: str,
+        test_func,
+        is_tool_test: bool = False,
+    ) -> SmokeTestResult:
         """Run a single test and capture results."""
         start = asyncio.get_event_loop().time()
         try:
-            details = await test_func()
+            result = await test_func()
+            duration_ms = (asyncio.get_event_loop().time() - start) * 1000
+
+            if is_tool_test and isinstance(result, tuple):
+                # Tool test returns (details, input, output, schema)
+                details, tool_input, tool_output, tool_schema = result
+                return SmokeTestResult(
+                    test_name=test_name,
+                    success=True,
+                    duration_ms=duration_ms,
+                    details=details,
+                    tool_input=tool_input,
+                    tool_output=tool_output,
+                    tool_schema=tool_schema,
+                )
+            else:
+                return SmokeTestResult(
+                    test_name=test_name,
+                    success=True,
+                    duration_ms=duration_ms,
+                    details=result,
+                )
+        except ToolTestError as e:
+            # Tool test error with input/output details
             duration_ms = (asyncio.get_event_loop().time() - start) * 1000
             return SmokeTestResult(
                 test_name=test_name,
-                success=True,
+                success=False,
                 duration_ms=duration_ms,
-                details=details,
+                error_message=str(e),
+                tool_input=e.tool_input,
+                tool_output=e.tool_output,
+                tool_schema=e.tool_schema,
             )
         except Exception as e:
             duration_ms = (asyncio.get_event_loop().time() - start) * 1000
@@ -105,8 +159,14 @@ class SmokeTestRunner:
         tools = await self.client.list_tools()
         return {"tool_count": len(tools), "tools": [t.name for t in tools]}
 
-    async def test_tool_with_reasonable_params(self, tool_name: str, tool_schema: dict) -> dict:
-        """Test a tool with reasonable default parameters."""
+    async def test_tool_with_reasonable_params(
+        self, tool_name: str, tool_schema: dict
+    ) -> tuple[dict, dict, Any, dict]:
+        """Test a tool with reasonable default parameters.
+
+        Returns:
+            Tuple of (details_dict, input_params, output_content, schema)
+        """
         # Generate reasonable parameters based on schema
         params = self._generate_reasonable_params(tool_schema)
 
@@ -120,13 +180,27 @@ class SmokeTestRunner:
         result = await self.client.call_tool(tool_call, timeout=30.0)
 
         if result.is_error:
-            raise Exception(result.error_message or "Tool call failed")
+            # Still capture the input/output even on error
+            raise ToolTestError(
+                message=result.error_message or "Tool call failed",
+                tool_input=params,
+                tool_output=result.content,
+                tool_schema=tool_schema,
+            )
 
-        return {
+        # Truncate large outputs for storage
+        output_content = result.content
+        if isinstance(output_content, str) and len(output_content) > 10000:
+            output_content = output_content[:10000] + "... (truncated)"
+
+        details = {
             "tool": tool_name,
             "parameters": params,
             "result_type": type(result.content).__name__,
+            "result_length": len(str(result.content)) if result.content else 0,
         }
+
+        return details, params, output_content, tool_schema
 
     def _is_tool_testable(self, tool_schema: dict) -> bool:
         """Check if a tool can be tested with simple parameter generation.
@@ -299,6 +373,7 @@ class SmokeTestRunner:
             result = await self._run_test(
                 f"Tool: {tool.name}",
                 lambda t=tool, s=tool_schema: self.test_tool_with_reasonable_params(t.name, s),
+                is_tool_test=True,
             )
             self.results.append(result)
 

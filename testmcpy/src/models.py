@@ -156,7 +156,7 @@ class TestRun:
         environment_id: Synthetic environment used
         model: LLM model used (e.g., "claude-sonnet-4-5")
         provider: LLM provider (e.g., "anthropic")
-        runner_tool: Test runner tool used (e.g., "preset-mcp-client")
+        runner_tool: Test runner tool used (e.g., "mcp-client")
         mcp_setup_version: Version of MCP server setup (if known)
         started_at: ISO timestamp when run started
         completed_at: ISO timestamp when run completed
@@ -170,7 +170,7 @@ class TestRun:
     environment_id: str | None = None
     model: str = ""
     provider: str = ""
-    runner_tool: str = "preset-mcp-client"
+    runner_tool: str = "mcp-client"
     mcp_setup_version: str | None = None
     started_at: str = ""
     completed_at: str | None = None
@@ -183,7 +183,7 @@ class TestRun:
         test_suite: TestSuite,
         model: str,
         provider: str,
-        runner_tool: str = "preset-mcp-client",
+        runner_tool: str = "mcp-client",
         mcp_setup_version: str | None = None,
     ) -> "TestRun":
         """Create a new TestRun for a TestSuite."""

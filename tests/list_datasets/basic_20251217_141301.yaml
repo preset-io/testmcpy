@@ -1,0 +1,16 @@
+version: "1.0"
+tests:
+  - name: test_basic_dataset_listing
+    prompt: "Show me all available datasets in the system"
+    evaluators:
+      - name: execution_successful
+      - name: was_mcp_tool_called
+        args:
+          tool_name: "list_datasets"
+  - name: test_filtered_dataset_search
+    prompt: "Find all datasets in the 'public' schema that contain customer data"
+    evaluators:
+      - name: execution_successful
+      - name: was_mcp_tool_called
+        args:
+          tool_name: "list_datasets"

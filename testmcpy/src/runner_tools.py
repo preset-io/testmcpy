@@ -2,7 +2,7 @@
 Runner Tool Abstraction for MCP test execution.
 
 Defines a pluggable interface for different test execution backends:
-- PresetMCPRunner: Uses testmcpy's built-in MCP client + LLM
+- MCPRunner: Uses testmcpy's built-in MCP client + LLM
 - AnthropicAPIRunner: Direct Anthropic API with tool use
 - OpenAIAPIRunner: Direct OpenAI API with function calling
 - ClaudeCodeRunner: Uses Claude Code CLI (future)
@@ -190,7 +190,7 @@ class BaseRunnerTool(ABC):
         pass
 
 
-class PresetMCPRunner(BaseRunnerTool):
+class MCPRunner(BaseRunnerTool):
     """
     Runner using testmcpy's built-in MCP client and LLM provider.
 
@@ -206,7 +206,7 @@ class PresetMCPRunner(BaseRunnerTool):
         model: str = "claude-sonnet-4-20250514",
         provider: str = "anthropic",
     ):
-        self._name = "preset-mcp-client"
+        self._name = "mcp-client"
         self.mcp_url = mcp_url
         self.mcp_client = mcp_client
         self._owns_mcp_client = mcp_client is None
@@ -504,7 +504,7 @@ class AnthropicDirectRunner(BaseRunnerTool):
 
 # Registry of available runner tools
 RUNNER_TOOLS: dict[str, type[BaseRunnerTool]] = {
-    "preset-mcp-client": PresetMCPRunner,
+    "mcp-client": MCPRunner,
     "anthropic-direct": AnthropicDirectRunner,
 }
 
@@ -517,7 +517,7 @@ def create_runner_tool(
     Create a runner tool by name.
 
     Args:
-        name: Runner tool name (e.g., "preset-mcp-client", "anthropic-direct")
+        name: Runner tool name (e.g., "mcp-client", "anthropic-direct")
         **kwargs: Arguments passed to the runner constructor
 
     Returns:

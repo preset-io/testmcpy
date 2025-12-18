@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react'
-import { X, Loader, CheckCircle, AlertCircle, Sparkles } from 'lucide-react'
+import React, { useState, useEffect, useRef } from 'react'
+import { X, Loader, CheckCircle, AlertCircle, Sparkles, Terminal } from 'lucide-react'
 
 function TestGenerationModal({ tool, onClose, onSuccess }) {
   const [step, setStep] = useState('configure') // 'configure', 'analyzing', 'generating', 'success', 'error'
@@ -8,6 +8,8 @@ function TestGenerationModal({ tool, onClose, onSuccess }) {
   const [analysis, setAnalysis] = useState(null)
   const [generatedFile, setGeneratedFile] = useState(null)
   const [error, setError] = useState(null)
+  const [logs, setLogs] = useState([])
+  const logsEndRef = useRef(null)
 
   // LLM Profile state
   const [llmProfiles, setLlmProfiles] = useState([])
@@ -17,6 +19,13 @@ function TestGenerationModal({ tool, onClose, onSuccess }) {
   useEffect(() => {
     loadLlmProfiles()
   }, [])
+
+  // Auto-scroll logs
+  useEffect(() => {
+    if (logsEndRef.current) {
+      logsEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [logs])
 
   const loadLlmProfiles = async () => {
     try {
@@ -117,8 +126,10 @@ function TestGenerationModal({ tool, onClose, onSuccess }) {
     try {
       setStep('analyzing')
       setError(null)
+      setLogs([]) // Clear previous logs
 
-      const response = await fetch('/api/tests/generate', {
+      // Use streaming endpoint
+      const response = await fetch('/api/tests/generate/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -137,14 +148,48 @@ function TestGenerationModal({ tool, onClose, onSuccess }) {
         throw new Error(errorData.detail || 'Failed to generate tests')
       }
 
-      const data = await response.json()
-      setAnalysis(data.analysis)
-      setGeneratedFile(data)
-      setStep('success')
+      // Read the streaming response
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
 
-      // Notify parent of success
-      if (onSuccess) {
-        onSuccess(data)
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+
+        // Process complete SSE events
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || '' // Keep incomplete line in buffer
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6))
+
+              if (data.type === 'log') {
+                setLogs(prev => [...prev, { type: 'log', message: data.message, timestamp: new Date().toISOString() }])
+              } else if (data.type === 'complete') {
+                setAnalysis(data.result.analysis)
+                setGeneratedFile(data.result)
+                setLogs(prev => [...prev, { type: 'success', message: 'Generation complete!', timestamp: new Date().toISOString() }])
+                setStep('success')
+
+                // Notify parent of success
+                if (onSuccess) {
+                  onSuccess(data.result)
+                }
+              } else if (data.type === 'error') {
+                setLogs(prev => [...prev, { type: 'error', message: data.message, timestamp: new Date().toISOString() }])
+                setError(data.message)
+                setStep('error')
+              }
+            } catch (e) {
+              console.error('Failed to parse SSE data:', e, line)
+            }
+          }
+        }
       }
     } catch (err) {
       console.error('Error generating tests:', err)
@@ -335,15 +380,48 @@ function TestGenerationModal({ tool, onClose, onSuccess }) {
           )}
 
           {step === 'analyzing' && (
-            <div className="flex flex-col items-center justify-center py-12">
-              <Loader className="w-12 h-12 text-primary animate-spin mb-4" />
-              <h3 className="text-lg font-semibold text-text-primary mb-2">Generating Tests...</h3>
-              <p className="text-text-secondary text-center max-w-md">
-                Using <span className="font-medium">{providerInfo?.name || 'LLM'}</span> to analyze the tool and generate test cases
-              </p>
+            <div className="space-y-4">
+              {/* Header */}
+              <div className="flex items-center gap-3">
+                <Loader className="w-6 h-6 text-primary animate-spin" />
+                <div>
+                  <h3 className="text-lg font-semibold text-text-primary">Generating Tests...</h3>
+                  <p className="text-sm text-text-secondary">
+                    Using <span className="font-medium">{providerInfo?.name || 'LLM'}</span> to analyze and generate test cases
+                  </p>
+                </div>
+              </div>
+
+              {/* Logs Panel */}
+              <div className="bg-surface-elevated border border-border rounded-lg overflow-hidden">
+                <div className="flex items-center gap-2 px-3 py-2 bg-surface border-b border-border">
+                  <Terminal size={14} className="text-text-tertiary" />
+                  <span className="text-xs font-medium text-text-secondary">Generation Logs</span>
+                </div>
+                <div className="h-64 overflow-auto p-3 font-mono text-xs space-y-1 bg-gray-950">
+                  {logs.length === 0 ? (
+                    <div className="text-text-tertiary">Waiting for logs...</div>
+                  ) : (
+                    logs.map((log, idx) => (
+                      <div
+                        key={idx}
+                        className={`${
+                          log.type === 'error' ? 'text-error' :
+                          log.type === 'success' ? 'text-success' :
+                          'text-text-secondary'
+                        }`}
+                      >
+                        {log.message}
+                      </div>
+                    ))
+                  )}
+                  <div ref={logsEndRef} />
+                </div>
+              </div>
+
               {providerInfo?.isCliTool && (
-                <p className="text-xs text-text-tertiary mt-2">
-                  Running via CLI - this may take a moment
+                <p className="text-xs text-text-tertiary text-center">
+                  Running via CLI tool - this may take longer than API calls
                 </p>
               )}
             </div>

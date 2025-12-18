@@ -48,7 +48,7 @@ function Configuration() {
   }
 
   const getMcpUrl = () => {
-    return config.MCP_URL?.value || 'https://your-workspace.preset.io/mcp'
+    return config.MCP_URL?.value || 'https://your-instance.example.com/mcp'
   }
 
   const getAuthToken = () => {
