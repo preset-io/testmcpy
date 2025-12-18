@@ -170,3 +170,7 @@ build/
 .claude/
 */.claude/
 CLAUDE.md
+
+# Test artifacts (generated during testing)
+tests/
+!tests/.gitkeep
