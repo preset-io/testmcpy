@@ -12,7 +12,8 @@ import {
   CheckCircle2,
   ChevronRight,
   Shield,
-  History
+  History,
+  BarChart3
 } from 'lucide-react'
 
 import MCPExplorer from './pages/MCPExplorer'
@@ -23,6 +24,7 @@ import MCPProfiles from './pages/MCPProfiles'
 import LLMProfiles from './pages/LLMProfiles'
 import AuthDebugger from './pages/AuthDebugger'
 import GenerationHistory from './pages/GenerationHistory'
+import Reports from './pages/Reports'
 import { TestRunProvider } from './contexts/TestRunContext'
 
 function AppContent() {
@@ -252,6 +254,7 @@ function AppContent() {
   const navItems = [
     { path: '/', label: 'Explorer', icon: Package },
     { path: '/tests', label: 'Tests', icon: FileText },
+    { path: '/reports', label: 'Reports', icon: BarChart3 },
     { path: '/generation-history', label: 'Gen History', icon: History },
     { path: '/chat', label: 'Interact', icon: MessageSquare },
     { path: '/auth-debugger', label: 'Auth Debug', icon: Shield },
@@ -428,6 +431,7 @@ function AppContent() {
             <Route path="/" element={<MCPExplorer selectedProfiles={selectedProfiles} />} />
             <Route path="/chat" element={<ChatInterface selectedProfiles={selectedProfiles} selectedLlmProfile={selectedLlmProfile} llmProfiles={llmProfiles} />} />
             <Route path="/tests" element={<TestManager selectedProfiles={selectedProfiles} />} />
+            <Route path="/reports" element={<Reports />} />
             <Route path="/generation-history" element={<GenerationHistory />} />
             <Route path="/auth-debugger" element={<AuthDebugger />} />
             <Route path="/config" element={<Configuration />} />
