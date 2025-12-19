@@ -2407,4 +2407,12 @@ def create_llm_provider(provider: str, model: str, **kwargs) -> LLMProvider:
         raise ValueError(f"Unknown provider: {provider}. Available: {list(providers.keys())}")
 
     provider_class = providers[provider]
-    return provider_class(model=model, **kwargs)
+
+    # Filter kwargs to only include parameters the provider accepts
+    import inspect
+
+    sig = inspect.signature(provider_class.__init__)
+    valid_params = set(sig.parameters.keys()) - {"self"}
+    filtered_kwargs = {k: v for k, v in kwargs.items() if k in valid_params}
+
+    return provider_class(model=model, **filtered_kwargs)
