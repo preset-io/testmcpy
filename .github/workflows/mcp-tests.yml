@@ -64,13 +64,25 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Check for test files
+        id: check_tests
+        run: |
+          if find tests -name "*.yaml" -o -name "*.yml" 2>/dev/null | grep -q .; then
+            echo "has_tests=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_tests=false" >> $GITHUB_OUTPUT
+            echo "No test files found in tests/ - skipping MCP tests"
+          fi
+
       - name: Set up Python
+        if: steps.check_tests.outputs.has_tests == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
 
       - name: Install testmcpy
+        if: steps.check_tests.outputs.has_tests == 'true'
         run: |
           pip install --upgrade pip
           pip install testmcpy
@@ -78,9 +90,11 @@ jobs:
           # pip install git+https://github.com/preset-io/testmcpy.git
 
       - name: Verify installation
+        if: steps.check_tests.outputs.has_tests == 'true'
         run: testmcpy --version
 
       - name: Run MCP Tests
+        if: steps.check_tests.outputs.has_tests == 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -104,7 +118,7 @@ jobs:
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && steps.check_tests.outputs.has_tests == 'true'
         with:
           name: test-results
           path: results.json
@@ -113,6 +127,11 @@ jobs:
       - name: Parse and display results
         if: always()
         run: |
+          if [ "${{ steps.check_tests.outputs.has_tests }}" != "true" ]; then
+            echo "## MCP Tests Skipped" >> $GITHUB_STEP_SUMMARY
+            echo "No test files found in tests/ directory" >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
           if [ -f results.json ]; then
             echo "## Test Results Summary" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
