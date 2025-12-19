@@ -27,6 +27,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.15] - 2025-12-18
+
+### Fixed
+- Fixed `testmcpy run <directory>` to recursively find test files in subdirectories using `rglob`
+- Added support for `.yml` extension and `.json` files in directory test discovery
+- Handle single test case files (without `tests` key) when loading from directories
+
+---
+
 ## [0.2.14] - 2025-12-18
 
 ### Fixed

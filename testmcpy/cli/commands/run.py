@@ -272,12 +272,23 @@ def run(
                     test_cases.append(TestCase.from_dict(data))
 
         elif test_path.is_dir():
-            for file in test_path.glob("*.yaml"):
-                with open(file) as f:
-                    data = yaml.safe_load(f)
-                    if "tests" in data:
-                        for test_data in data["tests"]:
-                            test_cases.append(TestCase.from_dict(test_data))
+            # Use rglob for recursive search in subdirectories
+            # Support both .yaml and .yml extensions, plus .json
+            for pattern in ["*.yaml", "*.yml", "*.json"]:
+                for file in test_path.rglob(pattern):
+                    with open(file) as f:
+                        if file.suffix == ".json":
+                            data = json.load(f)
+                        else:
+                            data = yaml.safe_load(f)
+                        if data is None:
+                            continue
+                        if "tests" in data:
+                            for test_data in data["tests"]:
+                                test_cases.append(TestCase.from_dict(test_data))
+                        else:
+                            # Handle single test case files
+                            test_cases.append(TestCase.from_dict(data))
 
         console.print(f"\n[bold]Found {len(test_cases)} test case(s)[/bold]")
 
