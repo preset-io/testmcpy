@@ -5,6 +5,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import Optional
 
 import typer
 import yaml
@@ -715,13 +716,13 @@ def config_mcp(
     target: str = typer.Argument(
         ..., help="Target application: claude-desktop, claude-code, or chatgpt-desktop"
     ),
-    server_name: str | None = typer.Option(
+    server_name: Optional[str] = typer.Option(
         None, "--name", "-n", help="Server name in config (default: superset)"
     ),
-    mcp_url: str | None = typer.Option(
+    mcp_url: Optional[str] = typer.Option(
         None, "--mcp-url", help="MCP service URL (uses config default if not provided)"
     ),
-    auth_token: str | None = typer.Option(
+    auth_token: Optional[str] = typer.Option(
         None, "--token", help="Bearer token (uses dynamic JWT if not provided)"
     ),
 ):

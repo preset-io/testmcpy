@@ -9,6 +9,7 @@ for programmatic access. The chat command uses a simple REPL interface.
 """
 
 import asyncio
+from typing import Optional
 
 import typer
 from rich.panel import Panel
@@ -25,12 +26,12 @@ from testmcpy.cli.app import (
 
 @app.command()
 def chat(
-    profile: str | None = typer.Option(None, "--profile", "-p", help="MCP profile to use"),
+    profile: Optional[str] = typer.Option(None, "--profile", "-p", help="MCP profile to use"),
     provider: ModelProvider = typer.Option(
         DEFAULT_PROVIDER, "--provider", help="LLM provider (anthropic, openai, ollama)"
     ),
     model: str = typer.Option(DEFAULT_MODEL, "--model", "-m", help="Model name"),
-    mcp_url: str | None = typer.Option(None, "--mcp-url", help="MCP service URL"),
+    mcp_url: Optional[str] = typer.Option(None, "--mcp-url", help="MCP service URL"),
     no_mcp: bool = typer.Option(False, "--no-mcp", help="Chat without MCP tools"),
 ):
     """
