@@ -3,6 +3,7 @@
 import asyncio
 import json
 from pathlib import Path
+from typing import Optional
 
 import typer
 import yaml
@@ -15,15 +16,15 @@ from testmcpy.cli.app import DEFAULT_MCP_URL, OutputFormat, app, console
 
 @app.command()
 def tools(
-    mcp_url: str | None = typer.Option(
+    mcp_url: Optional[str] = typer.Option(
         None, "--mcp-url", help="MCP service URL (overrides profile)"
     ),
-    profile: str | None = typer.Option(
+    profile: Optional[str] = typer.Option(
         None, "--profile", help="MCP service profile from .mcp_services.yaml"
     ),
     format: OutputFormat = typer.Option(OutputFormat.table, "--format", "-f", help="Output format"),
     detail: bool = typer.Option(False, "--detail", "-d", help="Show detailed parameter schemas"),
-    filter: str | None = typer.Option(None, "--filter", help="Filter tools by name"),
+    filter: Optional[str] = typer.Option(None, "--filter", help="Filter tools by name"),
 ):
     """
     List available MCP tools with beautiful formatting.
@@ -262,12 +263,12 @@ def tools(
 
 @app.command()
 def export(
-    tool_name: str | None = typer.Argument(None, help="Tool name to export (or use --all)"),
+    tool_name: Optional[str] = typer.Argument(None, help="Tool name to export (or use --all)"),
     format: str = typer.Option("typescript", "--format", "-f", help="Export format"),
-    output: Path | None = typer.Option(None, "--output", "-o", help="Output file"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output file"),
     all: bool = typer.Option(False, "--all", help="Export all tools"),
-    profile: str | None = typer.Option(None, "--profile", help="MCP profile"),
-    mcp_url: str | None = typer.Option(None, "--mcp-url", help="MCP service URL"),
+    profile: Optional[str] = typer.Option(None, "--profile", help="MCP profile"),
+    mcp_url: Optional[str] = typer.Option(None, "--mcp-url", help="MCP service URL"),
 ):
     """
     Export MCP tool schemas in various formats.

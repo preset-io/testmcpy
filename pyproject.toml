@@ -20,6 +20,8 @@ ignore = [
     "E722",  # bare except - used intentionally in some places
     "B904",  # raise from within except - style preference
     "B028",  # warnings.warn without stacklevel
+    "UP007", # Use X | Y instead of Optional - breaks Typer on Python 3.10
+    "UP045", # Use X | None instead of Optional - breaks Typer on Python 3.10
 ]
 
 [tool.ruff.lint.per-file-ignores]

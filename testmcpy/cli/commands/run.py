@@ -3,6 +3,7 @@
 import asyncio
 import json
 from pathlib import Path
+from typing import Optional
 
 import typer
 import yaml
@@ -28,13 +29,13 @@ def research(
     provider: ModelProvider = typer.Option(
         DEFAULT_PROVIDER, "--provider", "-p", help="Model provider"
     ),
-    mcp_url: str | None = typer.Option(
+    mcp_url: Optional[str] = typer.Option(
         None, "--mcp-url", help="MCP service URL (overrides profile)"
     ),
-    profile: str | None = typer.Option(
+    profile: Optional[str] = typer.Option(
         None, "--profile", help="MCP service profile from .mcp_services.yaml"
     ),
-    output: Path | None = typer.Option(None, "--output", "-o", help="Output file for results"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output file for results"),
     format: OutputFormat = typer.Option(OutputFormat.table, "--format", "-f", help="Output format"),
 ):
     """
@@ -191,13 +192,13 @@ def run(
     provider: ModelProvider = typer.Option(
         DEFAULT_PROVIDER, "--provider", "-p", help="Model provider"
     ),
-    mcp_url: str | None = typer.Option(
+    mcp_url: Optional[str] = typer.Option(
         None, "--mcp-url", help="MCP service URL (overrides profile)"
     ),
-    profile: str | None = typer.Option(
+    profile: Optional[str] = typer.Option(
         None, "--profile", help="MCP service profile from .mcp_services.yaml"
     ),
-    output: Path | None = typer.Option(None, "--output", "-o", help="Output report file"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output report file"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Don't actually run tests"),
     hide_tool_output: bool = typer.Option(
@@ -354,13 +355,13 @@ def run(
 
 @app.command()
 def generate(
-    profile: str | None = typer.Option(
+    profile: Optional[str] = typer.Option(
         None,
         "--profile",
         "-p",
         help="MCP service profile from .mcp_services.yaml",
     ),
-    mcp_url: str | None = typer.Option(
+    mcp_url: Optional[str] = typer.Option(
         None,
         "--mcp-url",
         help="MCP service URL (overrides profile)",
@@ -572,8 +573,8 @@ def generate(
 def _generate_tool_test(
     tool,
     mcp_url: str,
-    profile: str | None,
-    auth_config: dict | None,
+    profile: Optional[str],
+    auth_config: Optional[dict],
     include_examples: bool,
     output_dir: Path = Path("tests/generated"),
 ) -> str:
@@ -743,13 +744,13 @@ def _generate_example_prompt(tool, required_params: list, optional_params: list)
 
 @app.command()
 def smoke_test(
-    profile: str | None = typer.Option(
+    profile: Optional[str] = typer.Option(
         None,
         "--profile",
         "-p",
         help="MCP service profile from .mcp_services.yaml",
     ),
-    mcp_url: str | None = typer.Option(
+    mcp_url: Optional[str] = typer.Option(
         None,
         "--mcp-url",
         help="MCP service URL (overrides profile)",
@@ -770,7 +771,7 @@ def smoke_test(
         "-f",
         help="Output format: table, json, or summary",
     ),
-    save_report: str | None = typer.Option(
+    save_report: Optional[str] = typer.Option(
         None,
         "--save",
         "-s",
