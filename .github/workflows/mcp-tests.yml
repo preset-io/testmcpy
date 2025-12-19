@@ -19,10 +19,13 @@ on:
   push:
     branches: [main, master]
     paths:
-      - 'tests/**'
-      - '.github/workflows/mcp-tests.yml'
+      - 'tests/**/*.yaml'
+      - 'tests/**/*.yml'
   pull_request:
     branches: [main, master]
+    paths:
+      - 'tests/**/*.yaml'
+      - 'tests/**/*.yml'
   workflow_dispatch:
     inputs:
       test_path:

@@ -11,13 +11,13 @@ Tests cover:
 - Edge cases: empty files, invalid YAML, missing fields, Unicode, large files
 """
 
-import pytest
 import tempfile
 from pathlib import Path
-from typing import Any
 
+import pytest
+
+from testmcpy.src.models import Question, TestSuite
 from testmcpy.src.test_runner import TestCase, TestStep
-from testmcpy.src.models import TestSuite, Question
 
 
 class TestTestCaseFromDict:

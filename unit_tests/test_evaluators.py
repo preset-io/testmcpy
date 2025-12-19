@@ -8,18 +8,17 @@ Tests cover:
 - Edge cases like missing tool calls, empty results, etc.
 """
 
-import pytest
 from dataclasses import dataclass
 from typing import Any
 
+import pytest
+
 from testmcpy.evals.base_evaluators import (
     AnswerContainsLink,
-    BaseEvaluator,
     CompositeEvaluator,
     EvalResult,
     ExecutionSuccessful,
     FinalAnswerContains,
-    LLMJudge,
     NoHallucination,
     ParameterValueInRange,
     ResponseIncludes,

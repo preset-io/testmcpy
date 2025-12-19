@@ -1,10 +1,8 @@
 """Unit tests for MCP profiles module."""
 
-import os
 from pathlib import Path
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import patch
 
-import pytest
 import yaml
 
 from testmcpy.mcp_profiles import (
@@ -900,7 +898,6 @@ class TestModuleLevelFunctions:
 
     def test_reload_profile_config(self, tmp_path, monkeypatch):
         """Test that reload_profile_config creates new instance."""
-        import testmcpy.mcp_profiles as mcp_module
 
         monkeypatch.chdir(tmp_path)
         config_file = tmp_path / ".mcp_services.yaml"

@@ -12,7 +12,6 @@ Tests smoke test functionality:
 
 import asyncio
 from datetime import datetime
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -27,10 +26,8 @@ from testmcpy.smoke_test import (
 from testmcpy.src.mcp_client import (
     MCPClient,
     MCPTool,
-    MCPToolCall,
     MCPToolResult,
 )
-
 
 # Fixtures
 
