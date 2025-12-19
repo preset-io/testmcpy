@@ -159,9 +159,7 @@ class ToolDiscovery:
                 mcp_tools = await client.list_tools(force_refresh=force_refresh)
 
                 # Convert to Tool objects
-                tools = [
-                    Tool.from_mcp_tool(t, profile_id, mcp_server.name) for t in mcp_tools
-                ]
+                tools = [Tool.from_mcp_tool(t, profile_id, mcp_server.name) for t in mcp_tools]
 
                 # Update cache
                 self._tools_cache[cache_key] = tools

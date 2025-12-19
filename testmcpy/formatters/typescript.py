@@ -39,9 +39,7 @@ class TypeScriptFormatter(SchemaFormatter):
     def _convert_type(self, prop: dict[str, Any], depth: int = 0, parent_name: str = "") -> str:
         """Convert JSON Schema type to TypeScript type."""
         if "enum" in prop:
-            return " | ".join(
-                f"'{v}'" if isinstance(v, str) else str(v) for v in prop["enum"]
-            )
+            return " | ".join(f"'{v}'" if isinstance(v, str) else str(v) for v in prop["enum"])
 
         # Handle anyOf (union types)
         if "anyOf" in prop and isinstance(prop["anyOf"], list):
@@ -81,19 +79,13 @@ class TypeScriptFormatter(SchemaFormatter):
                     nested_lines = []
                     for nested_name, nested_prop in prop["properties"].items():
                         nested_type = self._convert_type(nested_prop, depth + 1, nested_name)
-                        optional = (
-                            ""
-                            if nested_name in prop.get("required", [])
-                            else "?"
-                        )
+                        optional = "" if nested_name in prop.get("required", []) else "?"
                         comment = (
                             f"  // {nested_prop['description']}"
                             if nested_prop.get("description")
                             else ""
                         )
-                        nested_lines.append(
-                            f"    {nested_name}{optional}: {nested_type}{comment}"
-                        )
+                        nested_lines.append(f"    {nested_name}{optional}: {nested_type}{comment}")
                     return "{\n" + "\n".join(nested_lines) + "\n  }"
                 else:
                     # Create separate interface for deeper nesting
@@ -107,19 +99,13 @@ class TypeScriptFormatter(SchemaFormatter):
                     nested_lines = [f"interface {nested_interface_name} {{"]
                     for nested_name, nested_prop in prop["properties"].items():
                         nested_type = self._convert_type(nested_prop, depth + 1, nested_name)
-                        optional = (
-                            ""
-                            if nested_name in prop.get("required", [])
-                            else "?"
-                        )
+                        optional = "" if nested_name in prop.get("required", []) else "?"
                         comment = (
                             f"  // {nested_prop['description']}"
                             if nested_prop.get("description")
                             else ""
                         )
-                        nested_lines.append(
-                            f"  {nested_name}{optional}: {nested_type}{comment}"
-                        )
+                        nested_lines.append(f"  {nested_name}{optional}: {nested_type}{comment}")
                     nested_lines.append("}")
                     self.interfaces.append("\n".join(nested_lines))
 

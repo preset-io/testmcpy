@@ -78,8 +78,8 @@ class AuthSuccessfulEvaluator(BaseEvaluator):
                 reason="Authentication completed successfully",
                 details={
                     "has_token": bool(auth_token),
-                    "token_length": len(auth_token) if auth_token else 0
-                }
+                    "token_length": len(auth_token) if auth_token else 0,
+                },
             )
 
         # Partial success if we have a token but no explicit success flag
@@ -88,7 +88,7 @@ class AuthSuccessfulEvaluator(BaseEvaluator):
                 passed=True,
                 score=0.9,
                 reason="Authentication token present (success flag not set)",
-                details={"token_length": len(auth_token)}
+                details={"token_length": len(auth_token)},
             )
 
         # Failure cases
@@ -97,13 +97,11 @@ class AuthSuccessfulEvaluator(BaseEvaluator):
                 passed=False,
                 score=0.0,
                 reason=f"Authentication failed: {auth_error}",
-                details={"error": auth_error}
+                details={"error": auth_error},
             )
 
         return EvalResult(
-            passed=False,
-            score=0.0,
-            reason="No authentication information found in metadata"
+            passed=False, score=0.0, reason="No authentication information found in metadata"
         )
 
 
@@ -169,9 +167,7 @@ class TokenValidEvaluator(BaseEvaluator):
 
         if not auth_token:
             return EvalResult(
-                passed=False,
-                score=0.0,
-                reason="No authentication token found in metadata"
+                passed=False, score=0.0, reason="No authentication token found in metadata"
             )
 
         # Check minimum length
@@ -181,7 +177,7 @@ class TokenValidEvaluator(BaseEvaluator):
                 passed=False,
                 score=0.3,
                 reason=f"Token too short: {len(auth_token)} chars (minimum: {min_length})",
-                details={"token_length": len(auth_token)}
+                details={"token_length": len(auth_token)},
             )
 
         # Format-specific validation
@@ -197,7 +193,7 @@ class TokenValidEvaluator(BaseEvaluator):
                 passed=True,
                 score=1.0,
                 reason=f"Token present and valid length ({len(auth_token)} chars)",
-                details={"token_length": len(auth_token)}
+                details={"token_length": len(auth_token)},
             )
 
     def _validate_jwt(self, token: str) -> EvalResult:
@@ -217,7 +213,7 @@ class TokenValidEvaluator(BaseEvaluator):
                 passed=False,
                 score=0.5,
                 reason=f"Invalid JWT structure: expected 3 parts, got {len(parts)}",
-                details={"parts": len(parts)}
+                details={"parts": len(parts)},
             )
 
         # Try to decode JWT (without signature verification)
@@ -238,13 +234,14 @@ class TokenValidEvaluator(BaseEvaluator):
             details = {
                 "token_length": len(token),
                 "has_payload": True,
-                "claims": list(payload.keys())
+                "claims": list(payload.keys()),
             }
 
             # Check expiration if requested
             if self.args.get("check_expiration", False):
                 if "exp" in payload:
                     import time
+
                     exp_time = payload["exp"]
                     current_time = time.time()
 
@@ -253,7 +250,7 @@ class TokenValidEvaluator(BaseEvaluator):
                             passed=False,
                             score=0.7,
                             reason="JWT token has expired",
-                            details={**details, "expired": True, "exp": exp_time}
+                            details={**details, "expired": True, "exp": exp_time},
                         )
 
                     details["expires_in"] = int(exp_time - current_time)
@@ -262,14 +259,14 @@ class TokenValidEvaluator(BaseEvaluator):
                         passed=False,
                         score=0.8,
                         reason="JWT token missing expiration claim",
-                        details={**details, "has_exp": False}
+                        details={**details, "has_exp": False},
                     )
 
             return EvalResult(
                 passed=True,
                 score=1.0,
                 reason="JWT token is valid and properly formatted",
-                details=details
+                details=details,
             )
 
         except Exception as e:
@@ -277,7 +274,7 @@ class TokenValidEvaluator(BaseEvaluator):
                 passed=False,
                 score=0.4,
                 reason=f"Failed to decode JWT payload: {str(e)}",
-                details={"error": str(e)}
+                details={"error": str(e)},
             )
 
     def _validate_bearer(self, token: str) -> EvalResult:
@@ -291,19 +288,19 @@ class TokenValidEvaluator(BaseEvaluator):
             EvalResult with Bearer token validation
         """
         # Bearer tokens should be alphanumeric with possible special chars
-        if not re.match(r'^[A-Za-z0-9_\-\.~\+\/=]+$', token):
+        if not re.match(r"^[A-Za-z0-9_\-\.~\+\/=]+$", token):
             return EvalResult(
                 passed=False,
                 score=0.6,
                 reason="Bearer token contains invalid characters",
-                details={"token_length": len(token)}
+                details={"token_length": len(token)},
             )
 
         return EvalResult(
             passed=True,
             score=1.0,
             reason="Bearer token is valid",
-            details={"token_length": len(token)}
+            details={"token_length": len(token)},
         )
 
 
@@ -367,18 +364,14 @@ class OAuth2FlowEvaluator(BaseEvaluator):
 
         if not auth_flow_steps:
             return EvalResult(
-                passed=False,
-                score=0.0,
-                reason="No OAuth2 flow steps recorded in metadata"
+                passed=False, score=0.0, reason="No OAuth2 flow steps recorded in metadata"
             )
 
         # Get required steps from args or use defaults
-        required_steps = self.args.get("required_steps", [
-            "request_prepared",
-            "token_endpoint_called",
-            "response_received",
-            "token_extracted"
-        ])
+        required_steps = self.args.get(
+            "required_steps",
+            ["request_prepared", "token_endpoint_called", "response_received", "token_extracted"],
+        )
 
         # Check which steps are present
         completed_steps = []
@@ -398,10 +391,7 @@ class OAuth2FlowEvaluator(BaseEvaluator):
                 passed=True,
                 score=1.0,
                 reason=f"OAuth2 flow completed all {len(required_steps)} required steps",
-                details={
-                    "completed_steps": completed_steps,
-                    "total_steps": len(auth_flow_steps)
-                }
+                details={"completed_steps": completed_steps, "total_steps": len(auth_flow_steps)},
             )
 
         return EvalResult(
@@ -411,8 +401,8 @@ class OAuth2FlowEvaluator(BaseEvaluator):
             details={
                 "completed_steps": completed_steps,
                 "missing_steps": missing_steps,
-                "total_steps": len(auth_flow_steps)
-            }
+                "total_steps": len(auth_flow_steps),
+            },
         )
 
 
@@ -484,7 +474,7 @@ class AuthErrorHandlingEvaluator(BaseEvaluator):
             return EvalResult(
                 passed=False,
                 score=0.0,
-                reason="No authentication error found (this evaluator expects auth failure)"
+                reason="No authentication error found (this evaluator expects auth failure)",
             )
 
         # Check minimum length
@@ -494,7 +484,7 @@ class AuthErrorHandlingEvaluator(BaseEvaluator):
                 passed=False,
                 score=0.3,
                 reason=f"Error message too short: {len(auth_error_message)} chars (minimum: {min_length})",
-                details={"message": auth_error_message}
+                details={"message": auth_error_message},
             )
 
         # Check for generic error messages (if not forbidden, this passes)
@@ -504,7 +494,7 @@ class AuthErrorHandlingEvaluator(BaseEvaluator):
             r"^error occurred$",
             r"^failed$",
             r"^authentication failed$",
-            r"^auth error$"
+            r"^auth error$",
         ]
 
         if forbid_generic:
@@ -514,7 +504,7 @@ class AuthErrorHandlingEvaluator(BaseEvaluator):
                         passed=False,
                         score=0.4,
                         reason=f"Error message too generic: '{auth_error_message}'",
-                        details={"message": auth_error_message}
+                        details={"message": auth_error_message},
                     )
 
         # Check for required information
@@ -537,11 +527,7 @@ class AuthErrorHandlingEvaluator(BaseEvaluator):
                     passed=False,
                     score=score,
                     reason=f"Error message missing required info: {', '.join(missing)}",
-                    details={
-                        "message": auth_error_message,
-                        "found": found,
-                        "missing": missing
-                    }
+                    details={"message": auth_error_message, "found": found, "missing": missing},
                 )
 
         # All checks passed
@@ -549,8 +535,5 @@ class AuthErrorHandlingEvaluator(BaseEvaluator):
             passed=True,
             score=1.0,
             reason="Error message provides clear, detailed information",
-            details={
-                "message": auth_error_message,
-                "length": len(auth_error_message)
-            }
+            details={"message": auth_error_message, "length": len(auth_error_message)},
         )

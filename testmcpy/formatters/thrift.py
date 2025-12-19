@@ -81,9 +81,7 @@ class ThriftFormatter(SchemaFormatter):
                 field_id = 1
                 for nested_name, nested_prop in prop["properties"].items():
                     nested_type = self._convert_type(nested_prop, nested_name, depth + 1)
-                    optional = (
-                        "optional " if nested_name not in prop.get("required", []) else ""
-                    )
+                    optional = "optional " if nested_name not in prop.get("required", []) else ""
                     comment = (
                         f"  // {nested_prop['description']}"
                         if nested_prop.get("description")

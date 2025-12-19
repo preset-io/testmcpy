@@ -9,7 +9,13 @@ from .base import SchemaFormatter, generate_example
 class JavaScriptClientFormatter(SchemaFormatter):
     """Generates JavaScript client code for calling MCP tools."""
 
-    def __init__(self, schema: dict[str, Any], tool_name: str = "tool_name", mcp_url: str | None = None, auth_token: str | None = None):
+    def __init__(
+        self,
+        schema: dict[str, Any],
+        tool_name: str = "tool_name",
+        mcp_url: str | None = None,
+        auth_token: str | None = None,
+    ):
         super().__init__(schema, tool_name)
         self.mcp_url = mcp_url or "http://localhost:8000/mcp"
         self.auth_token = auth_token or "your_auth_token"
@@ -23,7 +29,11 @@ class JavaScriptClientFormatter(SchemaFormatter):
         args_json = json.dumps(example_args, indent=2)
 
         # Prepare auth comment based on whether auth token is provided
-        auth_comment = "" if self.auth_token and self.auth_token != "your_auth_token" else "  // Replace with your auth token if needed"
+        auth_comment = (
+            ""
+            if self.auth_token and self.auth_token != "your_auth_token"
+            else "  // Replace with your auth token if needed"
+        )
 
         return f'''/**
  * Generated client code for MCP tool: {self.name}
@@ -92,13 +102,19 @@ call{self._pascal_case(self.name)}()
     def _pascal_case(self, name: str) -> str:
         """Convert tool name to PascalCase for JavaScript function names."""
         import re
+
         # Split on non-alphanumeric characters
-        parts = re.split(r'[^a-zA-Z0-9]', name)
+        parts = re.split(r"[^a-zA-Z0-9]", name)
         # Capitalize first letter of each part
-        return ''.join(part.capitalize() for part in parts if part)
+        return "".join(part.capitalize() for part in parts if part)
 
 
-def to_javascript_client(schema: dict[str, Any], tool_name: str = "tool_name", mcp_url: str | None = None, auth_token: str | None = None) -> str:
+def to_javascript_client(
+    schema: dict[str, Any],
+    tool_name: str = "tool_name",
+    mcp_url: str | None = None,
+    auth_token: str | None = None,
+) -> str:
     """
     Generate JavaScript client code for calling an MCP tool.
 

@@ -250,7 +250,6 @@ class Config:
             result[key] = (self._config[key], self._sources.get(key, "Unknown"))
         return result
 
-
     @property
     def default_model(self) -> str | None:
         """Get default model."""

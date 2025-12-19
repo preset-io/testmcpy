@@ -41,6 +41,14 @@ FORMATS = {
     "graphql": {"label": "GraphQL", "language": "graphql", "convert": to_graphql},
     "curl": {"label": "cURL", "language": "bash", "convert": to_curl},
     "python_client": {"label": "Python Client", "language": "python", "convert": to_python_client},
-    "javascript_client": {"label": "JavaScript Client", "language": "javascript", "convert": to_javascript_client},
-    "typescript_client": {"label": "TypeScript Client", "language": "typescript", "convert": to_typescript_client},
+    "javascript_client": {
+        "label": "JavaScript Client",
+        "language": "javascript",
+        "convert": to_javascript_client,
+    },
+    "typescript_client": {
+        "label": "TypeScript Client",
+        "language": "typescript",
+        "convert": to_typescript_client,
+    },
 }
