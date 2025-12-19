@@ -27,6 +27,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.13] - 2025-12-18
+
+### Added
+- Environment variable substitution in `.llm_providers.yaml` using `${VAR}` and `${VAR:-default}` syntax
+- Comprehensive unit test suite (428 tests) covering config, evaluators, formatters, profiles, smoke tests, and YAML parsing
+
+### Fixed
+- Python 3.10 compatibility with Typer by using `Optional[X]` instead of `X | None` syntax
+- CI workflow now correctly runs tests from `unit_tests/` directory
+
+### Changed
+- Removed MCP Tests workflow (tests folder is gitignored for runtime-generated tests)
+
+---
+
 ## [0.1.1] - 2025-01-16
 
 ### Added
