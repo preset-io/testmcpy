@@ -27,15 +27,15 @@ jobs:
 
       - name: Lint with ruff
         run: |
-          ruff check testmcpy tests
-          ruff format --check testmcpy tests
+          ruff check testmcpy unit_tests
+          ruff format --check testmcpy unit_tests
 
       - name: Type check with mypy
         run: mypy testmcpy
         continue-on-error: true
 
       - name: Run tests with pytest
-        run: pytest --cov=testmcpy --cov-report=xml --cov-report=term
+        run: pytest unit_tests/ --cov=testmcpy --cov-report=xml --cov-report=term
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4

@@ -9,9 +9,7 @@ Tests configuration loading from multiple sources:
 - Default values
 """
 
-import os
 from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
@@ -235,7 +233,7 @@ DEFAULT_MODEL=claude-3-opus
         """Test that errors reading .env file are silently ignored."""
         with (
             patch("pathlib.Path.exists", return_value=True),
-            patch("builtins.open", side_effect=IOError("File read error")),
+            patch("builtins.open", side_effect=OSError("File read error")),
         ):
             # Should not raise exception
             config = Config()
@@ -355,7 +353,7 @@ class TestLLMProfileIntegration:
             patch("testmcpy.config.load_llm_profile", side_effect=Exception("Profile not found")),
             patch("warnings.warn") as mock_warn,
         ):
-            config = Config(llm_profile="nonexistent")
+            Config(llm_profile="nonexistent")
 
             # Should issue warning
             mock_warn.assert_called_once()
@@ -400,7 +398,7 @@ class TestMCPProfileIntegration:
             patch("testmcpy.config.load_profile", side_effect=Exception("Profile not found")),
             patch("warnings.warn") as mock_warn,
         ):
-            config = Config(profile="nonexistent")
+            Config(profile="nonexistent")
 
             # Should issue warning
             mock_warn.assert_called_once()
@@ -500,7 +498,7 @@ class TestTestProfileIntegration:
             patch("testmcpy.config.load_test_profile", side_effect=Exception("Profile not found")),
             patch("warnings.warn") as mock_warn,
         ):
-            config = Config(test_profile="nonexistent")
+            Config(test_profile="nonexistent")
 
             # Should issue warning
             mock_warn.assert_called_once()
@@ -796,7 +794,7 @@ ANTHROPIC_API_KEY=test-key
             mock_load_llm.return_value = None
             mock_load_test.return_value = None
 
-            config = Config(profile=None, llm_profile=None, test_profile=None)
+            Config(profile=None, llm_profile=None, test_profile=None)
 
             # Should still call loaders (they handle None internally)
             mock_load.assert_called_once_with(None)
