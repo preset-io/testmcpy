@@ -302,8 +302,54 @@ def run(
                 console.print(f"{i}. {test.name}: {test.prompt[:50]}...")
             return
 
-        # Run tests
-        results = await runner.run_tests(test_cases)
+        # Run tests with progress output
+        results = []
+        await runner.initialize()
+
+        for i, test_case in enumerate(test_cases, 1):
+            # Show which test is running
+            console.print(
+                f"\n[cyan]Running test {i}/{len(test_cases)}:[/cyan] [bold]{test_case.name}[/bold]"
+            )
+            console.print(
+                f"  [dim]Prompt: {test_case.prompt[:80]}{'...' if len(test_case.prompt) > 80 else ''}[/dim]"
+            )
+
+            # Run the test
+            from rich.status import Status
+
+            with Status(f"[yellow]Executing test...[/yellow]", console=console):
+                result = await runner._run_test_with_retry(test_case)
+
+            results.append(result)
+
+            # Show immediate result
+            if result.passed:
+                console.print(
+                    f"  [green]PASSED[/green] (score: {result.score:.2f}, time: {result.duration:.2f}s)"
+                )
+            else:
+                console.print(
+                    f"  [red]FAILED[/red] (score: {result.score:.2f}, time: {result.duration:.2f}s)"
+                )
+                if result.reason:
+                    console.print(f"  [dim]Reason: {result.reason}[/dim]")
+
+            # Show tool calls if verbose
+            if verbose and result.tool_calls:
+                for tc in result.tool_calls:
+                    tool_name = tc.get("name", "unknown")
+                    console.print(f"  [dim]Tool called: {tool_name}[/dim]")
+
+            # Rate limit delay between tests
+            if i < len(test_cases):
+                if provider.value in ("claude-cli", "claude-code", "codex-cli", "codex"):
+                    delay = 1
+                else:
+                    delay = 15
+                if delay > 1:
+                    console.print(f"  [dim]Waiting {delay}s before next test...[/dim]")
+                await asyncio.sleep(delay)
 
         # Display results
         table = Table(show_header=True, header_style="bold cyan")
