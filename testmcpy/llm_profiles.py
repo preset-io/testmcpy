@@ -5,11 +5,39 @@ Manages multiple LLM provider configurations with profile-based organization.
 Similar to MCP profiles, allows users to define different LLM setups for different environments.
 """
 
+import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+
+def _substitute_env_vars(value: Any) -> Any:
+    """
+    Recursively substitute environment variables in config values.
+
+    Supports ${VAR_NAME} and ${VAR_NAME:-default_value} syntax.
+    """
+    if isinstance(value, str):
+        # Match ${VAR_NAME} or ${VAR_NAME:-default}
+        pattern = r"\$\{([^}:]+)(?::-([^}]*))?\}"
+
+        def replace_var(match):
+            var_name = match.group(1)
+            default_value = match.group(2) if match.group(2) is not None else ""
+            return os.environ.get(var_name, default_value)
+
+        return re.sub(pattern, replace_var, value)
+
+    elif isinstance(value, dict):
+        return {k: _substitute_env_vars(v) for k, v in value.items()}
+
+    elif isinstance(value, list):
+        return [_substitute_env_vars(item) for item in value]
+
+    return value
 
 
 @dataclass
@@ -95,6 +123,9 @@ class LLMProfileConfig:
 
             if not data:
                 return
+
+            # Substitute environment variables
+            data = _substitute_env_vars(data)
 
             # Load default profile
             self.default_profile_id = data.get("default")
