@@ -27,6 +27,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.16] - 2025-12-19
+
+### Fixed
+- Skip hidden directories (`.results/`, `.smoke_reports/`) when recursively discovering test files
+- Only load files with valid test structure (`prompt` or `tests` key) to avoid loading result files
+
+---
+
 ## [0.2.15] - 2025-12-18
 
 ### Fixed

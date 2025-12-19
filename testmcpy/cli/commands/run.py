@@ -276,6 +276,9 @@ def run(
             # Support both .yaml and .yml extensions, plus .json
             for pattern in ["*.yaml", "*.yml", "*.json"]:
                 for file in test_path.rglob(pattern):
+                    # Skip files in hidden directories (e.g., .results/, .smoke_reports/)
+                    if any(part.startswith(".") for part in file.relative_to(test_path).parts):
+                        continue
                     with open(file) as f:
                         if file.suffix == ".json":
                             data = json.load(f)
@@ -283,10 +286,11 @@ def run(
                             data = yaml.safe_load(f)
                         if data is None:
                             continue
+                        # Check if this is a valid test file (has prompt or tests key)
                         if "tests" in data:
                             for test_data in data["tests"]:
                                 test_cases.append(TestCase.from_dict(test_data))
-                        else:
+                        elif "prompt" in data:
                             # Handle single test case files
                             test_cases.append(TestCase.from_dict(data))
 
