@@ -27,6 +27,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.17] - 2025-12-19
+
+### Added
+- Verbose progress output for `testmcpy run` CLI command showing test-by-test progress
+- Real-time PASS/FAIL status, score, and duration for each test as it completes
+- Spinner animation while tests are executing
+
+---
+
 ## [0.2.16] - 2025-12-19
 
 ### Fixed
