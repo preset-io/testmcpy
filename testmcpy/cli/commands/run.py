@@ -318,7 +318,7 @@ def run(
             # Run the test
             from rich.status import Status
 
-            with Status(f"[yellow]Executing test...[/yellow]", console=console):
+            with Status("[yellow]Executing test...[/yellow]", console=console):
                 result = await runner._run_test_with_retry(test_case)
 
             results.append(result)
