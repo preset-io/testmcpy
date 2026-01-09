@@ -1,0 +1,110 @@
+# LLM Provider Configuration for testmcpy
+#
+# Copy to .llm_providers.yaml and customize for your environment.
+#
+# Supported Providers:
+#   - anthropic: Anthropic Claude models (direct API)
+#   - openai: OpenAI GPT models (API)
+#   - claude-sdk: Claude Agent SDK (native MCP support)
+#   - claude-cli: Claude Code CLI (subprocess)
+#
+# API Key Sources (priority order):
+#   1. Provider-specific api_key in this file
+#   2. Provider-specific api_key_env pointing to env var
+#   3. Default env vars: ANTHROPIC_API_KEY, OPENAI_API_KEY
+
+# Default profile (used when no --llm-profile specified)
+default: prod
+
+# Profile definitions
+profiles:
+  prod:
+    name: Production
+    description: Claude and OpenAI providers
+    providers:
+    # Anthropic Direct API
+    - name: Claude Sonnet 4
+      provider: anthropic
+      model: claude-sonnet-4-20250514
+      timeout: 60
+      default: true
+      api_key: ${ANTHROPIC_API_KEY}
+    - name: Claude Opus 4
+      provider: anthropic
+      model: claude-opus-4-20250514
+      timeout: 120
+      default: false
+      api_key: ${ANTHROPIC_API_KEY}
+    - name: Claude 3.5 Haiku
+      provider: anthropic
+      model: claude-3-5-haiku-20241022
+      timeout: 30
+      default: false
+      api_key: ${ANTHROPIC_API_KEY}
+
+    # Claude Agent SDK (native MCP support)
+    - name: Claude SDK (Sonnet)
+      provider: claude-sdk
+      model: claude-sonnet-4-20250514
+      timeout: 120
+      default: false
+      api_key: ${ANTHROPIC_API_KEY}
+    - name: Claude SDK (Opus)
+      provider: claude-sdk
+      model: claude-opus-4-20250514
+      timeout: 180
+      default: false
+      api_key: ${ANTHROPIC_API_KEY}
+
+    # Claude Code CLI (subprocess)
+    - name: Claude CLI (Sonnet)
+      provider: claude-cli
+      model: claude-sonnet-4-20250514
+      timeout: 120
+      default: false
+    - name: Claude CLI (Opus)
+      provider: claude-cli
+      model: claude-opus-4-20250514
+      timeout: 180
+      default: false
+
+    # OpenAI
+    - name: GPT-4o
+      provider: openai
+      model: gpt-4o
+      timeout: 60
+      default: false
+      api_key: ${OPENAI_API_KEY}
+    - name: GPT-4o Mini
+      provider: openai
+      model: gpt-4o-mini
+      timeout: 30
+      default: false
+      api_key: ${OPENAI_API_KEY}
+    - name: o1
+      provider: openai
+      model: o1
+      timeout: 120
+      default: false
+      api_key: ${OPENAI_API_KEY}
+
+    # OpenAI Codex CLI (subprocess, similar to Claude Code)
+    - name: Codex CLI (gpt-5-codex)
+      provider: codex-cli
+      model: gpt-5-codex
+      timeout: 120
+      default: false
+    - name: Codex CLI (o3)
+      provider: codex-cli
+      model: o3
+      timeout: 180
+      default: false
+
+global:
+  timeout: 60
+  rate_limit:
+    requests_per_minute: 60
+
+# Recommended: Set environment variables:
+#   export ANTHROPIC_API_KEY=sk-ant-...
+#   export OPENAI_API_KEY=sk-...

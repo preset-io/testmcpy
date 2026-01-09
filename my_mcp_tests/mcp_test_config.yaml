@@ -1,7 +1,0 @@
-default_model: llama3.1:8b
-default_provider: ollama
-evaluators:
-  max_cost: 0.1
-  max_tokens: 2000
-  timeout: 30
-mcp_url: http://localhost:5008/mcp/

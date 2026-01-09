@@ -39,6 +39,21 @@
     @apply focus:ring-primary;
   }
 
+  .btn-warning {
+    @apply bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 border border-yellow-500/30;
+    @apply focus:ring-yellow-500;
+  }
+
+  .btn-success {
+    @apply bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30;
+    @apply focus:ring-green-500;
+  }
+
+  .btn-error {
+    @apply bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30;
+    @apply focus:ring-red-500;
+  }
+
   /* Card Styles */
   .card {
     @apply bg-surface border border-border rounded-xl p-5 shadow-soft;
@@ -145,6 +160,97 @@
 ::selection {
   background-color: rgba(59, 130, 246, 0.3);
   color: #f5f5f5;
+}
+
+/* Toast animation */
+@keyframes slide-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in {
+  animation: slide-in 0.3s ease-out;
+}
+
+/* OAuth Sequence Diagram Animations */
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 1;
+    filter: drop-shadow(0 0 4px currentColor);
+  }
+  50% {
+    opacity: 0.7;
+    filter: drop-shadow(0 0 8px currentColor);
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes flow-arrow {
+  0% {
+    stroke-dashoffset: 20;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.5s ease-out;
+}
+
+.animate-flow-arrow {
+  animation: flow-arrow 1.5s linear infinite;
+  stroke-dasharray: 10 5;
+}
+
+/* ReactFlow custom styles for OAuth diagram */
+.react-flow__node {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.react-flow__edge path {
+  transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.react-flow__edge text {
+  transition: all 0.3s ease;
+}
+
+.react-flow__edge.selected path {
+  stroke-width: 4 !important;
+  filter: drop-shadow(0 0 4px currentColor);
+}
+
+/* Smooth hover effects for edges */
+.react-flow__edge:hover path {
+  stroke-width: 4 !important;
+  filter: drop-shadow(0 0 6px currentColor);
+  cursor: pointer;
+}
+
+/* Custom edge label styles */
+.react-flow__edge-text {
+  font-weight: 500;
 }
 
 /* Smooth animations */

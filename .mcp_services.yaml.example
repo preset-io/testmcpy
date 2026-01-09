@@ -1,0 +1,80 @@
+# MCP Service Configuration Profiles
+#
+# Copy to .mcp_services.yaml and customize for your services.
+#
+# Authentication Types:
+#   - jwt: JWT token from API (for Preset cloud)
+#   - bearer: Static bearer token
+#   - oauth: OAuth2 client credentials
+#   - none: No authentication
+#
+# Security Notes:
+#   - Keep secrets in environment variables (referenced with ${VAR_NAME})
+#   - Add .mcp_services.yaml to .gitignore if it contains sensitive data
+
+# Default profile (used when no --profile specified)
+default: sandbox
+
+# Profile definitions
+profiles:
+  # Sandbox environment for development/testing
+  sandbox:
+    name: Sandbox Environment
+    description: Sandbox servers for integration testing
+    mcps:
+    - name: Preset Sandbox
+      mcp_url: https://your-workspace.us1a.app-sdx.preset.io/mcp
+      auth:
+        type: jwt
+        api_url: https://api.app-sdx.preset.io/v1/auth/
+        api_token: ${SANDBOX_API_TOKEN}
+        api_secret: ${SANDBOX_API_SECRET}
+
+  # Staging environment
+  staging:
+    name: Staging Environment
+    description: Staging servers for integration testing
+    mcps:
+    - name: Preset Staging
+      mcp_url: https://your-workspace.us1a.app-stg.preset.io/mcp
+      auth:
+        type: jwt
+        api_url: https://api.app-stg.preset.io/v1/auth/
+        api_token: ${STAGING_API_TOKEN}
+        api_secret: ${STAGING_API_SECRET}
+
+  # Production environment
+  prod:
+    name: Production
+    description: Production MCP servers
+    mcps:
+    - name: Preset Production
+      mcp_url: https://your-workspace.us1a.app.preset.io/mcp
+      auth:
+        type: jwt
+        api_url: https://api.app.preset.io/v1/auth/
+        api_token: ${PROD_API_TOKEN}
+        api_secret: ${PROD_API_SECRET}
+
+  # Local development (no auth)
+  local-dev:
+    name: Local Development
+    description: Local MCP servers for development
+    mcps:
+    - name: Superset Local
+      mcp_url: http://localhost:8088/mcp
+      auth:
+        type: none
+
+global:
+  timeout: 30
+  rate_limit:
+    requests_per_minute: 60
+
+# To get API credentials for Preset:
+# 1. Go to your Preset workspace settings
+# 2. Navigate to API Keys section
+# 3. Create a new API key pair (token + secret)
+# 4. Set environment variables:
+#    export SANDBOX_API_TOKEN=your-api-token
+#    export SANDBOX_API_SECRET=your-api-secret

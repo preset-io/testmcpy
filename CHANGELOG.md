@@ -2,6 +2,79 @@
 
 All notable changes to testmcpy will be documented in this file.
 
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Added
+- (Features and capabilities added in upcoming release)
+
+### Changed
+- (Changes to existing functionality)
+
+### Deprecated
+- (Features that will be removed in future releases)
+
+### Removed
+- (Features removed in this release)
+
+### Fixed
+- (Bug fixes)
+
+### Security
+- (Security vulnerability fixes or improvements)
+
+---
+
+## [0.2.17] - 2025-12-19
+
+### Added
+- Verbose progress output for `testmcpy run` CLI command showing test-by-test progress
+- Real-time PASS/FAIL status, score, and duration for each test as it completes
+- Spinner animation while tests are executing
+
+---
+
+## [0.2.16] - 2025-12-19
+
+### Fixed
+- Skip hidden directories (`.results/`, `.smoke_reports/`) when recursively discovering test files
+- Only load files with valid test structure (`prompt` or `tests` key) to avoid loading result files
+
+---
+
+## [0.2.15] - 2025-12-18
+
+### Fixed
+- Fixed `testmcpy run <directory>` to recursively find test files in subdirectories using `rglob`
+- Added support for `.yml` extension and `.json` files in directory test discovery
+- Handle single test case files (without `tests` key) when loading from directories
+
+---
+
+## [0.2.14] - 2025-12-18
+
+### Fixed
+- Fixed `create_llm_provider` passing unsupported kwargs (like `auth`) to providers that don't accept them
+
+---
+
+## [0.2.13] - 2025-12-18
+
+### Added
+- Environment variable substitution in `.llm_providers.yaml` using `${VAR}` and `${VAR:-default}` syntax
+- Comprehensive unit test suite (428 tests) covering config, evaluators, formatters, profiles, smoke tests, and YAML parsing
+
+### Fixed
+- Python 3.10 compatibility with Typer by using `Optional[X]` instead of `X | None` syntax
+- CI workflow now correctly runs tests from `unit_tests/` directory
+
+### Changed
+- Removed MCP Tests workflow (tests folder is gitignored for runtime-generated tests)
+
+---
+
 ## [0.1.1] - 2025-01-16
 
 ### Added
@@ -12,7 +85,7 @@ All notable changes to testmcpy will be documented in this file.
   4. Environment variables
   5. Built-in defaults (lowest)
 
-- **Dynamic JWT token generation** for Preset/Superset MCP:
+- **Dynamic JWT token generation** for MCP services:
   - Configure `MCP_AUTH_API_URL`, `MCP_AUTH_API_TOKEN`, `MCP_AUTH_API_SECRET`
   - Automatically fetches and caches JWT tokens for 50 minutes
   - Eliminates need to manually manage short-lived JWT tokens
