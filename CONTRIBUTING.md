@@ -14,7 +14,6 @@ This guide will help you get started, whether you're fixing a typo or adding a m
 
 ## Table of Contents
 
-- [Code of Conduct](#code-of-conduct)
 - [Quick Start](#quick-start)
 - [Development Setup](#development-setup)
 - [Contribution Workflow](#contribution-workflow)
@@ -25,17 +24,6 @@ This guide will help you get started, whether you're fixing a typo or adding a m
 - [Code Quality Standards](#code-quality-standards)
 - [Community Guidelines](#community-guidelines)
 - [Getting Help](#getting-help)
-
-## Code of Conduct
-
-Be respectful, inclusive, and collaborative. We're all here to build better tools for the community.
-
-Key principles:
-- **Be respectful**: Treat everyone with respect and kindness
-- **Be inclusive**: Welcome contributors of all backgrounds and experience levels
-- **Be collaborative**: Share knowledge, help others, and work together
-- **Be constructive**: Provide helpful feedback and accept it gracefully
-- **Be patient**: Remember that everyone started as a beginner
 
 ## Quick Start
 
@@ -744,15 +732,7 @@ Before submitting your pull request, ensure:
 
 ### Reporting Security Issues
 
-If you discover a security vulnerability, please report it via [GitHub Security Advisories](https://github.com/preset-io/testmcpy/security/advisories/new) instead of opening a public issue.
-
-Include:
-- Description of the vulnerability
-- Steps to reproduce
-- Potential impact
-- Suggested fix (if you have one)
-
-We'll respond promptly and work with you to address the issue.
+If you discover a security vulnerability, please report it via [GitHub Security Advisories](https://github.com/preset-io/testmcpy/security/advisories/new) instead of opening a public issue. See [SECURITY.md](SECURITY.md) for details.
 
 ### Security Best Practices
 

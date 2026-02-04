@@ -1,19 +1,8 @@
 # Security Policy
 
-## Supported Versions
-
-We actively support the following versions of testmcpy with security updates:
-
-| Version | Supported          |
-| ------- | ------------------ |
-| 0.1.x   | :white_check_mark: |
-| < 0.1   | :x:                |
-
 ## Reporting a Vulnerability
 
 We take the security of testmcpy seriously. If you discover a security vulnerability, please report it responsibly.
-
-### How to Report
 
 **Please do NOT report security vulnerabilities through public GitHub issues.**
 
@@ -24,10 +13,8 @@ Instead, please report security vulnerabilities through one of the following met
    - Click "Report a vulnerability"
    - Fill out the form with details about the vulnerability
 
-2. **Email**
-   - Send an email to [preset-oss@preset.io](mailto:preset-oss@preset.io)
-   - Use the subject line: "SECURITY: [Brief description]"
-   - Include detailed information about the vulnerability (see below)
+2. **GitHub**
+   - Reach out to [@aminghadersohi](https://github.com/aminghadersohi) directly via GitHub
 
 ### What to Include in Your Report
 
@@ -39,7 +26,6 @@ To help us understand and address the issue quickly, please include:
 - **Reproduction Steps**: Detailed steps to reproduce the vulnerability
 - **Proof of Concept**: If possible, include code or commands that demonstrate the issue
 - **Suggested Fix**: If you have ideas on how to fix the issue, please share them
-- **Your Contact Information**: How we can reach you for follow-up questions
 
 ### What to Expect
 
@@ -56,7 +42,6 @@ After you submit a vulnerability report:
 - **Coordinated Disclosure**: We follow coordinated disclosure practices
 - **Timeline**: We aim to resolve critical vulnerabilities within 90 days
 - **Public Disclosure**: After a fix is released, we will publish a security advisory
-- **CVE Assignment**: For significant vulnerabilities, we will request a CVE identifier
 
 ## Security Best Practices for Users
 
@@ -119,26 +104,9 @@ pip install --upgrade testmcpy
 - **High severity**: Patched within 30 days
 - **Medium/Low severity**: Patched in next regular release
 
-## Hall of Fame
-
-We recognize security researchers who responsibly disclose vulnerabilities:
-
-<!-- Future contributors will be listed here -->
-- (No vulnerabilities reported yet)
-
 ## Questions?
 
 If you have questions about this security policy or general security concerns (not vulnerability reports), please:
 
 - Open a [GitHub Discussion](https://github.com/preset-io/testmcpy/discussions)
-- Email us at [preset-oss@preset.io](mailto:preset-oss@preset.io)
-
-## Resources
-
-- [OWASP Top 10](https://owasp.org/www-project-top-ten/)
-- [Python Security Best Practices](https://python.readthedocs.io/en/latest/library/security_warnings.html)
-- [GitHub Security Best Practices](https://docs.github.com/en/code-security)
-
----
-
-Thank you for helping keep testmcpy and its users safe!
+- Open a [GitHub Issue](https://github.com/preset-io/testmcpy/issues)

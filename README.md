@@ -566,6 +566,4 @@ By contributing, you agree that your contributions will be licensed under Apache
 
 ## Acknowledgments
 
-Built to enable better LLM testing and integration with Model Context Protocol services.
-
-Special thanks to the MCP community and all our contributors!
+**Built by [@aminghadersohi](https://github.com/aminghadersohi)** ([Preset](https://preset.io), [Apache Superset](https://github.com/apache/superset)).
