@@ -4,6 +4,7 @@ LLM integration module for supporting multiple model providers.
 
 import asyncio
 import json
+import logging
 import os
 import re
 import subprocess
@@ -978,6 +979,9 @@ class AnthropicProvider(LLMProvider):
         await self.client.aclose()
 
 
+_claude_sdk_logger = logging.getLogger(__name__ + ".ClaudeSDKProvider")
+
+
 class ClaudeSDKProvider(LLMProvider):
     """Claude Agent SDK provider with native MCP integration.
 
@@ -992,7 +996,6 @@ class ClaudeSDKProvider(LLMProvider):
     def __init__(
         self,
         model: str,
-        api_key: str | None = None,
         mcp_url: str | None = None,
         auth: dict[str, Any] | None = None,
         log_callback=None,
@@ -1000,7 +1003,6 @@ class ClaudeSDKProvider(LLMProvider):
         self.model = model
         self.log_callback = log_callback
         config = get_config()
-        self.api_key = api_key or config.get("ANTHROPIC_API_KEY", "")
 
         # Use MCP_URL and auth from default profile if not provided
         if mcp_url is None:
@@ -1017,10 +1019,6 @@ class ClaudeSDKProvider(LLMProvider):
 
     async def initialize(self):
         """Initialize Claude SDK provider — build MCP server config with auth."""
-        import logging
-
-        logger = logging.getLogger(__name__)
-
         try:
             from claude_agent_sdk import CLINotFoundError  # noqa: F401
         except ImportError:
@@ -1046,19 +1044,15 @@ class ClaudeSDKProvider(LLMProvider):
 
         if token:
             server_config["headers"] = {"Authorization": f"Bearer {token}"}
-            logger.info("[ClaudeSDK] MCP server configured with auth token")
+            _claude_sdk_logger.info("[ClaudeSDK] MCP server configured with auth token")
         else:
-            logger.info("[ClaudeSDK] MCP server configured without auth")
+            _claude_sdk_logger.info("[ClaudeSDK] MCP server configured without auth")
 
         self._mcp_server_config = server_config
-        logger.info("[ClaudeSDK] MCP server ready: %s", self.mcp_url)
+        _claude_sdk_logger.info("[ClaudeSDK] MCP server ready: %s", self.mcp_url)
 
     async def _fetch_jwt_token(self) -> str | None:
         """Fetch JWT token from API."""
-        import logging
-
-        logger = logging.getLogger(__name__)
-
         if not self.auth_config:
             return None
 
@@ -1067,10 +1061,10 @@ class ClaudeSDKProvider(LLMProvider):
         api_secret = self.auth_config.get("api_secret", "")
 
         if not all([api_url, api_token, api_secret]):
-            logger.warning("[ClaudeSDK] JWT auth config incomplete")
+            _claude_sdk_logger.warning("[ClaudeSDK] JWT auth config incomplete")
             return None
 
-        logger.info("[ClaudeSDK] Fetching JWT token from: %s", api_url)
+        _claude_sdk_logger.info("[ClaudeSDK] Fetching JWT token from: %s", api_url)
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.post(
@@ -1086,18 +1080,16 @@ class ClaudeSDKProvider(LLMProvider):
                 data = response.json()
                 token = data.get("payload", {}).get("access_token", "")
                 if token:
-                    logger.info("[ClaudeSDK] JWT token fetched (length: %d)", len(token))
+                    _claude_sdk_logger.info(
+                        "[ClaudeSDK] JWT token fetched (length: %d)", len(token)
+                    )
                 return token
             except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as e:
-                logger.warning("[ClaudeSDK] Failed to fetch JWT token: %s", e)
+                _claude_sdk_logger.warning("[ClaudeSDK] Failed to fetch JWT token: %s", e)
                 return None
 
     async def _fetch_oauth_token(self) -> str | None:
         """Fetch OAuth token using client credentials."""
-        import logging
-
-        logger = logging.getLogger(__name__)
-
         if not self.auth_config:
             return None
 
@@ -1106,10 +1098,10 @@ class ClaudeSDKProvider(LLMProvider):
         client_secret = self.auth_config.get("client_secret", "")
 
         if not all([token_url, client_id, client_secret]):
-            logger.warning("[ClaudeSDK] OAuth auth config incomplete")
+            _claude_sdk_logger.warning("[ClaudeSDK] OAuth auth config incomplete")
             return None
 
-        logger.info("[ClaudeSDK] Fetching OAuth token from: %s", token_url)
+        _claude_sdk_logger.info("[ClaudeSDK] Fetching OAuth token from: %s", token_url)
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.post(
@@ -1125,10 +1117,12 @@ class ClaudeSDKProvider(LLMProvider):
                 data = response.json()
                 token = data.get("access_token", "")
                 if token:
-                    logger.info("[ClaudeSDK] OAuth token fetched (length: %d)", len(token))
+                    _claude_sdk_logger.info(
+                        "[ClaudeSDK] OAuth token fetched (length: %d)", len(token)
+                    )
                 return token
             except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as e:
-                logger.warning("[ClaudeSDK] Failed to fetch OAuth token: %s", e)
+                _claude_sdk_logger.warning("[ClaudeSDK] Failed to fetch OAuth token: %s", e)
                 return None
 
     async def generate_with_tools(
@@ -1139,24 +1133,19 @@ class ClaudeSDKProvider(LLMProvider):
         messages: list[dict[str, Any]] | None = None,
     ) -> LLMResult:
         """Generate response using Claude Agent SDK."""
-        import logging
-
-        logger = logging.getLogger(__name__)
         start_time = time.time()
         logs: list[str] = []
 
         def log(msg: str):
-            """Log to logger, logs list, and optionally stream via callback."""
-            logger.info(msg)
+            """Log to module logger, logs list, and optionally stream via callback."""
+            _claude_sdk_logger.info(msg)
             logs.append(msg)
             if self.log_callback:
                 if asyncio.iscoroutinefunction(self.log_callback):
                     try:
-                        loop = asyncio.get_event_loop()
-                        if loop.is_running():
-                            asyncio.create_task(self.log_callback(msg))
-                        else:
-                            loop.run_until_complete(self.log_callback(msg))
+                        asyncio.get_event_loop().call_soon(
+                            lambda m=msg: asyncio.ensure_future(self.log_callback(m))
+                        )
                     except RuntimeError:
                         pass
                 else:
@@ -1170,9 +1159,13 @@ class ClaudeSDKProvider(LLMProvider):
                 ClaudeAgentOptions,
                 ProcessError,
                 ResultMessage,
+                TextBlock,
+                ThinkingBlock,
+                ToolUseBlock,
                 UserMessage,
                 query,
             )
+            from claude_agent_sdk.types import ToolResultBlock
 
             # Build SDK options
             mcp_servers = {}
@@ -1186,7 +1179,7 @@ class ClaudeSDKProvider(LLMProvider):
                 model=self.model,
                 permission_mode="bypassPermissions",
                 mcp_servers=mcp_servers,
-                max_turns=1,
+                max_turns=25,
                 env={"ANTHROPIC_API_KEY": ""},  # Force subscription usage, not API credits
             )
 
@@ -1210,17 +1203,16 @@ class ClaudeSDKProvider(LLMProvider):
 
                     if isinstance(message, AssistantMessage):
                         for block in message.content:
-                            if hasattr(block, "text"):
+                            if isinstance(block, TextBlock):
                                 response_text += block.text
                                 preview = block.text[:80].replace("\n", " ")
                                 log(f"[ClaudeSDK] Text: {preview}...")
-                            elif hasattr(block, "thinking"):
+                            elif isinstance(block, ThinkingBlock):
                                 thinking_text += block.thinking
                                 log(f"[ClaudeSDK] Thinking ({len(block.thinking)} chars)")
-                            elif hasattr(block, "name") and hasattr(block, "input"):
-                                # ToolUseBlock
+                            elif isinstance(block, ToolUseBlock):
                                 tool_call = {
-                                    "id": getattr(block, "id", ""),
+                                    "id": block.id,
                                     "name": block.name,
                                     "arguments": block.input,
                                 }
@@ -1234,10 +1226,10 @@ class ClaudeSDKProvider(LLMProvider):
                         # Tool results come back as UserMessage content
                         if isinstance(message.content, list):
                             for block in message.content:
-                                if hasattr(block, "tool_use_id"):
+                                if isinstance(block, ToolResultBlock):
                                     tool_use_id = block.tool_use_id
-                                    is_error = getattr(block, "is_error", False) or False
-                                    content = getattr(block, "content", "")
+                                    is_error = block.is_error or False
+                                    content = block.content or ""
                                     tool_results_map[tool_use_id] = {
                                         "content": content,
                                         "is_error": is_error,
@@ -1342,6 +1334,14 @@ class ClaudeSDKProvider(LLMProvider):
             log(f"[ClaudeSDK] Connection error: {e}")
             return LLMResult(
                 response=f"Error: Claude CLI connection failed: {e}",
+                tool_calls=[],
+                duration=time.time() - start_time,
+                logs=logs,
+            )
+        except (KeyError, ValueError, TypeError, json.JSONDecodeError) as e:
+            log(f"[ClaudeSDK] Unexpected error: {type(e).__name__}: {e}")
+            return LLMResult(
+                response=f"Error: {type(e).__name__}: {e}",
                 tool_calls=[],
                 duration=time.time() - start_time,
                 logs=logs,
