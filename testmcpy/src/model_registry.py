@@ -21,8 +21,7 @@ class Provider(str, Enum):
     GOOGLE = "google"
     GEMINI = "gemini"  # Alias for google
     OLLAMA = "ollama"
-    CLAUDE_CODE = "claude-code"  # Claude Code CLI wrapper
-    CLAUDE_SDK = "claude-sdk"  # Claude Agent SDK
+    CLAUDE_SDK = "claude-sdk"  # Claude Agent SDK (also handles claude-cli/claude-code)
 
 
 class ModelCapability(str, Enum):
@@ -331,47 +330,8 @@ GEMINI_MODELS: list[ModelInfo] = [
 ]
 
 # ============================================================
-# Claude Code / Claude SDK Models (for runner tools)
+# Claude SDK Models (covers claude-sdk, claude-cli, claude-code)
 # ============================================================
-
-CLAUDE_CODE_MODELS: list[ModelInfo] = [
-    ModelInfo(
-        id="claude-code-sonnet",
-        name="Claude Code (Sonnet)",
-        provider=Provider.CLAUDE_CODE,
-        description="Claude Code CLI with Sonnet 4.5 - best for coding tasks",
-        context_window=200_000,
-        max_output_tokens=8192,
-        input_price_per_1m=3.00,  # Same as Sonnet
-        output_price_per_1m=15.00,
-        capabilities=[
-            ModelCapability.TOOL_CALLING,
-            ModelCapability.CODE_EXECUTION,
-            ModelCapability.LONG_CONTEXT,
-        ],
-        family="claude-code",
-        is_default=True,
-        aliases=["claude-code", "cc-sonnet"],
-    ),
-    ModelInfo(
-        id="claude-code-opus",
-        name="Claude Code (Opus)",
-        provider=Provider.CLAUDE_CODE,
-        description="Claude Code CLI with Opus 4.5 - for complex reasoning",
-        context_window=200_000,
-        max_output_tokens=8192,
-        input_price_per_1m=15.00,
-        output_price_per_1m=75.00,
-        capabilities=[
-            ModelCapability.TOOL_CALLING,
-            ModelCapability.CODE_EXECUTION,
-            ModelCapability.LONG_CONTEXT,
-            ModelCapability.REASONING,
-        ],
-        family="claude-code",
-        aliases=["cc-opus"],
-    ),
-]
 
 CLAUDE_SDK_MODELS: list[ModelInfo] = [
     ModelInfo(
@@ -390,7 +350,7 @@ CLAUDE_SDK_MODELS: list[ModelInfo] = [
         ],
         family="claude-sdk",
         is_default=True,
-        aliases=["sdk-sonnet"],
+        aliases=["sdk-sonnet", "claude-code", "cc-sonnet"],
     ),
     ModelInfo(
         id="claude-sdk-opus",
@@ -408,7 +368,7 @@ CLAUDE_SDK_MODELS: list[ModelInfo] = [
             ModelCapability.REASONING,
         ],
         family="claude-sdk",
-        aliases=["sdk-opus"],
+        aliases=["sdk-opus", "cc-opus"],
     ),
 ]
 
@@ -416,9 +376,7 @@ CLAUDE_SDK_MODELS: list[ModelInfo] = [
 # Model Registry
 # ============================================================
 
-ALL_MODELS: list[ModelInfo] = (
-    CLAUDE_MODELS + OPENAI_MODELS + GEMINI_MODELS + CLAUDE_CODE_MODELS + CLAUDE_SDK_MODELS
-)
+ALL_MODELS: list[ModelInfo] = CLAUDE_MODELS + OPENAI_MODELS + GEMINI_MODELS + CLAUDE_SDK_MODELS
 
 # Build lookup dictionaries
 _MODEL_BY_ID: dict[str, ModelInfo] = {m.id: m for m in ALL_MODELS}

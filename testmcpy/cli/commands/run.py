@@ -343,7 +343,13 @@ def run(
 
             # Rate limit delay between tests
             if i < len(test_cases):
-                if provider.value in ("claude-cli", "claude-code", "codex-cli", "codex"):
+                if provider.value in (
+                    "claude-sdk",
+                    "claude-cli",
+                    "claude-code",
+                    "codex-cli",
+                    "codex",
+                ):
                     delay = 1
                 else:
                     delay = 15
