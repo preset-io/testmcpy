@@ -80,6 +80,7 @@ function ChatInterface({ selectedProfiles = [], selectedLlmProfile, llmProfiles 
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [streamingStatus, setStreamingStatus] = useState('')
   const messagesEndRef = useRef(null)
   const [showEvalDialog, setShowEvalDialog] = useState(false)
   const [selectedMessageIndex, setSelectedMessageIndex] = useState(null)
@@ -89,6 +90,7 @@ function ChatInterface({ selectedProfiles = [], selectedLlmProfile, llmProfiles 
   const [collapsedThinking, setCollapsedThinking] = useState({})
   const textareaRef = useRef(null)
   const [historySize, setHistorySize] = useState(10)  // Number of messages to keep in history
+  const abortControllerRef = useRef(null)
 
   // For Chat, only use the first selected profile (single MCP at a time)
   const activeProfile = selectedProfiles.length > 0 ? selectedProfiles[0] : null
@@ -225,16 +227,41 @@ function ChatInterface({ selectedProfiles = [], selectedLlmProfile, llmProfiles 
     setMessages(updatedMessages)
     setInput('')
     setLoading(true)
+    setStreamingStatus('Connecting...')
+
+    // Create a placeholder assistant message
+    const assistantMessage = {
+      role: 'assistant',
+      content: '',
+      tool_calls: [],
+      thinking: null,
+      token_usage: null,
+      cost: 0,
+      duration: 0,
+      model: null,
+      provider: null,
+      streaming: true,
+    }
+    const messagesWithPlaceholder = [...updatedMessages, assistantMessage]
+    setMessages(messagesWithPlaceholder)
+
+    // Track the assistant message index for updates
+    const assistantIdx = updatedMessages.length
+
+    // Expand thinking by default during streaming
+    setCollapsedThinking(prev => ({ ...prev, [assistantIdx]: false }))
+
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
 
     try {
-      // Build history for API - last N messages (excluding current one we just added)
       const historyForAPI = messages.slice(-historySize).map(msg => ({
         role: msg.role,
         content: msg.content
       }))
 
       const llmConfig = getLlmConfig()
-      const res = await fetch('/api/chat', {
+      const res = await fetch('/api/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -245,39 +272,144 @@ function ChatInterface({ selectedProfiles = [], selectedLlmProfile, llmProfiles 
           profiles: activeProfile ? [activeProfile] : null,
           history: historyForAPI.length > 0 ? historyForAPI : null,
         }),
+        signal: abortController.signal,
       })
 
-      const data = await res.json()
-
-      const assistantMessage = {
-        role: 'assistant',
-        content: data.response || '',
-        tool_calls: data.tool_calls || [],
-        thinking: data.thinking || null,
-        token_usage: data.token_usage,
-        cost: data.cost,
-        duration: data.duration,
-        model: data.model || null,
-        provider: data.provider || null,
+      if (!res.ok) {
+        const errorText = await res.text()
+        throw new Error(`HTTP ${res.status}: ${errorText}`)
       }
 
-      const finalMessages = [...updatedMessages, assistantMessage]
-      setMessages(finalMessages)
-      saveChatHistory(finalMessages)
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      // Accumulate state for the assistant message
+      let accContent = ''
+      let accThinking = ''
+      let accToolCalls = []
+      let finalMeta = {}
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+
+        // Parse SSE events from buffer
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || '' // keep incomplete line in buffer
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const jsonStr = line.slice(6)
+          if (!jsonStr.trim()) continue
+
+          let event
+          try {
+            event = JSON.parse(jsonStr)
+          } catch (e) {
+            console.warn('Failed to parse SSE event:', jsonStr)
+            continue
+          }
+
+          const { type, data } = event
+
+          if (type === 'status') {
+            setStreamingStatus(data)
+          } else if (type === 'thinking') {
+            accThinking += data
+            setMessages(prev => {
+              const updated = [...prev]
+              updated[assistantIdx] = { ...updated[assistantIdx], thinking: accThinking }
+              return updated
+            })
+          } else if (type === 'token') {
+            accContent += data
+            setMessages(prev => {
+              const updated = [...prev]
+              updated[assistantIdx] = { ...updated[assistantIdx], content: accContent }
+              return updated
+            })
+            setStreamingStatus('')
+          } else if (type === 'tool_call') {
+            accToolCalls = [...accToolCalls, { name: data.name, arguments: data.arguments, result: null, error: null, is_error: false }]
+            setMessages(prev => {
+              const updated = [...prev]
+              updated[assistantIdx] = { ...updated[assistantIdx], tool_calls: accToolCalls }
+              return updated
+            })
+            setStreamingStatus(`Executing tool: ${data.name}...`)
+          } else if (type === 'tool_result') {
+            // Update the matching tool call with its result
+            accToolCalls = accToolCalls.map(tc =>
+              tc.name === data.name && tc.result === null
+                ? { ...tc, result: data.result, error: data.error, is_error: data.is_error }
+                : tc
+            )
+            setMessages(prev => {
+              const updated = [...prev]
+              updated[assistantIdx] = { ...updated[assistantIdx], tool_calls: accToolCalls }
+              return updated
+            })
+            setStreamingStatus('')
+          } else if (type === 'complete') {
+            finalMeta = data
+            setMessages(prev => {
+              const updated = [...prev]
+              updated[assistantIdx] = {
+                ...updated[assistantIdx],
+                token_usage: data.token_usage,
+                cost: data.cost || 0,
+                duration: data.duration || 0,
+                model: data.model,
+                provider: data.provider,
+                streaming: false,
+              }
+              return updated
+            })
+          } else if (type === 'error') {
+            setMessages(prev => {
+              const updated = [...prev]
+              updated[assistantIdx] = {
+                ...updated[assistantIdx],
+                content: `Error: ${data}`,
+                error: true,
+                streaming: false,
+              }
+              return updated
+            })
+          }
+        }
+      }
+
+      // Save final state to localStorage
+      setMessages(prev => {
+        const final = prev.map((m, i) => i === assistantIdx ? { ...m, streaming: false } : m)
+        saveChatHistory(final)
+        return final
+      })
     } catch (error) {
-      console.error('Failed to send message:', error)
-      const errorMessages = [
-        ...updatedMessages,
-        {
-          role: 'assistant',
-          content: `Error: ${error.message}`,
-          error: true,
-        },
-      ]
-      setMessages(errorMessages)
-      saveChatHistory(errorMessages)
+      if (error.name === 'AbortError') {
+        setMessages(prev => {
+          const updated = [...prev]
+          updated[assistantIdx] = { ...updated[assistantIdx], content: updated[assistantIdx].content + '\n\n[Cancelled]', streaming: false }
+          saveChatHistory(updated)
+          return updated
+        })
+      } else {
+        console.error('Failed to send message:', error)
+        setMessages(prev => {
+          const updated = [...prev]
+          updated[assistantIdx] = { ...updated[assistantIdx], content: `Error: ${error.message}`, error: true, streaming: false }
+          saveChatHistory(updated)
+          return updated
+        })
+      }
     } finally {
       setLoading(false)
+      setStreamingStatus('')
+      abortControllerRef.current = null
     }
   }
 
@@ -739,8 +871,11 @@ ${evaluators}
                             }
                           }}
                         >
-                          {message.content}
+                          {message.content || ''}
                         </ReactMarkdown>
+                        {message.streaming && message.content && (
+                          <span className="inline-block w-2 h-4 bg-primary animate-pulse ml-0.5 align-text-bottom" />
+                        )}
                       </div>
                     </>
                   ) : (
@@ -1003,12 +1138,12 @@ ${evaluators}
                 </div>
               </div>
             ))}
-            {loading && (
+            {loading && streamingStatus && (
               <div className="flex justify-start animate-fade-in">
                 <div className="bg-surface border border-border rounded-xl p-5 shadow-soft">
                   <div className="flex items-center gap-3">
                     <Loader className="animate-spin text-primary" size={20} />
-                    <span className="text-text-secondary text-sm">Thinking...</span>
+                    <span className="text-text-secondary text-sm">{streamingStatus}</span>
                   </div>
                 </div>
               </div>

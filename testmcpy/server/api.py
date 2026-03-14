@@ -17,7 +17,7 @@ from typing import Any  # noqa: E402
 
 from fastapi import FastAPI, HTTPException, Query, WebSocket  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
-from fastapi.responses import FileResponse  # noqa: E402
+from fastapi.responses import FileResponse, StreamingResponse  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
 from testmcpy.config import get_config  # noqa: E402
@@ -43,6 +43,7 @@ class LLMProvider(str, Enum):
     OPENAI = "openai"
     LOCAL = "local"
     ANTHROPIC = "anthropic"
+    CLAUDE_CODE = "claude-code"
     CLAUDE_SDK = "claude-sdk"
     CLAUDE_CLI = "claude-cli"
     CODEX_CLI = "codex-cli"
@@ -825,6 +826,231 @@ async def chat(request: ChatRequest) -> ChatResponse:
                 detail=f"Service unavailable: Unable to connect to MCP server. {error_msg}",
             )
         raise HTTPException(status_code=500, detail=error_msg)
+
+
+@app.post("/api/chat/stream")
+async def chat_stream(request: ChatRequest):
+    """Send a message to the LLM with MCP tools, streaming response via SSE."""
+    import asyncio
+    import json
+    import time
+
+    async def generate():
+        start_time = time.time()
+
+        def send_event(event_type: str, data):
+            payload = json.dumps({"type": event_type, "data": data})
+            return f"data: {payload}\n\n"
+
+        # --- Setup: resolve model/provider/api_key ---
+        api_key = None
+        try:
+            yield send_event("status", "Resolving LLM configuration...")
+
+            if request.llm_profile:
+                from testmcpy.llm_profiles import load_llm_profile
+
+                llm_profile = load_llm_profile(request.llm_profile)
+                if llm_profile:
+                    if request.model and request.provider:
+                        for provider_config in llm_profile.providers:
+                            if (
+                                provider_config.model == request.model
+                                and provider_config.provider == str(request.provider.value)
+                            ):
+                                api_key = provider_config.api_key
+                                break
+                        model = request.model
+                        provider = request.provider
+                    else:
+                        default_provider_config = llm_profile.get_default_provider()
+                        if default_provider_config:
+                            model = request.model or default_provider_config.model
+                            provider = request.provider or default_provider_config.provider
+                            api_key = default_provider_config.api_key
+                        else:
+                            model = request.model or config.default_model
+                            provider = request.provider or config.default_provider
+                else:
+                    model = request.model or config.default_model
+                    provider = request.provider or config.default_provider
+            else:
+                model = request.model or config.default_model
+                provider = request.provider or config.default_provider
+
+            if not model or not provider:
+                yield send_event(
+                    "error", "Model and provider must be specified or configured in LLM profile"
+                )
+                return
+
+            provider_str = str(provider.value) if hasattr(provider, "value") else str(provider)
+
+            # --- Gather MCP tools ---
+            yield send_event("status", "Connecting to MCP servers...")
+            accessed_servers = []
+            clients_to_use = []
+            profiles_to_use = request.profiles
+            if not profiles_to_use:
+                from testmcpy.server.helpers.mcp_config import load_mcp_yaml
+
+                mcp_config = load_mcp_yaml()
+                default_profile = mcp_config.get("default")
+                if default_profile:
+                    profiles_to_use = [default_profile]
+
+            if profiles_to_use:
+                for server_id in profiles_to_use:
+                    if ":" in server_id:
+                        profile_id, mcp_name = server_id.split(":", 1)
+                        accessed_servers.append(f"{profile_id}:{mcp_name}")
+                        client = await get_mcp_client_for_server(profile_id, mcp_name)
+                        if client:
+                            clients_to_use.append((profile_id, mcp_name, client))
+                    else:
+                        profile_clients = await get_mcp_clients_for_profile(server_id)
+                        for mcp_name, client in profile_clients:
+                            accessed_servers.append(f"{server_id}:{mcp_name}")
+                            clients_to_use.append((server_id, mcp_name, client))
+
+            all_tools = []
+            tool_to_client = {}
+            for profile_id, mcp_name, client in clients_to_use:
+                tools = await client.list_tools()
+                for tool in tools:
+                    tool_to_client[tool.name] = (client, profile_id, mcp_name)
+                    all_tools.append(
+                        {
+                            "type": "function",
+                            "function": {
+                                "name": tool.name,
+                                "description": tool.description,
+                                "parameters": tool.input_schema,
+                            },
+                        }
+                    )
+
+            yield send_event(
+                "status", f"Loaded {len(all_tools)} tools. Initializing {provider_str}..."
+            )
+
+            # --- Initialize LLM and generate ---
+            provider_kwargs = {}
+            if api_key:
+                provider_kwargs["api_key"] = api_key
+            llm_provider = create_llm_provider(provider, model, **provider_kwargs)
+            await llm_provider.initialize()
+
+            yield send_event("status", f"Generating response with {model}...")
+
+            result = await llm_provider.generate_with_tools(
+                prompt=request.message, tools=all_tools, timeout=120.0, messages=request.history
+            )
+
+            # --- Stream thinking ---
+            if result.thinking:
+                thinking_text = result.thinking
+                chunk_size = 80
+                for i in range(0, len(thinking_text), chunk_size):
+                    chunk = thinking_text[i : i + chunk_size]
+                    yield send_event("thinking", chunk)
+                    await asyncio.sleep(0.005)
+
+            # --- Stream response text char-by-char ---
+            clean_response = result.response
+            if result.tool_calls:
+                lines = clean_response.split("\n")
+                filtered_lines = []
+                skip_next = False
+                for line in lines:
+                    if line.strip().startswith("Tool ") and (
+                        " executed successfully" in line or " failed" in line
+                    ):
+                        skip_next = True
+                        continue
+                    if skip_next and (line.strip().startswith("[") or line.strip().startswith("{")):
+                        skip_next = False
+                        continue
+                    skip_next = False
+                    filtered_lines.append(line)
+                clean_response = "\n".join(filtered_lines).strip()
+
+            # Stream 3 chars at a time
+            for i in range(0, len(clean_response), 3):
+                chunk = clean_response[i : i + 3]
+                yield send_event("token", chunk)
+                await asyncio.sleep(0.008)
+
+            # --- Execute tool calls ---
+            if result.tool_calls:
+                for tool_call in result.tool_calls:
+                    actual_tool_name = strip_mcp_prefix(tool_call["name"])
+                    yield send_event(
+                        "tool_call",
+                        {"name": tool_call["name"], "arguments": tool_call.get("arguments", {})},
+                    )
+
+                    tool_info = tool_to_client.get(actual_tool_name)
+                    if not tool_info:
+                        yield send_event(
+                            "tool_result",
+                            {
+                                "name": tool_call["name"],
+                                "result": None,
+                                "error": f"Tool '{tool_call['name']}' not found in any MCP profile",
+                                "is_error": True,
+                            },
+                        )
+                        continue
+
+                    client_for_tool, _pid, _mname = tool_info
+                    mcp_tool_call = MCPToolCall(
+                        name=actual_tool_name,
+                        arguments=tool_call.get("arguments", {}),
+                        id=tool_call.get("id", "unknown"),
+                    )
+                    tool_result = await client_for_tool.call_tool(mcp_tool_call)
+                    yield send_event(
+                        "tool_result",
+                        {
+                            "name": tool_call["name"],
+                            "result": tool_result.content if not tool_result.is_error else None,
+                            "error": tool_result.error_message if tool_result.is_error else None,
+                            "is_error": tool_result.is_error,
+                        },
+                    )
+
+            await llm_provider.close()
+
+            # --- Complete ---
+            duration = time.time() - start_time
+            yield send_event(
+                "complete",
+                {
+                    "token_usage": result.token_usage,
+                    "cost": result.cost,
+                    "duration": duration,
+                    "model": model,
+                    "provider": provider_str,
+                },
+            )
+
+        except Exception as e:
+            error_msg = str(e)
+            if is_connection_error(error_msg):
+                for cache_key in accessed_servers:
+                    await clear_cached_client(cache_key)
+            yield send_event("error", error_msg)
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 # WebSocket endpoint for streaming test execution
