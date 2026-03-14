@@ -241,6 +241,8 @@ function ChatInterface({ selectedProfiles = [], selectedLlmProfile, llmProfiles 
       model: null,
       provider: null,
       streaming: true,
+      currentTurn: 0,
+      totalTurns: 0,
     }
     const messagesWithPlaceholder = [...updatedMessages, assistantMessage]
     setMessages(messagesWithPlaceholder)
@@ -288,7 +290,8 @@ function ChatInterface({ selectedProfiles = [], selectedLlmProfile, llmProfiles 
       let accContent = ''
       let accThinking = ''
       let accToolCalls = []
-      let finalMeta = {}
+      let currentTurn = 0
+      let totalTurns = 0
 
       while (true) {
         const { done, value } = await reader.read()
@@ -317,6 +320,14 @@ function ChatInterface({ selectedProfiles = [], selectedLlmProfile, llmProfiles 
 
           if (type === 'status') {
             setStreamingStatus(data)
+          } else if (type === 'turn_start') {
+            currentTurn = data.turn
+            setMessages(prev => {
+              const updated = [...prev]
+              updated[assistantIdx] = { ...updated[assistantIdx], currentTurn: data.turn }
+              return updated
+            })
+            setStreamingStatus(`Turn ${data.turn}/${data.max_turns} — Thinking...`)
           } else if (type === 'thinking') {
             accThinking += data
             setMessages(prev => {
@@ -331,19 +342,25 @@ function ChatInterface({ selectedProfiles = [], selectedLlmProfile, llmProfiles 
               updated[assistantIdx] = { ...updated[assistantIdx], content: accContent }
               return updated
             })
-            setStreamingStatus('')
+            if (currentTurn > 1) {
+              setStreamingStatus(`Turn ${currentTurn} — Streaming response...`)
+            } else {
+              setStreamingStatus('')
+            }
           } else if (type === 'tool_call') {
-            accToolCalls = [...accToolCalls, { name: data.name, arguments: data.arguments, result: null, error: null, is_error: false }]
+            const turn = data.turn || currentTurn || 1
+            accToolCalls = [...accToolCalls, { name: data.name, arguments: data.arguments, result: null, error: null, is_error: false, turn }]
             setMessages(prev => {
               const updated = [...prev]
               updated[assistantIdx] = { ...updated[assistantIdx], tool_calls: accToolCalls }
               return updated
             })
-            setStreamingStatus(`Executing tool: ${data.name}...`)
+            setStreamingStatus(`Turn ${turn} — Executing: ${data.name}...`)
           } else if (type === 'tool_result') {
-            // Update the matching tool call with its result
+            const turn = data.turn || currentTurn || 1
+            // Update the matching tool call with its result (match by name + turn + no result yet)
             accToolCalls = accToolCalls.map(tc =>
-              tc.name === data.name && tc.result === null
+              tc.name === data.name && tc.result === null && tc.turn === turn
                 ? { ...tc, result: data.result, error: data.error, is_error: data.is_error }
                 : tc
             )
@@ -353,8 +370,17 @@ function ChatInterface({ selectedProfiles = [], selectedLlmProfile, llmProfiles 
               return updated
             })
             setStreamingStatus('')
+          } else if (type === 'turn_complete') {
+            totalTurns = data.turn
+            setMessages(prev => {
+              const updated = [...prev]
+              updated[assistantIdx] = { ...updated[assistantIdx], totalTurns: data.turn }
+              return updated
+            })
+            if (data.tool_count > 0) {
+              setStreamingStatus(`Turn ${data.turn} complete (${data.tool_count} tool${data.tool_count !== 1 ? 's' : ''})`)
+            }
           } else if (type === 'complete') {
-            finalMeta = data
             setMessages(prev => {
               const updated = [...prev]
               updated[assistantIdx] = {
@@ -364,6 +390,7 @@ function ChatInterface({ selectedProfiles = [], selectedLlmProfile, llmProfiles 
                 duration: data.duration || 0,
                 model: data.model,
                 provider: data.provider,
+                totalTurns: data.total_turns || totalTurns || 1,
                 streaming: false,
               }
               return updated
@@ -1001,8 +1028,19 @@ ${evaluators}
                     </div>
                   )}
 
-                  {/* Tool calls - collapsed by default */}
-                  {message.tool_calls && message.tool_calls.length > 0 && (
+                  {/* Tool calls - grouped by turn, collapsed by default */}
+                  {message.tool_calls && message.tool_calls.length > 0 && (() => {
+                    // Group tool calls by turn
+                    const turnGroups = {}
+                    message.tool_calls.forEach(call => {
+                      const turn = call.turn || 1
+                      if (!turnGroups[turn]) turnGroups[turn] = []
+                      turnGroups[turn].push(call)
+                    })
+                    const turnNumbers = Object.keys(turnGroups).map(Number).sort((a, b) => a - b)
+                    const hasMultipleTurns = turnNumbers.length > 1
+
+                    return (
                     <div className="mt-3 pt-3 border-t border-white/10">
                       <button
                         onClick={() => setCollapsedToolCalls(prev => ({ ...prev, [idx]: !prev[idx] }))}
@@ -1010,13 +1048,26 @@ ${evaluators}
                       >
                         {collapsedToolCalls[idx] ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
                         <Wrench size={14} />
-                        <span>Used {message.tool_calls.length} tool(s)</span>
+                        <span>Used {message.tool_calls.length} tool(s){hasMultipleTurns ? ` across ${turnNumbers.length} turns` : ''}</span>
                       </button>
                       {!collapsedToolCalls[idx] && (
                         <div className="mt-3 space-y-3">
-                          {message.tool_calls.map((call, callIdx) => (
+                          {turnNumbers.map(turnNum => {
+                            const turnCalls = turnGroups[turnNum]
+                            return (
+                              <div key={turnNum}>
+                                {hasMultipleTurns && (
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <div className="h-px flex-1 bg-white/10" />
+                                    <span className="text-[10px] font-medium text-white/50 uppercase tracking-wider">
+                                      Turn {turnNum}: {turnCalls.length} tool{turnCalls.length !== 1 ? 's' : ''}
+                                    </span>
+                                    <div className="h-px flex-1 bg-white/10" />
+                                  </div>
+                                )}
+                                {turnCalls.map((call, callIdx) => (
                           <div
-                            key={callIdx}
+                            key={`${turnNum}-${callIdx}`}
                             className="bg-black/20 rounded-lg p-3 border border-white/10"
                           >
                             <div className="flex items-baseline gap-2 mb-2">
@@ -1114,15 +1165,24 @@ ${evaluators}
                               </div>
                             )}
                             </div>
-                          ))}
+                                ))}
+                              </div>
+                            )
+                          })}
                         </div>
                       )}
                     </div>
-                  )}
+                    )
+                  })()}
 
                   {/* Metadata - inline */}
                   {message.token_usage && (
                     <div className="mt-3 pt-3 border-t border-white/10 flex items-center gap-4 text-[10px] opacity-70">
+                      {message.totalTurns > 1 && (
+                        <span className="flex items-center gap-1">
+                          <span className="font-medium">{message.totalTurns}</span> turns
+                        </span>
+                      )}
                       <span className="flex items-center gap-1">
                         <span className="font-medium">{message.token_usage.total?.toLocaleString()}</span> tokens
                       </span>

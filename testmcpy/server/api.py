@@ -830,10 +830,64 @@ async def chat(request: ChatRequest) -> ChatResponse:
 
 @app.post("/api/chat/stream")
 async def chat_stream(request: ChatRequest):
-    """Send a message to the LLM with MCP tools, streaming response via SSE."""
+    """Send a message to the LLM with MCP tools, streaming response via SSE.
+
+    Supports agentic multi-turn tool chains: after the LLM calls tools, the results
+    are fed back and the LLM can call more tools until it produces a final answer
+    (or max_turns is reached). ClaudeSDKProvider loops internally; all other
+    providers are looped by this endpoint.
+    """
     import asyncio
     import json
     import time
+
+    MAX_TURNS = 10
+
+    def _clean_response(text: str, has_tool_calls: bool) -> str:
+        """Strip tool execution status lines injected by some providers."""
+        if not has_tool_calls:
+            return text
+        lines = text.split("\n")
+        filtered: list[str] = []
+        skip_next = False
+        for line in lines:
+            if line.strip().startswith("Tool ") and (
+                " executed successfully" in line or " failed" in line
+            ):
+                skip_next = True
+                continue
+            if skip_next and (line.strip().startswith("[") or line.strip().startswith("{")):
+                skip_next = False
+                continue
+            skip_next = False
+            filtered.append(line)
+        return "\n".join(filtered).strip()
+
+    def _build_continuation_prompt(tool_calls_list, tool_results_list) -> str:
+        """Build a continuation prompt from tool call/result pairs."""
+        parts: list[str] = []
+        for tc, tr in zip(tool_calls_list, tool_results_list):
+            name = strip_mcp_prefix(tc["name"])
+            args_str = json.dumps(tc.get("arguments", {}), indent=2)
+            if tr["is_error"]:
+                parts.append(f"- {name}({args_str}): ERROR - {tr['error']}")
+            else:
+                result_val = tr["result"]
+                result_str = (
+                    json.dumps(result_val)
+                    if isinstance(result_val, (dict, list))
+                    else str(result_val)
+                )
+                if len(result_str) > 2000:
+                    result_str = result_str[:2000] + "... [truncated]"
+                parts.append(f"- {name}({args_str}): {result_str}")
+
+        return (
+            "Tool execution results:\n"
+            + "\n".join(parts)
+            + "\n\nAnalyze these results. If you need more information, call additional tools. "
+            "Otherwise, provide your final answer to the user's original question."
+        )
 
     async def generate():
         start_time = time.time()
@@ -844,6 +898,7 @@ async def chat_stream(request: ChatRequest):
 
         # --- Setup: resolve model/provider/api_key ---
         api_key = None
+        accessed_servers: list[str] = []
         try:
             yield send_event("status", "Resolving LLM configuration...")
 
@@ -888,8 +943,7 @@ async def chat_stream(request: ChatRequest):
 
             # --- Gather MCP tools ---
             yield send_event("status", "Connecting to MCP servers...")
-            accessed_servers = []
-            clients_to_use = []
+            clients_to_use: list[tuple] = []
             profiles_to_use = request.profiles
             if not profiles_to_use:
                 from testmcpy.server.helpers.mcp_config import load_mcp_yaml
@@ -913,8 +967,8 @@ async def chat_stream(request: ChatRequest):
                             accessed_servers.append(f"{server_id}:{mcp_name}")
                             clients_to_use.append((server_id, mcp_name, client))
 
-            all_tools = []
-            tool_to_client = {}
+            all_tools: list[dict] = []
+            tool_to_client: dict = {}
             for profile_id, mcp_name, client in clients_to_use:
                 tools = await client.list_tools()
                 for tool in tools:
@@ -934,106 +988,276 @@ async def chat_stream(request: ChatRequest):
                 "status", f"Loaded {len(all_tools)} tools. Initializing {provider_str}..."
             )
 
-            # --- Initialize LLM and generate ---
-            provider_kwargs = {}
+            # --- Initialize LLM provider ---
+            provider_kwargs: dict = {}
             if api_key:
                 provider_kwargs["api_key"] = api_key
             llm_provider = create_llm_provider(provider, model, **provider_kwargs)
             await llm_provider.initialize()
 
-            yield send_event("status", f"Generating response with {model}...")
+            # --- Detect if provider is SDK-based (handles its own agentic loop) ---
+            from testmcpy.src.llm_integration import ClaudeSDKProvider
 
-            result = await llm_provider.generate_with_tools(
-                prompt=request.message, tools=all_tools, timeout=120.0, messages=request.history
-            )
+            is_sdk_provider = isinstance(llm_provider, ClaudeSDKProvider)
 
-            # --- Stream thinking ---
-            if result.thinking:
-                thinking_text = result.thinking
-                chunk_size = 80
-                for i in range(0, len(thinking_text), chunk_size):
-                    chunk = thinking_text[i : i + chunk_size]
-                    yield send_event("thinking", chunk)
-                    await asyncio.sleep(0.005)
+            if is_sdk_provider:
+                # ============================================================
+                # SDK provider path: single call, SDK loops internally
+                # ============================================================
+                yield send_event("status", f"Generating response with {model} (SDK agentic)...")
 
-            # --- Stream response text char-by-char ---
-            clean_response = result.response
-            if result.tool_calls:
-                lines = clean_response.split("\n")
-                filtered_lines = []
-                skip_next = False
-                for line in lines:
-                    if line.strip().startswith("Tool ") and (
-                        " executed successfully" in line or " failed" in line
-                    ):
-                        skip_next = True
-                        continue
-                    if skip_next and (line.strip().startswith("[") or line.strip().startswith("{")):
-                        skip_next = False
-                        continue
-                    skip_next = False
-                    filtered_lines.append(line)
-                clean_response = "\n".join(filtered_lines).strip()
+                result = await llm_provider.generate_with_tools(
+                    prompt=request.message,
+                    tools=all_tools,
+                    timeout=120.0,
+                    messages=request.history,
+                )
 
-            # Stream 3 chars at a time
-            for i in range(0, len(clean_response), 3):
-                chunk = clean_response[i : i + 3]
-                yield send_event("token", chunk)
-                await asyncio.sleep(0.008)
+                # Determine how many turns the SDK ran by counting tool calls
+                # that have pre-executed results
+                sdk_turn = 1
+                yield send_event("turn_start", {"turn": sdk_turn, "max_turns": MAX_TURNS})
 
-            # --- Execute tool calls ---
-            if result.tool_calls:
-                for tool_call in result.tool_calls:
-                    actual_tool_name = strip_mcp_prefix(tool_call["name"])
+                # Stream thinking
+                if result.thinking:
+                    chunk_size = 80
+                    for i in range(0, len(result.thinking), chunk_size):
+                        chunk = result.thinking[i : i + chunk_size]
+                        yield send_event("thinking", chunk)
+                        await asyncio.sleep(0.005)
+
+                # Stream response text
+                clean_response = _clean_response(result.response, bool(result.tool_calls))
+                for i in range(0, len(clean_response), 3):
+                    chunk = clean_response[i : i + 3]
+                    yield send_event("token", chunk)
+                    await asyncio.sleep(0.008)
+
+                # Stream tool calls + pre-executed results (don't re-execute)
+                tool_results_map = {}
+                if result.tool_results:
+                    for tr in result.tool_results:
+                        tool_results_map[tr.tool_call_id] = tr
+
+                if result.tool_calls:
+                    for tool_call in result.tool_calls:
+                        yield send_event(
+                            "tool_call",
+                            {
+                                "name": tool_call["name"],
+                                "arguments": tool_call.get("arguments", {}),
+                                "turn": sdk_turn,
+                            },
+                        )
+
+                        # Check for pre-executed result from SDK
+                        tc_id = tool_call.get("id", "")
+                        pre_result = tool_results_map.get(tc_id)
+                        if pre_result:
+                            yield send_event(
+                                "tool_result",
+                                {
+                                    "name": tool_call["name"],
+                                    "result": pre_result.content
+                                    if not pre_result.is_error
+                                    else None,
+                                    "error": pre_result.error_message
+                                    if pre_result.is_error
+                                    else None,
+                                    "is_error": pre_result.is_error,
+                                    "turn": sdk_turn,
+                                },
+                            )
+                        else:
+                            # Fallback: execute tool via MCP
+                            actual_name = strip_mcp_prefix(tool_call["name"])
+                            tool_info = tool_to_client.get(actual_name)
+                            if tool_info:
+                                client_for_tool = tool_info[0]
+                                mcp_tc = MCPToolCall(
+                                    name=actual_name,
+                                    arguments=tool_call.get("arguments", {}),
+                                    id=tool_call.get("id", "unknown"),
+                                )
+                                tr = await client_for_tool.call_tool(mcp_tc)
+                                yield send_event(
+                                    "tool_result",
+                                    {
+                                        "name": tool_call["name"],
+                                        "result": tr.content if not tr.is_error else None,
+                                        "error": tr.error_message if tr.is_error else None,
+                                        "is_error": tr.is_error,
+                                        "turn": sdk_turn,
+                                    },
+                                )
+                            else:
+                                yield send_event(
+                                    "tool_result",
+                                    {
+                                        "name": tool_call["name"],
+                                        "result": None,
+                                        "error": f"Tool '{tool_call['name']}' not found",
+                                        "is_error": True,
+                                        "turn": sdk_turn,
+                                    },
+                                )
+
+                yield send_event(
+                    "turn_complete",
+                    {"turn": sdk_turn, "tool_count": len(result.tool_calls)},
+                )
+
+                await llm_provider.close()
+
+                duration = time.time() - start_time
+                yield send_event(
+                    "complete",
+                    {
+                        "token_usage": result.token_usage,
+                        "cost": result.cost,
+                        "duration": duration,
+                        "model": model,
+                        "provider": provider_str,
+                        "total_turns": sdk_turn,
+                    },
+                )
+
+            else:
+                # ============================================================
+                # Non-SDK provider path: external agentic loop
+                # ============================================================
+                total_token_usage: dict[str, int] = {}
+                total_cost: float = 0.0
+                total_turns = 0
+
+                # Build conversation history for multi-turn
+                conversation: list[dict] = []
+                if request.history:
+                    conversation = list(request.history)
+
+                current_prompt = request.message
+
+                for turn in range(1, MAX_TURNS + 1):
+                    total_turns = turn
+                    yield send_event("turn_start", {"turn": turn, "max_turns": MAX_TURNS})
                     yield send_event(
-                        "tool_call",
-                        {"name": tool_call["name"], "arguments": tool_call.get("arguments", {})},
+                        "status",
+                        f"Turn {turn}/{MAX_TURNS} — Generating with {model}...",
                     )
 
-                    tool_info = tool_to_client.get(actual_tool_name)
-                    if not tool_info:
+                    result = await llm_provider.generate_with_tools(
+                        prompt=current_prompt,
+                        tools=all_tools,
+                        timeout=120.0,
+                        messages=conversation if conversation else None,
+                    )
+
+                    # Accumulate token usage
+                    if result.token_usage:
+                        for k, v in result.token_usage.items():
+                            total_token_usage[k] = total_token_usage.get(k, 0) + v
+                    total_cost += result.cost or 0.0
+
+                    # Stream thinking (with turn separator for turn > 1)
+                    if result.thinking:
+                        if turn > 1:
+                            yield send_event("thinking", f"\n--- Turn {turn} ---\n")
+                        chunk_size = 80
+                        for i in range(0, len(result.thinking), chunk_size):
+                            chunk = result.thinking[i : i + chunk_size]
+                            yield send_event("thinking", chunk)
+                            await asyncio.sleep(0.005)
+
+                    # Stream response tokens
+                    clean_response = _clean_response(result.response, bool(result.tool_calls))
+                    if clean_response:
+                        if turn > 1:
+                            yield send_event("token", "\n\n")
+                        for i in range(0, len(clean_response), 3):
+                            chunk = clean_response[i : i + 3]
+                            yield send_event("token", chunk)
+                            await asyncio.sleep(0.008)
+
+                    # If no tool calls, we're done
+                    if not result.tool_calls:
+                        yield send_event("turn_complete", {"turn": turn, "tool_count": 0})
+                        break
+
+                    # Execute tool calls and stream results
+                    turn_tool_calls = []
+                    turn_tool_results = []
+                    for tool_call in result.tool_calls:
+                        actual_tool_name = strip_mcp_prefix(tool_call["name"])
                         yield send_event(
-                            "tool_result",
+                            "tool_call",
                             {
+                                "name": tool_call["name"],
+                                "arguments": tool_call.get("arguments", {}),
+                                "turn": turn,
+                            },
+                        )
+                        yield send_event(
+                            "status",
+                            f"Turn {turn}/{MAX_TURNS} — Executing: {actual_tool_name}...",
+                        )
+
+                        tool_info = tool_to_client.get(actual_tool_name)
+                        if not tool_info:
+                            tr_data = {
                                 "name": tool_call["name"],
                                 "result": None,
                                 "error": f"Tool '{tool_call['name']}' not found in any MCP profile",
                                 "is_error": True,
-                            },
-                        )
-                        continue
+                                "turn": turn,
+                            }
+                            yield send_event("tool_result", tr_data)
+                            turn_tool_calls.append(tool_call)
+                            turn_tool_results.append(tr_data)
+                            continue
 
-                    client_for_tool, _pid, _mname = tool_info
-                    mcp_tool_call = MCPToolCall(
-                        name=actual_tool_name,
-                        arguments=tool_call.get("arguments", {}),
-                        id=tool_call.get("id", "unknown"),
-                    )
-                    tool_result = await client_for_tool.call_tool(mcp_tool_call)
-                    yield send_event(
-                        "tool_result",
-                        {
+                        client_for_tool = tool_info[0]
+                        mcp_tool_call = MCPToolCall(
+                            name=actual_tool_name,
+                            arguments=tool_call.get("arguments", {}),
+                            id=tool_call.get("id", "unknown"),
+                        )
+                        tool_result = await client_for_tool.call_tool(mcp_tool_call)
+                        tr_data = {
                             "name": tool_call["name"],
                             "result": tool_result.content if not tool_result.is_error else None,
                             "error": tool_result.error_message if tool_result.is_error else None,
                             "is_error": tool_result.is_error,
-                        },
+                            "turn": turn,
+                        }
+                        yield send_event("tool_result", tr_data)
+                        turn_tool_calls.append(tool_call)
+                        turn_tool_results.append(tr_data)
+
+                    yield send_event(
+                        "turn_complete",
+                        {"turn": turn, "tool_count": len(turn_tool_calls)},
                     )
 
-            await llm_provider.close()
+                    # Build continuation: update conversation and prompt
+                    # Add assistant response to conversation
+                    conversation.append({"role": "user", "content": current_prompt})
+                    conversation.append({"role": "assistant", "content": result.response})
+                    current_prompt = _build_continuation_prompt(turn_tool_calls, turn_tool_results)
 
-            # --- Complete ---
-            duration = time.time() - start_time
-            yield send_event(
-                "complete",
-                {
-                    "token_usage": result.token_usage,
-                    "cost": result.cost,
-                    "duration": duration,
-                    "model": model,
-                    "provider": provider_str,
-                },
-            )
+                await llm_provider.close()
+
+                duration = time.time() - start_time
+                yield send_event(
+                    "complete",
+                    {
+                        "token_usage": total_token_usage or result.token_usage,
+                        "cost": total_cost,
+                        "duration": duration,
+                        "model": model,
+                        "provider": provider_str,
+                        "total_turns": total_turns,
+                    },
+                )
 
         except Exception as e:
             error_msg = str(e)
