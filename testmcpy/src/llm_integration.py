@@ -1765,9 +1765,7 @@ def create_llm_provider(provider: str, model: str, **kwargs) -> LLMProvider:
         "anthropic": AnthropicProvider,
         "gemini": GeminiProvider,
         "google": GeminiProvider,  # Alias
-        "claude-sdk": ClaudeSDKProvider,
-        "claude-cli": ClaudeSDKProvider,  # Backwards-compat alias for claude-sdk
-        "claude-code": ClaudeSDKProvider,  # Backwards-compat alias for claude-sdk
+        "claude-sdk": ClaudeSDKProvider,  # Claude Agent SDK (uses Claude CLI)
         "codex-cli": CodexCLIProvider,
         "codex": CodexCLIProvider,  # Alias
     }

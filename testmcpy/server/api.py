@@ -43,9 +43,7 @@ class LLMProvider(str, Enum):
     OPENAI = "openai"
     LOCAL = "local"
     ANTHROPIC = "anthropic"
-    CLAUDE_CODE = "claude-code"
     CLAUDE_SDK = "claude-sdk"
-    CLAUDE_CLI = "claude-cli"
     CODEX_CLI = "codex-cli"
 
 
