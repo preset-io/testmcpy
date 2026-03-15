@@ -1157,6 +1157,7 @@ class ClaudeSDKProvider(LLMProvider):
                 CLIConnectionError,
                 CLINotFoundError,
                 ClaudeAgentOptions,
+                ClaudeSDKError,
                 ProcessError,
                 ResultMessage,
                 TextBlock,
@@ -1197,73 +1198,82 @@ class ClaudeSDKProvider(LLMProvider):
             async def execute_query():
                 nonlocal response_text, thinking_text, token_usage, cost
                 message_count = 0
-                async for message in query(prompt=prompt, options=options):
-                    message_count += 1
-                    raw_events.append({"type": type(message).__name__})
+                try:
+                    async for message in query(prompt=prompt, options=options):
+                        message_count += 1
+                        raw_events.append({"type": type(message).__name__})
 
-                    if isinstance(message, AssistantMessage):
-                        for block in message.content:
-                            if isinstance(block, TextBlock):
-                                response_text += block.text
-                                preview = block.text[:80].replace("\n", " ")
-                                log(f"[ClaudeSDK] Text: {preview}...")
-                            elif isinstance(block, ThinkingBlock):
-                                thinking_text += block.thinking
-                                log(f"[ClaudeSDK] Thinking ({len(block.thinking)} chars)")
-                            elif isinstance(block, ToolUseBlock):
-                                tool_call = {
-                                    "id": block.id,
-                                    "name": block.name,
-                                    "arguments": block.input,
-                                }
-                                tool_calls.append(tool_call)
-                                args_str = json.dumps(block.input)
-                                if len(args_str) > 200:
-                                    args_str = args_str[:200] + "..."
-                                log(f"[ClaudeSDK] Tool Call: {block.name} | Args: {args_str}")
-
-                    elif isinstance(message, UserMessage):
-                        # Tool results come back as UserMessage content
-                        if isinstance(message.content, list):
+                        if isinstance(message, AssistantMessage):
                             for block in message.content:
-                                if isinstance(block, ToolResultBlock):
-                                    tool_use_id = block.tool_use_id
-                                    is_error = block.is_error or False
-                                    content = block.content or ""
-                                    tool_results_map[tool_use_id] = {
-                                        "content": content,
-                                        "is_error": is_error,
+                                if isinstance(block, TextBlock):
+                                    response_text += block.text
+                                    preview = block.text[:80].replace("\n", " ")
+                                    log(f"[ClaudeSDK] Text: {preview}...")
+                                elif isinstance(block, ThinkingBlock):
+                                    thinking_text += block.thinking
+                                    log(f"[ClaudeSDK] Thinking ({len(block.thinking)} chars)")
+                                elif isinstance(block, ToolUseBlock):
+                                    tool_call = {
+                                        "id": block.id,
+                                        "name": block.name,
+                                        "arguments": block.input,
                                     }
-                                    status = "Error" if is_error else "Success"
-                                    content_preview = str(content)[:200]
-                                    log(f"[ClaudeSDK] Tool Result ({status}): {content_preview}")
+                                    tool_calls.append(tool_call)
+                                    args_str = json.dumps(block.input)
+                                    if len(args_str) > 200:
+                                        args_str = args_str[:200] + "..."
+                                    log(f"[ClaudeSDK] Tool Call: {block.name} | Args: {args_str}")
 
-                    elif isinstance(message, ResultMessage):
-                        if message.usage:
-                            usage = message.usage
-                            token_usage = {
-                                "prompt": (
-                                    usage.get("input_tokens", 0)
-                                    + usage.get("cache_read_input_tokens", 0)
-                                    + usage.get("cache_creation_input_tokens", 0)
-                                ),
-                                "completion": usage.get("output_tokens", 0),
-                                "total": (
-                                    usage.get("input_tokens", 0)
-                                    + usage.get("cache_read_input_tokens", 0)
-                                    + usage.get("cache_creation_input_tokens", 0)
-                                    + usage.get("output_tokens", 0)
-                                ),
-                                "cache_creation": usage.get("cache_creation_input_tokens", 0),
-                                "cache_read": usage.get("cache_read_input_tokens", 0),
-                            }
-                        if message.total_cost_usd is not None:
-                            cost = message.total_cost_usd
-                        duration_ms = getattr(message, "duration_ms", 0)
-                        log(
-                            f"[ClaudeSDK] Result: {message.num_turns} turns, "
-                            f"{duration_ms}ms, ${cost:.4f}"
-                        )
+                        elif isinstance(message, UserMessage):
+                            # Tool results come back as UserMessage content
+                            if isinstance(message.content, list):
+                                for block in message.content:
+                                    if isinstance(block, ToolResultBlock):
+                                        tool_use_id = block.tool_use_id
+                                        is_error = block.is_error or False
+                                        content = block.content or ""
+                                        tool_results_map[tool_use_id] = {
+                                            "content": content,
+                                            "is_error": is_error,
+                                        }
+                                        status = "Error" if is_error else "Success"
+                                        content_preview = str(content)[:200]
+                                        log(
+                                            f"[ClaudeSDK] Tool Result ({status}): {content_preview}"
+                                        )
+
+                        elif isinstance(message, ResultMessage):
+                            if message.usage:
+                                usage = message.usage
+                                token_usage = {
+                                    "prompt": (
+                                        usage.get("input_tokens", 0)
+                                        + usage.get("cache_read_input_tokens", 0)
+                                        + usage.get("cache_creation_input_tokens", 0)
+                                    ),
+                                    "completion": usage.get("output_tokens", 0),
+                                    "total": (
+                                        usage.get("input_tokens", 0)
+                                        + usage.get("cache_read_input_tokens", 0)
+                                        + usage.get("cache_creation_input_tokens", 0)
+                                        + usage.get("output_tokens", 0)
+                                    ),
+                                    "cache_creation": usage.get("cache_creation_input_tokens", 0),
+                                    "cache_read": usage.get("cache_read_input_tokens", 0),
+                                }
+                            if message.total_cost_usd is not None:
+                                cost = message.total_cost_usd
+                            duration_ms = getattr(message, "duration_ms", 0)
+                            log(
+                                f"[ClaudeSDK] Result: {message.num_turns} turns, "
+                                f"{duration_ms}ms, ${cost:.4f}"
+                            )
+                except ClaudeSDKError as e:
+                    # SDK may throw on unknown message types (e.g. rate_limit_event).
+                    # If we already collected a response, treat it as complete.
+                    log(f"[ClaudeSDK] SDK error during iteration (non-fatal): {e}")
+                    if not response_text:
+                        raise
 
                 log(f"[ClaudeSDK] Completed: {message_count} messages, {len(response_text)} chars")
 
