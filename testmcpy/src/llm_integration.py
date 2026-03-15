@@ -1761,7 +1761,7 @@ def create_llm_provider(provider: str, model: str, **kwargs) -> LLMProvider:
     Create an LLM provider instance.
 
     Args:
-        provider: Provider name (ollama, openai, local, anthropic, claude-cli, codex-cli)
+        provider: Provider name (ollama, openai, local, anthropic, claude-sdk, claude-cli, claude-code, codex-cli)
         model: Model name/path
         **kwargs: Additional provider-specific arguments
 
@@ -1776,6 +1776,8 @@ def create_llm_provider(provider: str, model: str, **kwargs) -> LLMProvider:
         "gemini": GeminiProvider,
         "google": GeminiProvider,  # Alias
         "claude-sdk": ClaudeSDKProvider,  # Claude Agent SDK (uses Claude CLI)
+        "claude-cli": ClaudeSDKProvider,  # Alias → claude-sdk
+        "claude-code": ClaudeSDKProvider,  # Alias → claude-sdk
         "codex-cli": CodexCLIProvider,
         "codex": CodexCLIProvider,  # Alias
     }

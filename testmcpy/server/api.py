@@ -44,6 +44,8 @@ class LLMProvider(str, Enum):
     LOCAL = "local"
     ANTHROPIC = "anthropic"
     CLAUDE_SDK = "claude-sdk"
+    CLAUDE_CLI = "claude-cli"  # Alias → claude-sdk
+    CLAUDE_CODE = "claude-code"  # Alias → claude-sdk
     CODEX_CLI = "codex-cli"
 
 
@@ -1257,12 +1259,23 @@ async def chat_stream(request: ChatRequest):
                     },
                 )
 
+        except (ConnectionError, TimeoutError, OSError) as e:
+            error_msg = str(e)
+            for cache_key in accessed_servers:
+                await clear_cached_client(cache_key)
+            yield send_event("error", f"Connection error: {error_msg}")
+        except ValueError as e:
+            yield send_event("error", str(e))
         except Exception as e:
+            # Log full error server-side, send sanitized message to client
+            print(f"Chat stream error: {type(e).__name__}: {e}")
             error_msg = str(e)
             if is_connection_error(error_msg):
                 for cache_key in accessed_servers:
                     await clear_cached_client(cache_key)
-            yield send_event("error", error_msg)
+                yield send_event("error", f"Connection error: {error_msg}")
+            else:
+                yield send_event("error", f"Internal error: {type(e).__name__}")
 
     return StreamingResponse(
         generate(),
