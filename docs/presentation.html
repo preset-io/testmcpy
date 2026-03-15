@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TestMCPy — MCP Evaluation Framework</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; overflow: hidden; }
+  .slide { display: none; width: 100vw; height: 100vh; padding: 60px 80px; flex-direction: column; justify-content: center; }
+  .slide.active { display: flex; }
+  h1 { font-size: 3.2em; font-weight: 700; color: #f8fafc; margin-bottom: 16px; line-height: 1.1; }
+  h2 { font-size: 2.4em; font-weight: 600; color: #f8fafc; margin-bottom: 24px; }
+  h3 { font-size: 1.4em; font-weight: 600; color: #94a3b8; margin-bottom: 16px; }
+  p { font-size: 1.3em; line-height: 1.6; color: #cbd5e1; margin-bottom: 12px; }
+  .subtitle { font-size: 1.5em; color: #94a3b8; font-weight: 400; }
+  .accent { color: #38bdf8; }
+  .green { color: #4ade80; }
+  .orange { color: #fb923c; }
+  .red { color: #f87171; }
+  .purple { color: #a78bfa; }
+  ul { list-style: none; padding: 0; }
+  ul li { font-size: 1.2em; line-height: 1.8; color: #cbd5e1; padding-left: 28px; position: relative; }
+  ul li::before { content: ""; position: absolute; left: 0; top: 12px; width: 12px; height: 12px; border-radius: 50%; background: #38bdf8; }
+  ul.check li::before { content: "\2713"; background: none; color: #4ade80; font-size: 1.1em; top: 0; font-weight: bold; }
+  ul.x li::before { content: "\2717"; background: none; color: #f87171; font-size: 1.1em; top: 0; }
+  ul.num li::before { background: none; }
+  ul.num li { counter-increment: item; }
+  ul.num { counter-reset: item; }
+  ul.num li::before { content: counter(item); color: #38bdf8; font-weight: 700; font-size: 1.2em; top: 0; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 20px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 30px; margin-top: 20px; }
+  .card { background: #1e293b; border-radius: 12px; padding: 24px; border: 1px solid #334155; }
+  .card h3 { color: #38bdf8; margin-bottom: 12px; font-size: 1.2em; }
+  .card p, .card li { font-size: 1.05em; }
+  .stat { text-align: center; padding: 20px; }
+  .stat .number { font-size: 3em; font-weight: 700; color: #38bdf8; }
+  .stat .label { font-size: 1em; color: #94a3b8; margin-top: 4px; }
+  .tag { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 0.85em; font-weight: 600; margin: 3px; }
+  .tag-blue { background: #1e3a5f; color: #38bdf8; }
+  .tag-green { background: #14532d; color: #4ade80; }
+  .tag-orange { background: #431407; color: #fb923c; }
+  .tag-purple { background: #2e1065; color: #a78bfa; }
+  table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+  th { text-align: left; padding: 10px 16px; background: #1e293b; color: #94a3b8; font-size: 0.95em; text-transform: uppercase; letter-spacing: 0.05em; }
+  td { padding: 10px 16px; border-bottom: 1px solid #1e293b; font-size: 1.05em; }
+  .progress { height: 8px; background: #1e293b; border-radius: 4px; overflow: hidden; margin-top: 6px; }
+  .progress-bar { height: 100%; border-radius: 4px; }
+  .title-slide { text-align: center; justify-content: center; align-items: center; }
+  .title-slide h1 { font-size: 4em; margin-bottom: 20px; }
+  .title-slide .subtitle { font-size: 1.6em; }
+  .nav { position: fixed; bottom: 20px; right: 30px; font-size: 0.9em; color: #475569; z-index: 100; }
+  .nav span { margin: 0 8px; }
+  code { background: #1e293b; padding: 2px 8px; border-radius: 4px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.9em; color: #38bdf8; }
+  .pipeline { display: flex; align-items: center; gap: 0; margin: 20px 0; }
+  .pipeline-step { background: #1e293b; padding: 16px 24px; border-radius: 8px; text-align: center; flex: 1; }
+  .pipeline-arrow { font-size: 1.5em; color: #38bdf8; padding: 0 8px; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; }
+  .section-label { font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.15em; color: #38bdf8; margin-bottom: 8px; font-weight: 600; }
+  .timeline { margin-top: 20px; }
+  .timeline-item { display: flex; gap: 20px; margin-bottom: 20px; align-items: flex-start; }
+  .timeline-marker { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; font-size: 0.9em; }
+  .timeline-content { flex: 1; }
+  .timeline-content h3 { margin-bottom: 4px; }
+  .timeline-content p { font-size: 1em; }
+</style>
+</head>
+<body>
+
+<!-- Slide 1: Title -->
+<div class="slide title-slide active" id="s1">
+  <div class="section-label">Preset Engineering</div>
+  <h1>TestMCPy</h1>
+  <p class="subtitle">An Open-Source Evaluation Framework for<br><span class="accent">LLM + MCP Tool Calling</span></p>
+  <p style="margin-top: 40px; font-size: 1em; color: #475569;">preset-io/testmcpy &mdash; Apache 2.0</p>
+</div>
+
+<!-- Slide 2: The Problem -->
+<div class="slide" id="s2">
+  <div class="section-label">The Problem</div>
+  <h2>LLMs call tools. But do they call the <span class="accent">right</span> tools?</h2>
+  <div class="grid" style="margin-top: 30px;">
+    <div class="card">
+      <h3>Model Updates Break Things</h3>
+      <p>A new Claude/GPT release might change tool selection, parameter passing, or response format. How do you catch regressions?</p>
+    </div>
+    <div class="card">
+      <h3>Cost Drift is Invisible</h3>
+      <p>Switching from Sonnet to Haiku saves 80% on cost. But does accuracy drop? By how much? For which tools?</p>
+    </div>
+    <div class="card">
+      <h3>MCP Service Changes</h3>
+      <p>When we update our MCP tools (add params, change schemas), do LLMs still call them correctly?</p>
+    </div>
+    <div class="card">
+      <h3>No Standard Framework</h3>
+      <p>There's no pytest for MCP. Teams manually test with Claude Desktop and hope for the best.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 3: What is TestMCPy -->
+<div class="slide" id="s3">
+  <div class="section-label">Solution</div>
+  <h2>TestMCPy: <span class="accent">pytest</span> for MCP</h2>
+  <p style="font-size: 1.4em; margin-bottom: 30px;">Write YAML tests. Run against any model. Get scores, costs, and regressions.</p>
+  <div class="pipeline">
+    <div class="pipeline-step">
+      <div style="font-size: 1.8em; margin-bottom: 4px;">📝</div>
+      <div style="font-weight: 600;">YAML Tests</div>
+      <div style="font-size: 0.85em; color: #94a3b8;">prompts + evaluators</div>
+    </div>
+    <div class="pipeline-arrow">&rarr;</div>
+    <div class="pipeline-step">
+      <div style="font-size: 1.8em; margin-bottom: 4px;">🤖</div>
+      <div style="font-weight: 600;">LLM Provider</div>
+      <div style="font-size: 0.85em; color: #94a3b8;">Claude, GPT, Ollama</div>
+    </div>
+    <div class="pipeline-arrow">&rarr;</div>
+    <div class="pipeline-step">
+      <div style="font-size: 1.8em; margin-bottom: 4px;">🔧</div>
+      <div style="font-weight: 600;">MCP Service</div>
+      <div style="font-size: 0.85em; color: #94a3b8;">tool discovery + execution</div>
+    </div>
+    <div class="pipeline-arrow">&rarr;</div>
+    <div class="pipeline-step">
+      <div style="font-size: 1.8em; margin-bottom: 4px;">✅</div>
+      <div style="font-weight: 600;">Evaluators</div>
+      <div style="font-size: 0.85em; color: #94a3b8;">score, cost, pass/fail</div>
+    </div>
+    <div class="pipeline-arrow">&rarr;</div>
+    <div class="pipeline-step">
+      <div style="font-size: 1.8em; margin-bottom: 4px;">📊</div>
+      <div style="font-weight: 600;">Results</div>
+      <div style="font-size: 0.85em; color: #94a3b8;">comparison + trends</div>
+    </div>
+  </div>
+  <div style="margin-top: 30px; background: #1e293b; border-radius: 8px; padding: 20px; font-family: monospace; font-size: 0.95em; line-height: 1.6;">
+    <span style="color: #94a3b8;"># test_list_charts.yaml</span><br>
+    <span style="color: #f97316;">version</span>: "1.0"<br>
+    <span style="color: #f97316;">tests</span>:<br>
+    &nbsp;&nbsp;- <span style="color: #f97316;">name</span>: "test_chart_listing"<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;<span style="color: #f97316;">prompt</span>: "Show me all charts in the workspace"<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;<span style="color: #f97316;">evaluators</span>:<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- <span style="color: #f97316;">name</span>: was_mcp_tool_called<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color: #f97316;">args</span>: { <span style="color: #f97316;">tool_name</span>: "list_charts" }<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- <span style="color: #f97316;">name</span>: token_usage_reasonable<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color: #f97316;">args</span>: { <span style="color: #f97316;">max_tokens</span>: 2000 }
+  </div>
+</div>
+
+<!-- Slide 4: What's Built -->
+<div class="slide" id="s4">
+  <div class="section-label">Current State &mdash; POC Complete</div>
+  <h2>What's <span class="green">Built</span></h2>
+  <div class="grid-3" style="margin-top: 20px;">
+    <div class="stat card">
+      <div class="number">17</div>
+      <div class="label">Evaluators</div>
+      <div style="font-size: 0.85em; color: #64748b; margin-top: 8px;">tool calls, params, cost,<br>timing, SQL, LLM judge</div>
+    </div>
+    <div class="stat card">
+      <div class="number">8</div>
+      <div class="label">LLM Providers</div>
+      <div style="font-size: 0.85em; color: #64748b; margin-top: 8px;">Anthropic, OpenAI, Ollama,<br>Gemini, Claude CLI/SDK</div>
+    </div>
+    <div class="stat card">
+      <div class="number">10</div>
+      <div class="label">UI Pages</div>
+      <div style="font-size: 0.85em; color: #64748b; margin-top: 8px;">Explorer, Tests, Chat,<br>Reports, Profiles, Config</div>
+    </div>
+  </div>
+  <div class="grid" style="margin-top: 20px;">
+    <div>
+      <ul class="check">
+        <li>Core test runner with multi-turn support</li>
+        <li>Data model matching Max's spec exactly</li>
+        <li>SQLite storage with versioning & metrics</li>
+        <li>Rate limiting & intelligent retry</li>
+      </ul>
+    </div>
+    <div>
+      <ul class="check">
+        <li>FastAPI backend + WebSocket updates</li>
+        <li>React Web UI (10 pages)</li>
+        <li>CLI + TUI dashboard</li>
+        <li>Profile system (MCP / LLM / Test)</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 5: Data Model -->
+<div class="slide" id="s5">
+  <div class="section-label">Architecture</div>
+  <h2>Data Model</h2>
+  <div class="pipeline" style="margin: 30px 0;">
+    <div class="pipeline-step" style="border: 2px solid #38bdf8;">
+      <div style="font-weight: 700; color: #38bdf8;">TestSuite</div>
+      <div style="font-size: 0.85em; color: #94a3b8;">id, name, version,<br>environment_id, questions[]</div>
+    </div>
+    <div class="pipeline-arrow">&rarr;</div>
+    <div class="pipeline-step" style="border: 2px solid #a78bfa;">
+      <div style="font-weight: 700; color: #a78bfa;">TestRun</div>
+      <div style="font-size: 0.85em; color: #94a3b8;">run_id, model, provider,<br>runner_tool, mcp_setup_version</div>
+    </div>
+    <div class="pipeline-arrow">&rarr;</div>
+    <div class="pipeline-step" style="border: 2px solid #4ade80;">
+      <div style="font-weight: 700; color: #4ade80;">QuestionResult</div>
+      <div style="font-size: 0.85em; color: #94a3b8;">answer, tool_uses,<br>tokens_in/out, tti, score</div>
+    </div>
+    <div class="pipeline-arrow">&rarr;</div>
+    <div class="pipeline-step" style="border: 2px solid #fb923c;">
+      <div style="font-weight: 700; color: #fb923c;">Summary</div>
+      <div style="font-size: 0.85em; color: #94a3b8;">pass_rate, weighted_score,<br>total_cost, total_duration</div>
+    </div>
+  </div>
+  <div class="grid">
+    <div class="card">
+      <h3>Question</h3>
+      <ul>
+        <li><code>prompt</code> &mdash; what to ask the LLM</li>
+        <li><code>evaluators[]</code> &mdash; how to score the response</li>
+        <li><code>weight</code> &mdash; relative importance (0-1)</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Runner Tools</h3>
+      <ul>
+        <li><code>mcp-client</code> &mdash; direct FastMCP</li>
+        <li><code>anthropic-direct</code> &mdash; Anthropic API</li>
+        <li><code>claude-cli</code> / <code>claude-sdk</code></li>
+        <li>Extensible via <code>register_runner_tool()</code></li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 6: Evaluators -->
+<div class="slide" id="s6">
+  <div class="section-label">Capabilities</div>
+  <h2>17 Built-in <span class="accent">Evaluators</span></h2>
+  <div class="grid-3" style="margin-top: 20px;">
+    <div class="card">
+      <h3>Tool Calling</h3>
+      <ul>
+        <li>WasMCPToolCalled</li>
+        <li>ToolCallCount</li>
+        <li>ToolCallSequence</li>
+        <li>ToolCalledWithParameter(s)</li>
+        <li>ParameterValueInRange</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Execution</h3>
+      <ul>
+        <li>ExecutionSuccessful</li>
+        <li>WithinTimeLimit</li>
+        <li>FinalAnswerContains</li>
+        <li>AnswerContainsLink</li>
+        <li>ResponseIncludes</li>
+        <li>TokenUsageReasonable</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Advanced</h3>
+      <ul>
+        <li>WasChartCreated</li>
+        <li>SQLQueryValid</li>
+        <li>NoHallucination</li>
+        <li>LLMJudge</li>
+        <li>CompositeEvaluator</li>
+      </ul>
+    </div>
+  </div>
+  <p style="margin-top: 24px; color: #64748b;">All evaluators return <code>EvalResult(passed, score, reason, details)</code> &mdash; scores are 0.0 to 1.0, composable, and extensible.</p>
+</div>
+
+<!-- Slide 7: Preset MCP Tools -->
+<div class="slide" id="s7">
+  <div class="section-label">Our Target</div>
+  <h2>Superset MCP: <span class="accent">19</span> Tools to Evaluate</h2>
+  <div class="grid" style="margin-top: 20px;">
+    <div>
+      <table>
+        <tr><th>Category</th><th>Tools</th><th>Count</th></tr>
+        <tr><td>Chart</td><td style="font-size: 0.9em;">generate, get_data, get_info, get_preview, list, update, update_preview</td><td class="accent" style="font-weight: 700;">7</td></tr>
+        <tr><td>Dashboard</td><td style="font-size: 0.9em;">add_chart, generate, get_info, list</td><td class="accent" style="font-weight: 700;">4</td></tr>
+        <tr><td>Dataset</td><td style="font-size: 0.9em;">get_info, list</td><td class="accent" style="font-weight: 700;">2</td></tr>
+        <tr><td>Explore</td><td style="font-size: 0.9em;">generate_explore_link</td><td class="accent" style="font-weight: 700;">1</td></tr>
+        <tr><td>SQL Lab</td><td style="font-size: 0.9em;">execute_sql, open_sql_lab</td><td class="accent" style="font-weight: 700;">2</td></tr>
+        <tr><td>System</td><td style="font-size: 0.9em;">health_check, get_info, get_schema</td><td class="accent" style="font-weight: 700;">3</td></tr>
+      </table>
+    </div>
+    <div>
+      <div class="card" style="background: #1a1207; border-color: #854d0e;">
+        <h3 style="color: #fb923c;">Current Coverage: 16%</h3>
+        <p>Only 3 tools tested (list_charts, list_dashboards, list_datasets) with basic evaluators.</p>
+        <p>No parameter validation, no cost checks, no multi-turn workflows, no error handling tests.</p>
+        <div class="progress" style="margin-top: 12px;">
+          <div class="progress-bar" style="width: 16%; background: #fb923c;"></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top: 16px; background: #052e16; border-color: #166534;">
+        <h3 style="color: #4ade80;">V1.0 Target: 100%</h3>
+        <p>All 19 tools with comprehensive evaluators, multi-turn workflows, and model comparison baselines.</p>
+        <div class="progress" style="margin-top: 12px;">
+          <div class="progress-bar" style="width: 100%; background: #4ade80;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 8: V1.0 New Features -->
+<div class="slide" id="s8">
+  <div class="section-label">V1.0 &mdash; New Capabilities</div>
+  <h2>What's <span class="accent">Coming</span></h2>
+  <div class="grid" style="margin-top: 20px;">
+    <div class="card">
+      <h3>Prompt Mutation Engine</h3>
+      <p>When tests fail, auto-generate prompt variations to map failure boundaries. Paraphrase, constrain, simplify, add noise.</p>
+      <div style="margin-top: 8px;">
+        <span class="tag tag-purple">Valence-inspired</span>
+        <span class="tag tag-blue">Adaptive</span>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Metamorphic Testing</h3>
+      <p>Test invariants: "top 5" &sube; "top 10", paraphrased prompts call same tools, repeated runs are deterministic.</p>
+      <div style="margin-top: 8px;">
+        <span class="tag tag-purple">Valence-inspired</span>
+        <span class="tag tag-green">Consistency</span>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Multi-Model Comparison</h3>
+      <p><code>testmcpy compare suite --models sonnet,haiku,gpt-4o</code> &mdash; one command, side-by-side accuracy, cost, latency.</p>
+      <div style="margin-top: 8px;">
+        <span class="tag tag-blue">CLI + API</span>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Regression Detection</h3>
+      <p>Save baselines, detect regressions, fingerprint failures. CI knows the difference between new and known issues.</p>
+      <div style="margin-top: 8px;">
+        <span class="tag tag-orange">CI/CD</span>
+        <span class="tag tag-green">Baselines</span>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Reusable GitHub Action</h3>
+      <p><code>uses: preset-io/testmcpy-action@v1</code> &mdash; any repo can run MCP evals with configurable gates.</p>
+      <div style="margin-top: 8px;">
+        <span class="tag tag-orange">CI/CD</span>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Hosted at Preset</h3>
+      <p><code>testmcpy.sandbox.preset.io</code> &mdash; internal deployment with Web UI for browsing results and running tests.</p>
+      <div style="margin-top: 8px;">
+        <span class="tag tag-blue">Infrastructure</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 9: Mutation Example -->
+<div class="slide" id="s9">
+  <div class="section-label">Deep Dive</div>
+  <h2>Adaptive Testing: <span class="purple">Prompt Mutations</span></h2>
+  <p>When "List the first 5 datasets" fails, automatically explore <em>why</em>:</p>
+  <div style="margin-top: 20px; font-family: monospace; font-size: 1em; line-height: 2.2;">
+    <div style="display: flex; align-items: center; gap: 16px;">
+      <span class="tag tag-blue" style="width: 120px; text-align: center;">Original</span>
+      <span>"List the first 5 datasets"</span>
+      <span class="red" style="margin-left: auto; font-weight: 700;">FAIL</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 16px; padding-left: 40px;">
+      <span class="tag tag-purple" style="width: 120px; text-align: center;">Paraphrase</span>
+      <span>"Show me 5 datasets"</span>
+      <span class="green" style="margin-left: auto; font-weight: 700;">PASS</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 16px; padding-left: 40px;">
+      <span class="tag tag-purple" style="width: 120px; text-align: center;">Simplify</span>
+      <span>"List datasets"</span>
+      <span class="green" style="margin-left: auto; font-weight: 700;">PASS</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 16px; padding-left: 40px;">
+      <span class="tag tag-purple" style="width: 120px; text-align: center;">Constrain</span>
+      <span>"List the first 3 datasets"</span>
+      <span class="red" style="margin-left: auto; font-weight: 700;">FAIL</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 16px; padding-left: 40px;">
+      <span class="tag tag-purple" style="width: 120px; text-align: center;">Role</span>
+      <span>"As a data analyst, list the first 5 datasets"</span>
+      <span class="green" style="margin-left: auto; font-weight: 700;">PASS</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 16px; padding-left: 40px;">
+      <span class="tag tag-purple" style="width: 120px; text-align: center;">Noise</span>
+      <span>"List teh frist 5 datsets"</span>
+      <span class="green" style="margin-left: auto; font-weight: 700;">PASS</span>
+    </div>
+  </div>
+  <div class="card" style="margin-top: 24px; background: #1a103d; border-color: #4c1d95;">
+    <p><strong class="purple">Insight:</strong> The model fails when asked to pass a <code>page_size</code> parameter with words like "first N". The tool works fine &mdash; it's a prompt sensitivity issue, not a capability gap.</p>
+  </div>
+</div>
+
+<!-- Slide 10: Roadmap -->
+<div class="slide" id="s10">
+  <div class="section-label">Roadmap</div>
+  <h2>V1.0 Timeline: <span class="accent">March &ndash; June 2026</span></h2>
+  <div class="timeline" style="margin-top: 20px;">
+    <div class="timeline-item">
+      <div class="timeline-marker" style="background: #166534; color: #4ade80;">A</div>
+      <div class="timeline-content">
+        <h3><span class="green">Phase A</span> &mdash; March &ndash; mid April &mdash; <span style="color: #94a3b8;">18 pts</span></h3>
+        <p>Multi-model comparison runner. Comprehensive eval suites for all 19 MCP tools. Multi-turn workflow tests.</p>
+      </div>
+    </div>
+    <div class="timeline-item">
+      <div class="timeline-marker" style="background: #1e3a5f; color: #38bdf8;">B</div>
+      <div class="timeline-content">
+        <h3><span class="accent">Phase B</span> &mdash; mid April &ndash; early June &mdash; <span style="color: #94a3b8;">28 pts</span></h3>
+        <p>Mutation engine. Metamorphic testing. Regression detection. GitHub Action. Coverage analysis. Deploy to sandbox. Model baselines. CI activation.</p>
+      </div>
+    </div>
+    <div class="timeline-item">
+      <div class="timeline-marker" style="background: #431407; color: #fb923c;">C</div>
+      <div class="timeline-content">
+        <h3><span class="orange">Phase C</span> &mdash; June &mdash; <span style="color: #94a3b8;">9 pts</span></h3>
+        <p>Evaluator packs. HTML reports. Multi-environment orchestration. Stability and PyPI release.</p>
+      </div>
+    </div>
+  </div>
+  <div style="margin-top: 30px; display: flex; gap: 20px;">
+    <div class="stat card" style="flex: 1;">
+      <div class="number">16</div>
+      <div class="label">Stories</div>
+    </div>
+    <div class="stat card" style="flex: 1;">
+      <div class="number">55</div>
+      <div class="label">Points</div>
+    </div>
+    <div class="stat card" style="flex: 1;">
+      <div class="number">4</div>
+      <div class="label">Months</div>
+    </div>
+    <div class="stat card" style="flex: 1;">
+      <div class="number">3</div>
+      <div class="label">Repos</div>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 11: Impact -->
+<div class="slide" id="s11">
+  <div class="section-label">Why This Matters</div>
+  <h2>Impact</h2>
+  <div class="grid" style="margin-top: 30px;">
+    <div>
+      <ul class="num">
+        <li style="margin-bottom: 16px;"><strong>Catch regressions before users do.</strong> Every MCP PR runs evals automatically. No more "Claude stopped listing charts after the update."</li>
+        <li style="margin-bottom: 16px;"><strong>Optimize costs with data.</strong> Know exactly what switching from Sonnet to Haiku costs in accuracy. Make informed decisions, not guesses.</li>
+        <li style="margin-bottom: 16px;"><strong>Understand prompt sensitivity.</strong> Mutation testing reveals which prompts are fragile and which are robust across models.</li>
+        <li style="margin-bottom: 16px;"><strong>Open source leadership.</strong> First comprehensive MCP eval framework. Sets the standard for how MCP services should be tested.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="card" style="text-align: center; padding: 40px;">
+        <p style="font-size: 1.8em; font-weight: 700; color: #f8fafc;">From</p>
+        <p style="font-size: 1.2em; color: #94a3b8; margin: 12px 0;">"I tested it in Claude Desktop<br>and it seemed to work"</p>
+        <p style="font-size: 1.8em; font-weight: 700; color: #38bdf8; margin-top: 24px;">To</p>
+        <p style="font-size: 1.2em; color: #94a3b8; margin: 12px 0;">"19/19 tools passing across 4 models,<br>$0.03/run, 95th percentile &lt; 2s,<br>zero regressions from baseline"</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 12: Thank You -->
+<div class="slide title-slide" id="s12">
+  <h1>TestMCPy</h1>
+  <p class="subtitle" style="margin-bottom: 30px;"><span class="accent">github.com/preset-io/testmcpy</span></p>
+  <div style="display: flex; gap: 20px; justify-content: center; margin-top: 20px;">
+    <span class="tag tag-blue" style="font-size: 1em; padding: 8px 20px;">Open Source</span>
+    <span class="tag tag-green" style="font-size: 1em; padding: 8px 20px;">Apache 2.0</span>
+    <span class="tag tag-purple" style="font-size: 1em; padding: 8px 20px;">pip install testmcpy</span>
+  </div>
+</div>
+
+<!-- Navigation -->
+<div class="nav">
+  <span id="slideNum">1</span> / <span id="totalSlides">12</span>
+  &nbsp;&nbsp; <span style="color: #64748b;">arrow keys to navigate</span>
+</div>
+
+<script>
+const slides = document.querySelectorAll('.slide');
+let current = 0;
+const total = slides.length;
+document.getElementById('totalSlides').textContent = total;
+
+function showSlide(n) {
+  slides[current].classList.remove('active');
+  current = (n + total) % total;
+  slides[current].classList.add('active');
+  document.getElementById('slideNum').textContent = current + 1;
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'ArrowDown') { e.preventDefault(); showSlide(current + 1); }
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); showSlide(current - 1); }
+  if (e.key === 'Home') { e.preventDefault(); showSlide(0); }
+  if (e.key === 'End') { e.preventDefault(); showSlide(total - 1); }
+});
+
+// Touch support
+let touchStartX = 0;
+document.addEventListener('touchstart', (e) => { touchStartX = e.touches[0].clientX; });
+document.addEventListener('touchend', (e) => {
+  const diff = touchStartX - e.changedTouches[0].clientX;
+  if (Math.abs(diff) > 50) { diff > 0 ? showSlide(current + 1) : showSlide(current - 1); }
+});
+</script>
+</body>
+</html>
