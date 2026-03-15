@@ -773,7 +773,9 @@ async def chat(request: ChatRequest) -> ChatResponse:
                     "name": tool_call["name"],
                     "arguments": tool_call.get("arguments", {}),
                     "id": tool_call.get("id", "unknown"),
-                    "result": tool_result.content if not tool_result.is_error else None,
+                    "result": _serialize_tool_content(tool_result.content)
+                    if not tool_result.is_error
+                    else None,
                     "error": tool_result.error_message if tool_result.is_error else None,
                     "is_error": tool_result.is_error,
                 }
@@ -888,6 +890,32 @@ async def chat_stream(request: ChatRequest):
             + "\n\nAnalyze these results. If you need more information, call additional tools. "
             "Otherwise, provide your final answer to the user's original question."
         )
+
+    def _serialize_tool_content(content):
+        """Serialize MCP tool result content to JSON-safe format."""
+        if content is None:
+            return None
+        if isinstance(content, (str, int, float, bool)):
+            return content
+        if isinstance(content, dict):
+            return content
+        # Handle lists — could be plain JSON or MCP TextContent objects
+        if isinstance(content, list):
+            # Check if items need serialization (MCP content objects)
+            if content and hasattr(content[0], "text"):
+                parts = []
+                for item in content:
+                    if hasattr(item, "text"):
+                        parts.append(item.text)
+                    elif hasattr(item, "data"):
+                        parts.append(str(item.data))
+                    else:
+                        parts.append(str(item))
+                return "\n".join(parts) if parts else ""
+            return content  # Plain JSON list
+        if hasattr(content, "text"):
+            return content.text
+        return str(content)
 
     async def generate():
         start_time = time.time()
@@ -1058,7 +1086,7 @@ async def chat_stream(request: ChatRequest):
                                 "tool_result",
                                 {
                                     "name": tool_call["name"],
-                                    "result": pre_result.content
+                                    "result": _serialize_tool_content(pre_result.content)
                                     if not pre_result.is_error
                                     else None,
                                     "error": pre_result.error_message
@@ -1084,7 +1112,9 @@ async def chat_stream(request: ChatRequest):
                                     "tool_result",
                                     {
                                         "name": tool_call["name"],
-                                        "result": tr.content if not tr.is_error else None,
+                                        "result": _serialize_tool_content(tr.content)
+                                        if not tr.is_error
+                                        else None,
                                         "error": tr.error_message if tr.is_error else None,
                                         "is_error": tr.is_error,
                                         "turn": sdk_turn,
@@ -1224,7 +1254,9 @@ async def chat_stream(request: ChatRequest):
                         tool_result = await client_for_tool.call_tool(mcp_tool_call)
                         tr_data = {
                             "name": tool_call["name"],
-                            "result": tool_result.content if not tool_result.is_error else None,
+                            "result": _serialize_tool_content(tool_result.content)
+                            if not tool_result.is_error
+                            else None,
                             "error": tool_result.error_message if tool_result.is_error else None,
                             "is_error": tool_result.is_error,
                             "turn": turn,
@@ -1268,7 +1300,10 @@ async def chat_stream(request: ChatRequest):
             yield send_event("error", str(e))
         except Exception as e:
             # Log full error server-side, send sanitized message to client
+            import traceback
+
             print(f"Chat stream error: {type(e).__name__}: {e}")
+            traceback.print_exc()
             error_msg = str(e)
             if is_connection_error(error_msg):
                 for cache_key in accessed_servers:

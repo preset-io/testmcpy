@@ -1176,12 +1176,21 @@ class ClaudeSDKProvider(LLMProvider):
             else:
                 log("[ClaudeSDK] No MCP server config — SDK will have no MCP tools")
 
+            # Build a clean env: inherit current env but remove Claude Code
+            # session vars that prevent nested CLI spawning
+            clean_env = {
+                k: v
+                for k, v in os.environ.items()
+                if not k.startswith("CLAUDE_CODE") and k != "CLAUDECODE"
+            }
+            clean_env["ANTHROPIC_API_KEY"] = ""  # Force subscription usage, not API credits
+
             options = ClaudeAgentOptions(
                 model=self.model,
                 permission_mode="bypassPermissions",
                 mcp_servers=mcp_servers,
                 max_turns=25,
-                env={"ANTHROPIC_API_KEY": ""},  # Force subscription usage, not API credits
+                env=clean_env,
             )
 
             # Execute query with timeout
@@ -1231,7 +1240,22 @@ class ClaudeSDKProvider(LLMProvider):
                                     if isinstance(block, ToolResultBlock):
                                         tool_use_id = block.tool_use_id
                                         is_error = block.is_error or False
-                                        content = block.content or ""
+                                        # Serialize content to a plain string
+                                        raw_content = block.content or ""
+                                        if isinstance(raw_content, list):
+                                            parts = []
+                                            for item in raw_content:
+                                                if hasattr(item, "text"):
+                                                    parts.append(item.text)
+                                                else:
+                                                    parts.append(str(item))
+                                            content = "\n".join(parts)
+                                        elif hasattr(raw_content, "text"):
+                                            content = raw_content.text
+                                        elif not isinstance(raw_content, str):
+                                            content = str(raw_content)
+                                        else:
+                                            content = raw_content
                                         tool_results_map[tool_use_id] = {
                                             "content": content,
                                             "is_error": is_error,
@@ -1270,9 +1294,9 @@ class ClaudeSDKProvider(LLMProvider):
                             )
                 except ClaudeSDKError as e:
                     # SDK may throw on unknown message types (e.g. rate_limit_event).
-                    # If we already collected a response, treat it as complete.
-                    log(f"[ClaudeSDK] SDK error during iteration (non-fatal): {e}")
-                    if not response_text:
+                    # If we already collected any response or tool calls, treat as complete.
+                    log(f"[ClaudeSDK] SDK error during iteration: {e}")
+                    if not response_text and not tool_calls:
                         raise
 
                 log(f"[ClaudeSDK] Completed: {message_count} messages, {len(response_text)} chars")
