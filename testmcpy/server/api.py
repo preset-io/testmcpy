@@ -2,6 +2,7 @@
 FastAPI server for testmcpy web UI.
 """
 
+import os
 import warnings
 
 # Suppress all deprecation warnings from websockets before any imports
@@ -1030,111 +1031,226 @@ async def chat_stream(request: ChatRequest):
 
             if is_sdk_provider:
                 # ============================================================
-                # SDK provider path: single call, SDK loops internally
+                # SDK provider path: stream directly from SDK query() generator
                 # ============================================================
                 yield send_event("status", f"Generating response with {model} (SDK agentic)...")
 
-                result = await llm_provider.generate_with_tools(
-                    prompt=request.message,
-                    tools=all_tools,
-                    timeout=120.0,
-                    messages=request.history,
+                from claude_agent_sdk import (
+                    AssistantMessage,
+                    ClaudeAgentOptions,
+                    ClaudeSDKError,
+                    ResultMessage,
+                    TextBlock,
+                    ThinkingBlock,
+                    ToolUseBlock,
+                    UserMessage,
+                    query as sdk_query,
+                )
+                from claude_agent_sdk.types import ToolResultBlock
+
+                # Build SDK options directly (bypass provider.generate_with_tools)
+                mcp_config = llm_provider._mcp_server_config
+                mcp_servers = {}
+                if mcp_config:
+                    mcp_servers["mcp-service"] = mcp_config
+
+                clean_env = {
+                    k: v
+                    for k, v in os.environ.items()
+                    if not k.startswith("CLAUDE_CODE") and k != "CLAUDECODE"
+                }
+                clean_env["ANTHROPIC_API_KEY"] = ""
+
+                options = ClaudeAgentOptions(
+                    model=model,
+                    permission_mode="bypassPermissions",
+                    mcp_servers=mcp_servers,
+                    max_turns=25,
+                    env=clean_env,
                 )
 
-                # Determine how many turns the SDK ran by counting tool calls
-                # that have pre-executed results
                 sdk_turn = 1
+                turn_tool_count = 0
+                token_usage = None
+                total_cost = 0.0
+                has_content = False
+                tool_id_to_name: dict[str, str] = {}  # tool_use_id → tool name
+
                 yield send_event("turn_start", {"turn": sdk_turn, "max_turns": MAX_TURNS})
 
-                # Stream thinking
-                if result.thinking:
-                    chunk_size = 80
-                    for i in range(0, len(result.thinking), chunk_size):
-                        chunk = result.thinking[i : i + chunk_size]
-                        yield send_event("thinking", chunk)
-                        await asyncio.sleep(0.005)
+                # Patch SDK message parser to skip unknown message types
+                # (e.g. rate_limit_event) instead of throwing MessageParseError
+                import claude_agent_sdk._internal.message_parser as _sdk_parser
 
-                # Stream response text
-                clean_response = _clean_response(result.response, bool(result.tool_calls))
-                for i in range(0, len(clean_response), 3):
-                    chunk = clean_response[i : i + 3]
-                    yield send_event("token", chunk)
-                    await asyncio.sleep(0.008)
+                _original_parse = _sdk_parser.parse_message
 
-                # Stream tool calls + pre-executed results (don't re-execute)
-                tool_results_map = {}
-                if result.tool_results:
-                    for tr in result.tool_results:
-                        tool_results_map[tr.tool_call_id] = tr
+                def _patched_parse(data):
+                    try:
+                        return _original_parse(data)
+                    except ClaudeSDKError:
+                        msg_type = data.get("type", "?") if isinstance(data, dict) else "?"
+                        print(f"[SDK] Skipping unknown message type: {msg_type}")
+                        return None
 
-                if result.tool_calls:
-                    for tool_call in result.tool_calls:
-                        yield send_event(
-                            "tool_call",
-                            {
-                                "name": tool_call["name"],
-                                "arguments": tool_call.get("arguments", {}),
-                                "turn": sdk_turn,
-                            },
-                        )
+                _sdk_parser.parse_message = _patched_parse
 
-                        # Check for pre-executed result from SDK
-                        tc_id = tool_call.get("id", "")
-                        pre_result = tool_results_map.get(tc_id)
-                        if pre_result:
+                pending_tool_calls = []  # Tool calls emitted but no result yet
+
+                try:
+                    async for message in sdk_query(prompt=request.message, options=options):
+                        if message is None:
+                            continue
+                        if isinstance(message, AssistantMessage):
+                            for block in message.content:
+                                if isinstance(block, ThinkingBlock):
+                                    if sdk_turn > 1 and not has_content:
+                                        yield send_event(
+                                            "thinking",
+                                            f"\n--- Turn {sdk_turn} ---\n",
+                                        )
+                                    # Stream thinking in chunks
+                                    text = block.thinking
+                                    for i in range(0, len(text), 80):
+                                        yield send_event("thinking", text[i : i + 80])
+                                elif isinstance(block, TextBlock):
+                                    has_content = True
+                                    # Stream response tokens
+                                    text = block.text
+                                    for i in range(0, len(text), 3):
+                                        yield send_event("token", text[i : i + 3])
+                                elif isinstance(block, ToolUseBlock):
+                                    turn_tool_count += 1
+                                    tool_id_to_name[block.id] = block.name
+                                    pending_tool_calls.append(
+                                        {
+                                            "name": block.name,
+                                            "arguments": block.input,
+                                            "id": block.id,
+                                        }
+                                    )
+                                    yield send_event(
+                                        "tool_call",
+                                        {
+                                            "name": block.name,
+                                            "arguments": block.input,
+                                            "turn": sdk_turn,
+                                        },
+                                    )
+
+                        elif isinstance(message, UserMessage):
+                            # Tool results from SDK-executed tools
+                            pending_tool_calls.clear()  # Results received
+                            if isinstance(message.content, list):
+                                for block in message.content:
+                                    if isinstance(block, ToolResultBlock):
+                                        raw = block.content or ""
+                                        content = _serialize_tool_content(raw)
+                                        is_error = block.is_error or False
+                                        tool_name = tool_id_to_name.get(
+                                            block.tool_use_id, block.tool_use_id
+                                        )
+                                        yield send_event(
+                                            "tool_result",
+                                            {
+                                                "name": tool_name,
+                                                "result": content if not is_error else None,
+                                                "error": str(content) if is_error else None,
+                                                "is_error": is_error,
+                                                "turn": sdk_turn,
+                                            },
+                                        )
+
+                            # New turn: tool results received, next assistant
+                            # message will be a new turn
+                            yield send_event(
+                                "turn_complete",
+                                {"turn": sdk_turn, "tool_count": turn_tool_count},
+                            )
+                            sdk_turn += 1
+                            turn_tool_count = 0
+                            has_content = False
+                            yield send_event(
+                                "turn_start",
+                                {"turn": sdk_turn, "max_turns": MAX_TURNS},
+                            )
+                            yield send_event(
+                                "status",
+                                f"Turn {sdk_turn}/{MAX_TURNS} — Thinking...",
+                            )
+
+                        elif isinstance(message, ResultMessage):
+                            if message.usage:
+                                usage = message.usage
+                                token_usage = {
+                                    "prompt": (
+                                        usage.get("input_tokens", 0)
+                                        + usage.get("cache_read_input_tokens", 0)
+                                        + usage.get("cache_creation_input_tokens", 0)
+                                    ),
+                                    "completion": usage.get("output_tokens", 0),
+                                    "total": (
+                                        usage.get("input_tokens", 0)
+                                        + usage.get("cache_read_input_tokens", 0)
+                                        + usage.get("cache_creation_input_tokens", 0)
+                                        + usage.get("output_tokens", 0)
+                                    ),
+                                }
+                            if message.total_cost_usd is not None:
+                                total_cost = message.total_cost_usd
+
+                except ClaudeSDKError:
+                    # Non-fatal: rate_limit_event or other unknown types.
+                    # If there are pending tool calls without results,
+                    # execute them ourselves via MCP.
+                    pass
+                finally:
+                    _sdk_parser.parse_message = _original_parse
+
+                # If SDK stream died with pending tool calls, execute them via MCP
+                if pending_tool_calls:
+                    yield send_event(
+                        "status",
+                        f"Executing {len(pending_tool_calls)} tool(s) via MCP...",
+                    )
+                    for tc in pending_tool_calls:
+                        actual_name = strip_mcp_prefix(tc["name"])
+                        tool_info = tool_to_client.get(actual_name)
+                        if tool_info:
+                            client_for_tool = tool_info[0]
+                            mcp_tc = MCPToolCall(
+                                name=actual_name,
+                                arguments=tc.get("arguments", {}),
+                                id=tc.get("id", "unknown"),
+                            )
+                            tr = await client_for_tool.call_tool(mcp_tc)
                             yield send_event(
                                 "tool_result",
                                 {
-                                    "name": tool_call["name"],
-                                    "result": _serialize_tool_content(pre_result.content)
-                                    if not pre_result.is_error
+                                    "name": tc["name"],
+                                    "result": _serialize_tool_content(tr.content)
+                                    if not tr.is_error
                                     else None,
-                                    "error": pre_result.error_message
-                                    if pre_result.is_error
-                                    else None,
-                                    "is_error": pre_result.is_error,
+                                    "error": tr.error_message if tr.is_error else None,
+                                    "is_error": tr.is_error,
                                     "turn": sdk_turn,
                                 },
                             )
                         else:
-                            # Fallback: execute tool via MCP
-                            actual_name = strip_mcp_prefix(tool_call["name"])
-                            tool_info = tool_to_client.get(actual_name)
-                            if tool_info:
-                                client_for_tool = tool_info[0]
-                                mcp_tc = MCPToolCall(
-                                    name=actual_name,
-                                    arguments=tool_call.get("arguments", {}),
-                                    id=tool_call.get("id", "unknown"),
-                                )
-                                tr = await client_for_tool.call_tool(mcp_tc)
-                                yield send_event(
-                                    "tool_result",
-                                    {
-                                        "name": tool_call["name"],
-                                        "result": _serialize_tool_content(tr.content)
-                                        if not tr.is_error
-                                        else None,
-                                        "error": tr.error_message if tr.is_error else None,
-                                        "is_error": tr.is_error,
-                                        "turn": sdk_turn,
-                                    },
-                                )
-                            else:
-                                yield send_event(
-                                    "tool_result",
-                                    {
-                                        "name": tool_call["name"],
-                                        "result": None,
-                                        "error": f"Tool '{tool_call['name']}' not found",
-                                        "is_error": True,
-                                        "turn": sdk_turn,
-                                    },
-                                )
+                            yield send_event(
+                                "tool_result",
+                                {
+                                    "name": tc["name"],
+                                    "result": None,
+                                    "error": f"Tool '{tc['name']}' not found",
+                                    "is_error": True,
+                                    "turn": sdk_turn,
+                                },
+                            )
 
+                # Close the final turn
                 yield send_event(
                     "turn_complete",
-                    {"turn": sdk_turn, "tool_count": len(result.tool_calls)},
+                    {"turn": sdk_turn, "tool_count": turn_tool_count},
                 )
 
                 await llm_provider.close()
@@ -1143,8 +1259,8 @@ async def chat_stream(request: ChatRequest):
                 yield send_event(
                     "complete",
                     {
-                        "token_usage": result.token_usage,
-                        "cost": result.cost,
+                        "token_usage": token_usage,
+                        "cost": total_cost,
                         "duration": duration,
                         "model": model,
                         "provider": provider_str,
