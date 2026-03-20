@@ -442,7 +442,7 @@ function AppContent() {
           <Routes>
             <Route path="/" element={<MCPExplorer selectedProfiles={selectedProfiles} />} />
             <Route path="/chat" element={<ChatInterface selectedProfiles={selectedProfiles} selectedLlmProfile={selectedLlmProfile} llmProfiles={llmProfiles} />} />
-            <Route path="/tests" element={<TestManager selectedProfiles={selectedProfiles} />} />
+            <Route path="/tests" element={<TestManager selectedProfiles={selectedProfiles} selectedLlmProfile={selectedLlmProfile} llmProfiles={llmProfiles} />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/generation-history" element={<GenerationHistory />} />
             <Route path="/auth-debugger" element={<AuthDebugger />} />

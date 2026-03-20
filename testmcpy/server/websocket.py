@@ -274,6 +274,18 @@ async def handle_test_websocket(websocket: WebSocket):
                     if effective_profile:
                         await send_log(f"🔌 Loading MCP profile: {effective_profile}")
                         mcp_client = await get_or_create_mcp_client(effective_profile)
+                        if mcp_client is None:
+                            await manager.send_message(
+                                {
+                                    "type": "error",
+                                    "message": (
+                                        f"MCP profile '{effective_profile}' not found. "
+                                        f"Check your MCP Profiles configuration."
+                                    ),
+                                },
+                                websocket,
+                            )
+                            continue
 
                     # Create runner with streaming log callback
                     runner = TestRunner(
