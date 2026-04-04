@@ -54,7 +54,7 @@ export const InlineSpinner = ({ className = '' }) => {
  */
 export const LoadingOverlay = ({ text = 'Loading...', blur = true }) => {
   return (
-    <div className={`fixed inset-0 z-50 flex items-center justify-center ${blur ? 'bg-background-subtle backdrop-blur-sm' : 'bg-background-subtle'}`}>
+    <div className={`fixed inset-0 z-50 flex items-center justify-center ${blur ? 'bg-black/50 backdrop-blur-sm' : 'bg-black/30'}`}>
       <div className="bg-surface-elevated border border-border rounded-xl shadow-2xl p-8">
         <LoadingSpinner size="lg" text={text} />
       </div>

@@ -366,7 +366,7 @@ function ToolDebugModal({ tool, profile, onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-background-subtle backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-surface rounded-xl border border-border shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-start justify-between p-6 border-b border-border">
