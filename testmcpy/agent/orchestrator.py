@@ -10,20 +10,25 @@ from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from typing import Any
 
-from claude_agent_sdk import (
-    AssistantMessage,
-    ClaudeAgentOptions,
-    ClaudeSDKClient,
-    ResultMessage,
-    TextBlock,
-    create_sdk_mcp_server,
-    query,
-)
-
 from testmcpy.agent.hooks import create_hooks
 from testmcpy.agent.models import AgentRunReport, AgentSession
 from testmcpy.agent.prompts import build_context_prompt
 from testmcpy.agent.tools import ALL_TOOLS, set_tool_context
+
+try:
+    from claude_agent_sdk import (
+        AssistantMessage,
+        ClaudeAgentOptions,
+        ClaudeSDKClient,
+        ResultMessage,
+        TextBlock,
+        create_sdk_mcp_server,
+        query,
+    )
+
+    _HAS_SDK = True
+except ImportError:
+    _HAS_SDK = False
 
 
 class TestExecutionAgent:
@@ -54,6 +59,12 @@ class TestExecutionAgent:
             max_turns: Maximum agent turns (default 50)
             agent_model: Model for the agent itself (default: SDK default)
         """
+        if not _HAS_SDK:
+            raise ImportError(
+                "claude_agent_sdk is required for the Test Execution Agent. "
+                "Install with: pip install testmcpy[sdk]"
+            )
+
         self.mcp_profile = mcp_profile
         self.mcp_url = mcp_url
         self.auth_config = auth_config

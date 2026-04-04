@@ -11,7 +11,21 @@ import time
 from pathlib import Path
 from typing import Any
 
-from claude_agent_sdk import tool
+try:
+    from claude_agent_sdk import tool
+except ImportError:
+
+    def tool(name, description, schema):  # type: ignore[misc]
+        """Fallback decorator when claude_agent_sdk is not installed."""
+
+        def decorator(func):
+            func._tool_name = name
+            func._tool_description = description
+            func._tool_schema = schema
+            return func
+
+        return decorator
+
 
 # Shared state for tools - set by orchestrator before agent runs
 _tool_context: dict[str, Any] = {}

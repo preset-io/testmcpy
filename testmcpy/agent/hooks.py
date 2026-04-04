@@ -8,9 +8,12 @@ to track tool calls, detect loops, measure costs, and generate reports.
 import time
 from typing import Any
 
-from claude_agent_sdk import HookContext
-
 from testmcpy.agent.models import AgentSession, ToolInvocation
+
+try:
+    from claude_agent_sdk import HookContext
+except ImportError:
+    HookContext = Any  # type: ignore[assignment,misc]
 
 # Maximum identical consecutive tool calls before blocking
 MAX_IDENTICAL_CALLS = 3

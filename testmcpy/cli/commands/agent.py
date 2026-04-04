@@ -77,14 +77,7 @@ def agent_run(
         testmcpy agent "Compare claude-sonnet-4-5 vs gpt-4o on tests/" --models claude-sonnet-4-5,gpt-4o
         testmcpy agent "What tools are available?" --profile my-profile
     """
-    try:
-        from testmcpy.agent.orchestrator import TestExecutionAgent
-    except ImportError:
-        console.print(
-            "[red]Error:[/red] Claude Agent SDK not installed. "
-            "Install with: pip install testmcpy[sdk]"
-        )
-        raise typer.Exit(1)
+    from testmcpy.agent.orchestrator import TestExecutionAgent
 
     # Build the prompt if not directly provided
     effective_prompt = prompt
@@ -129,14 +122,18 @@ def agent_run(
         console.print(f"[dim]Max turns: {max_turns}[/dim]")
         console.print()
 
-    async def run_agent():
-        agent = TestExecutionAgent(
-            mcp_profile=effective_profile,
-            mcp_url=mcp_url,
-            models=model_list,
-            max_turns=max_turns,
-            agent_model=agent_model,
-        )
+    async def _run_agent():
+        try:
+            agent = TestExecutionAgent(
+                mcp_profile=effective_profile,
+                mcp_url=mcp_url,
+                models=model_list,
+                max_turns=max_turns,
+                agent_model=agent_model,
+            )
+        except ImportError as exc:
+            console.print(f"[red]Error:[/red] {exc}")
+            raise typer.Exit(1) from exc
 
         with console.status("[cyan]Agent is working...[/cyan]"):
             report = await agent.run(effective_prompt)
@@ -150,7 +147,7 @@ def agent_run(
             output.write_text(json.dumps(report.to_dict(), indent=2, default=str))
             console.print(f"\n[green]Report saved to {output}[/green]")
 
-    asyncio.run(run_agent())
+    asyncio.run(_run_agent())
 
 
 def _display_report(report, verbose: bool = False):

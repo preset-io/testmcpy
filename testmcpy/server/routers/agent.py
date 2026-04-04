@@ -78,13 +78,7 @@ async def run_agent(request: AgentRunRequest):
 
     The agent processes the prompt synchronously and returns results.
     """
-    try:
-        from testmcpy.agent.orchestrator import TestExecutionAgent
-    except ImportError:
-        raise HTTPException(
-            status_code=501,
-            detail="Claude Agent SDK not installed. Install with: pip install testmcpy[sdk]",
-        )
+    from testmcpy.agent.orchestrator import TestExecutionAgent
 
     # Build effective prompt
     effective_prompt = request.prompt
@@ -123,6 +117,11 @@ async def run_agent(request: AgentRunRequest):
             report=report_dict,
         )
 
+    except ImportError as e:
+        raise HTTPException(
+            status_code=501,
+            detail=str(e),
+        ) from e
     except (ConnectionError, TimeoutError, OSError) as e:
         return AgentRunResponse(
             run_id="",
@@ -171,3 +170,19 @@ async def list_agent_reports(limit: int = 20):
             continue
 
     return {"reports": reports, "total": len(reports)}
+
+
+@router.get("/{run_id}", response_model=AgentRunResponse)
+async def get_agent_run(run_id: str):
+    """Get an agent run status and report by run ID.
+
+    Returns status (completed/not_found) and the report if available.
+    """
+    report = _load_report(run_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail=f"Agent run not found: {run_id}")
+    return AgentRunResponse(
+        run_id=run_id,
+        status="completed",
+        report=report,
+    )
