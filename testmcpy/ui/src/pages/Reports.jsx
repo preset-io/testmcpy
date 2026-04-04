@@ -159,7 +159,7 @@ function Reports() {
             <FileText size={16} />
             Test Runs
             <span className={`px-1.5 py-0.5 rounded text-xs ${
-              activeTab === 'tests' ? 'bg-white/20' : 'bg-surface-elevated'
+              activeTab === 'tests' ? 'bg-surface-hover' : 'bg-surface-elevated'
             }`}>
               {testRuns.length}
             </span>
@@ -175,7 +175,7 @@ function Reports() {
             <Zap size={16} />
             Smoke Tests
             <span className={`px-1.5 py-0.5 rounded text-xs ${
-              activeTab === 'smoke' ? 'bg-white/20' : 'bg-surface-elevated'
+              activeTab === 'smoke' ? 'bg-surface-hover' : 'bg-surface-elevated'
             }`}>
               {smokeReports.length}
             </span>

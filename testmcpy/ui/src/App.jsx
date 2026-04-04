@@ -13,7 +13,10 @@ import {
   ChevronRight,
   Shield,
   History,
-  BarChart3
+  BarChart3,
+  Sun,
+  Moon,
+  Monitor,
 } from 'lucide-react'
 
 import MCPExplorer from './pages/MCPExplorer'
@@ -26,6 +29,52 @@ import AuthDebugger from './pages/AuthDebugger'
 import GenerationHistory from './pages/GenerationHistory'
 import Reports from './pages/Reports'
 import { TestRunProvider } from './contexts/TestRunContext'
+import { ThemeProvider, useTheme } from './contexts/ThemeContext'
+
+function ThemeSwitcher({ collapsed }) {
+  const { theme, setTheme } = useTheme()
+
+  const options = [
+    { value: 'light', icon: Sun, label: 'Light' },
+    { value: 'dark', icon: Moon, label: 'Dark' },
+    { value: 'system', icon: Monitor, label: 'System' },
+  ]
+
+  if (collapsed) {
+    // Cycle through themes on click when collapsed
+    const next = { light: 'dark', dark: 'system', system: 'light' }
+    const CurrentIcon = options.find(o => o.value === theme)?.icon || Monitor
+    return (
+      <button
+        onClick={() => setTheme(next[theme])}
+        className="w-full flex items-center justify-center p-2 rounded-lg hover:bg-surface-hover transition-all duration-200 text-text-secondary hover:text-text-primary"
+        title={`Theme: ${theme}`}
+      >
+        <CurrentIcon size={16} />
+      </button>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-1 p-1 rounded-lg bg-background-subtle border border-border">
+      {options.map(({ value, icon: Icon, label }) => (
+        <button
+          key={value}
+          onClick={() => setTheme(value)}
+          className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all duration-200 ${
+            theme === value
+              ? 'bg-primary text-white shadow-sm'
+              : 'text-text-secondary hover:text-text-primary hover:bg-surface-hover'
+          }`}
+          title={label}
+        >
+          <Icon size={12} />
+          <span>{label}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
 
 function AppContent() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -276,8 +325,11 @@ function AppContent() {
   if (!apiReady) {
     return (
       <div className="flex h-screen bg-background text-text-primary items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+        <div className="flex flex-col items-center gap-5">
+          <div className="relative">
+            <div className="w-14 h-14 border-4 border-primary/30 rounded-full"></div>
+            <div className="w-14 h-14 border-4 border-primary border-t-transparent rounded-full animate-spin absolute inset-0"></div>
+          </div>
           <div className="text-center">
             <div className="text-lg font-semibold text-text-primary">Connecting to API</div>
             <div className="text-sm text-text-secondary mt-1">
@@ -294,42 +346,48 @@ function AppContent() {
         {/* Sidebar */}
         <aside
           className={`${
-            sidebarOpen ? 'w-50' : 'w-16'
-          } bg-surface-elevated border-r border-border transition-all duration-300 flex flex-col shadow-medium`}
+            sidebarOpen ? 'w-52' : 'w-16'
+          } sidebar-bg border-r border-border transition-all duration-300 flex flex-col shadow-medium relative`}
         >
+          {/* Header */}
           <div className="p-3 flex items-center justify-between border-b border-border">
             {sidebarOpen ? (
-              <div className="flex items-center gap-2">
-                <svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg">
-                  <rect x="5" y="9" width="5" height="14" rx="1.5" fill="none" stroke="currentColor" strokeWidth="2" className="text-primary" />
-                  <rect x="7" y="16" width="3" height="7" fill="currentColor" className="text-primary" opacity="0.3" />
-                  <circle cx="9.5" cy="6" r="2.5" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-primary" />
-                  <line x1="9.5" y1="6" x2="9.5" y2="9" stroke="currentColor" strokeWidth="1.5" className="text-primary" />
-                  <circle cx="20" cy="14" r="6" fill="none" stroke="currentColor" strokeWidth="2" className="text-success" />
-                  <path d="M 17 14 L 19 16 L 23 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-success" />
-                </svg>
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
+                  <svg width="18" height="18" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="5" y="9" width="5" height="14" rx="1.5" fill="none" stroke="currentColor" strokeWidth="2" className="text-primary" />
+                    <rect x="7" y="16" width="3" height="7" fill="currentColor" className="text-primary" opacity="0.3" />
+                    <circle cx="9.5" cy="6" r="2.5" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-primary" />
+                    <line x1="9.5" y1="6" x2="9.5" y2="9" stroke="currentColor" strokeWidth="1.5" className="text-primary" />
+                    <circle cx="20" cy="14" r="6" fill="none" stroke="currentColor" strokeWidth="2" className="text-success" />
+                    <path d="M 17 14 L 19 16 L 23 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-success" />
+                  </svg>
+                </div>
                 <div>
-                  <h1 className="text-lg font-bold text-primary leading-tight">testmcpy</h1>
+                  <h1 className="text-sm font-bold text-text-primary leading-tight tracking-tight">testmcpy</h1>
                   <p className="text-[10px] text-text-tertiary leading-tight">MCP Testing</p>
                 </div>
               </div>
             ) : (
-              <svg width="24" height="24" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg" className="mx-auto">
-                <rect x="5" y="9" width="5" height="14" rx="1.5" fill="none" stroke="currentColor" strokeWidth="2" className="text-primary" />
-                <rect x="7" y="16" width="3" height="7" fill="currentColor" className="text-primary" opacity="0.3" />
-                <circle cx="9.5" cy="6" r="2.5" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-primary" />
-                <line x1="9.5" y1="6" x2="9.5" y2="9" stroke="currentColor" strokeWidth="1.5" className="text-primary" />
-              </svg>
+              <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto">
+                <svg width="16" height="16" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="5" y="9" width="5" height="14" rx="1.5" fill="none" stroke="currentColor" strokeWidth="2" className="text-primary" />
+                  <rect x="7" y="16" width="3" height="7" fill="currentColor" className="text-primary" opacity="0.3" />
+                  <circle cx="9.5" cy="6" r="2.5" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-primary" />
+                  <line x1="9.5" y1="6" x2="9.5" y2="9" stroke="currentColor" strokeWidth="1.5" className="text-primary" />
+                </svg>
+              </div>
             )}
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 hover:bg-surface-hover rounded-lg transition-all duration-200 text-text-secondary hover:text-text-primary"
+              className="p-1.5 hover:bg-surface-hover rounded-lg transition-all duration-200 text-text-tertiary hover:text-text-primary"
             >
-              {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
+              {sidebarOpen ? <X size={16} /> : <Menu size={18} />}
             </button>
           </div>
 
-          <nav className="flex-1 px-3 py-4 space-y-1">
+          {/* Navigation */}
+          <nav className="flex-1 px-2 py-3 space-y-0.5">
             {navItems.map((item) => {
               const Icon = item.icon
               return (
@@ -337,38 +395,38 @@ function AppContent() {
                   key={item.path}
                   to={item.path}
                   className={({ isActive }) =>
-                    `flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 ${
+                    `flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 group ${
                       isActive
-                        ? 'bg-primary text-white shadow-sm'
+                        ? 'bg-primary text-white shadow-sm shadow-primary/25'
                         : 'hover:bg-surface-hover text-text-secondary hover:text-text-primary'
                     }`
                   }
                 >
-                  <Icon size={20} className="flex-shrink-0" />
-                  {sidebarOpen && <span className="font-medium">{item.label}</span>}
+                  <Icon size={18} className="flex-shrink-0" />
+                  {sidebarOpen && <span className="text-sm font-medium">{item.label}</span>}
                 </NavLink>
               )
             })}
           </nav>
 
           {/* Profile Selectors */}
-          <div className="px-3 py-3 border-t border-border space-y-2">
+          <div className="px-2 py-2 border-t border-border space-y-1.5">
             {/* MCP Selector Widget with Connection Status */}
             <button
               onClick={() => navigate('/mcp-profiles')}
               className={`w-full rounded-lg transition-all duration-200 ${
                 location.pathname === '/mcp-profiles'
-                  ? 'bg-primary/10 border border-primary'
+                  ? 'bg-primary/10 border border-primary/40 shadow-glow-primary'
                   : selectedProfiles.length > 0
-                    ? 'bg-success/10 border border-success/30 hover:bg-success/20'
-                    : 'bg-surface-elevated border border-border hover:bg-surface-hover'
+                    ? 'bg-success/8 border border-success/20 hover:bg-success/15 hover:border-success/30'
+                    : 'bg-surface border border-border hover:bg-surface-hover hover:border-border-subtle'
               }`}
             >
-              <div className="flex items-center gap-2 px-3 py-2">
+              <div className="flex items-center gap-2 px-2.5 py-2">
                 <div className="relative flex-shrink-0">
-                  <Server size={16} className={location.pathname === '/mcp-profiles' ? 'text-primary' : 'text-primary'} />
+                  <Server size={15} className="text-primary" />
                   {selectedProfiles.length > 0 && (
-                    <CheckCircle2 size={10} className="absolute -bottom-1 -right-1 text-success bg-surface-elevated rounded-full" />
+                    <CheckCircle2 size={9} className="absolute -bottom-1 -right-1 text-success" />
                   )}
                 </div>
                 {sidebarOpen && (
@@ -378,8 +436,8 @@ function AppContent() {
                         {getSelectedMCPDisplay().profile}
                       </span>
                       {selectedProfiles.length > 0 && (
-                        <span className="text-[9px] px-1 py-0.5 rounded bg-success/20 text-success font-medium">
-                          Connected
+                        <span className="text-[8px] px-1 py-0.5 rounded-full bg-success/15 text-success font-semibold uppercase tracking-wider">
+                          Live
                         </span>
                       )}
                     </div>
@@ -388,50 +446,54 @@ function AppContent() {
                     </div>
                   </div>
                 )}
-                {sidebarOpen && <ChevronRight size={14} className="text-text-tertiary flex-shrink-0" />}
+                {sidebarOpen && <ChevronRight size={13} className="text-text-tertiary flex-shrink-0" />}
               </div>
             </button>
 
             {/* LLM Profile Selector Widget */}
             <button
               onClick={() => navigate('/llm-profiles')}
-              className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-all duration-200 ${
+              className={`w-full rounded-lg transition-all duration-200 ${
                 location.pathname === '/llm-profiles'
-                  ? 'bg-primary/10 border border-primary text-primary'
-                  : 'bg-surface-elevated border border-border hover:bg-surface-hover'
+                  ? 'bg-primary/10 border border-primary/40 shadow-glow-primary'
+                  : 'bg-surface border border-border hover:bg-surface-hover hover:border-border-subtle'
               }`}
             >
-              <Cpu size={16} className={location.pathname === '/llm-profiles' ? 'text-primary' : 'text-success'} />
-              {sidebarOpen && (
-                <div className="flex-1 min-w-0 text-left">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-semibold text-text-primary truncate">
-                      {getSelectedLLMDisplay().providerName}
-                    </span>
-                    {getSelectedLLMDisplay().isCliTool && (
-                      <span className="px-1 py-0.5 text-[9px] bg-amber-500/20 text-amber-400 rounded flex-shrink-0">CLI</span>
-                    )}
-                    {getSelectedLLMDisplay().isSdk && (
-                      <span className="px-1 py-0.5 text-[9px] bg-cyan-500/20 text-cyan-400 rounded flex-shrink-0">SDK</span>
-                    )}
-                    {getSelectedLLMDisplay().isApi && (
-                      <span className="px-1 py-0.5 text-[9px] bg-emerald-500/20 text-emerald-400 rounded flex-shrink-0">API</span>
-                    )}
+              <div className="flex items-center gap-2 px-2.5 py-2">
+                <Cpu size={15} className={location.pathname === '/llm-profiles' ? 'text-primary' : 'text-info-light'} />
+                {sidebarOpen && (
+                  <div className="flex-1 min-w-0 text-left">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-semibold text-text-primary truncate">
+                        {getSelectedLLMDisplay().providerName}
+                      </span>
+                      {getSelectedLLMDisplay().isCliTool && (
+                        <span className="px-1 py-0.5 text-[8px] bg-amber-500/15 text-amber-500 dark:text-amber-400 rounded font-semibold flex-shrink-0">CLI</span>
+                      )}
+                      {getSelectedLLMDisplay().isSdk && (
+                        <span className="px-1 py-0.5 text-[8px] bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 rounded font-semibold flex-shrink-0">SDK</span>
+                      )}
+                      {getSelectedLLMDisplay().isApi && (
+                        <span className="px-1 py-0.5 text-[8px] bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 rounded font-semibold flex-shrink-0">API</span>
+                      )}
+                    </div>
+                    <div className="text-[10px] text-text-tertiary truncate">
+                      {getSelectedLLMDisplay().profileName}
+                    </div>
                   </div>
-                  <div className="text-[10px] text-text-tertiary truncate">
-                    {getSelectedLLMDisplay().profileName}
-                  </div>
-                </div>
-              )}
-              {sidebarOpen && <ChevronRight size={14} className="text-text-tertiary flex-shrink-0" />}
+                )}
+                {sidebarOpen && <ChevronRight size={13} className="text-text-tertiary flex-shrink-0" />}
+              </div>
             </button>
           </div>
 
-          <div className="p-3 border-t border-border">
+          {/* Footer with theme switcher */}
+          <div className="px-2 py-2.5 border-t border-border space-y-2">
+            <ThemeSwitcher collapsed={!sidebarOpen} />
             {sidebarOpen && (
-              <div className="text-xs text-text-tertiary space-y-0.5">
-                <div className="font-medium">MCP Testing Framework</div>
-                <div className="text-text-disabled">{appVersion}</div>
+              <div className="text-[10px] text-text-tertiary flex items-center justify-between px-1">
+                <span className="font-medium">testmcpy</span>
+                <span className="text-text-disabled">{appVersion}</span>
               </div>
             )}
           </div>
@@ -467,9 +529,11 @@ function AppContent() {
 function App() {
   return (
     <Router>
-      <TestRunProvider>
-        <AppContent />
-      </TestRunProvider>
+      <ThemeProvider>
+        <TestRunProvider>
+          <AppContent />
+        </TestRunProvider>
+      </ThemeProvider>
     </Router>
   )
 }

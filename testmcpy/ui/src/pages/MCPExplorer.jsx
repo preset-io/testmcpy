@@ -9,9 +9,11 @@ import OptimizeDocsModal from '../components/OptimizeDocsModal'
 import ToolDebugModal from '../components/ToolDebugModal'
 import { ToolCardSkeleton } from '../components/SkeletonLoader'
 import { LoadingSpinner } from '../components/LoadingSpinner'
+import { useEditorTheme } from '../hooks/useEditorTheme'
 
 function MCPExplorer({ selectedProfiles = [] }) {
   const navigate = useNavigate()
+  const { jsonTheme } = useEditorTheme()
   const [tools, setTools] = useState([])
   const [resources, setResources] = useState([])
   const [prompts, setPrompts] = useState([])
@@ -1154,10 +1156,10 @@ function MCPExplorer({ selectedProfiles = [] }) {
                       </div>
 
                       {tool.input_schema ? (
-                        <div className="bg-black/40 rounded-lg p-4 border border-border">
+                        <div className="bg-background-subtle rounded-lg p-4 border border-border">
                           <ReactJson
                             src={tool.input_schema}
-                            theme="monokai"
+                            theme={jsonTheme}
                             collapsed={true}
                             displayDataTypes={false}
                             displayObjectSize={true}
@@ -1205,10 +1207,10 @@ function MCPExplorer({ selectedProfiles = [] }) {
                           </button>
                         </div>
 
-                        <div className="bg-black/40 rounded-lg p-4 border border-border">
+                        <div className="bg-background-subtle rounded-lg p-4 border border-border">
                           <ReactJson
                             src={tool.output_schema}
-                            theme="monokai"
+                            theme={jsonTheme}
                             collapsed={true}
                             displayDataTypes={false}
                             displayObjectSize={true}
@@ -1567,10 +1569,10 @@ function MCPExplorer({ selectedProfiles = [] }) {
                 </div>
 
                 {expandedToolModal.input_schema ? (
-                  <div className="bg-black/40 rounded-lg p-4 border border-border">
+                  <div className="bg-background-subtle rounded-lg p-4 border border-border">
                     <ReactJson
                       src={expandedToolModal.input_schema}
-                      theme="monokai"
+                      theme={jsonTheme}
                       collapsed={true}
                       displayDataTypes={false}
                       displayObjectSize={true}
@@ -1618,10 +1620,10 @@ function MCPExplorer({ selectedProfiles = [] }) {
                     </button>
                   </div>
 
-                  <div className="bg-black/40 rounded-lg p-4 border border-border">
+                  <div className="bg-background-subtle rounded-lg p-4 border border-border">
                     <ReactJson
                       src={expandedToolModal.output_schema}
-                      theme="monokai"
+                      theme={jsonTheme}
                       collapsed={true}
                       displayDataTypes={false}
                       displayObjectSize={true}
@@ -1806,7 +1808,7 @@ function MCPExplorer({ selectedProfiles = [] }) {
                           : 'bg-error/5 border-error/20'
                       }`}
                     >
-                      <summary className="p-3 cursor-pointer hover:bg-black/5">
+                      <summary className="p-3 cursor-pointer hover:bg-surface-hover">
                         <div className="flex items-start justify-between inline-flex w-[calc(100%-1rem)]">
                           <div className="flex items-start gap-3 flex-1">
                             <span className={`text-lg ${result.success ? 'text-success-light' : 'text-error-light'}`}>

@@ -41,7 +41,7 @@ function TypeBadge({ type, items, enumValues }) {
       default:
         return {
           icon: '?',
-          color: 'bg-gray-500/10 text-gray-400 border-gray-500/20',
+          color: 'bg-surface-hover text-text-tertiary border-border',
           label: type || 'any'
         }
     }

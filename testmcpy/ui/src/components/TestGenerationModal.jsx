@@ -210,7 +210,7 @@ function TestGenerationModal({ tool, onClose, onSuccess }) {
   const currentProfile = llmProfiles.find(p => p.profile_id === selectedProfile)
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-background-subtle flex items-center justify-center z-50 p-4">
       <div className="bg-surface border border-border rounded-xl shadow-strong max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="p-6 border-b border-border flex items-center justify-between">
@@ -398,7 +398,7 @@ function TestGenerationModal({ tool, onClose, onSuccess }) {
                   <Terminal size={14} className="text-text-tertiary" />
                   <span className="text-xs font-medium text-text-secondary">Generation Logs</span>
                 </div>
-                <div className="h-64 overflow-auto p-3 font-mono text-xs space-y-1 bg-gray-950">
+                <div className="h-64 overflow-auto p-3 font-mono text-xs space-y-1 bg-surface-elevated">
                   {logs.length === 0 ? (
                     <div className="text-text-tertiary">Waiting for logs...</div>
                   ) : (

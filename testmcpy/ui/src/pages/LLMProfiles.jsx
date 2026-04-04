@@ -67,7 +67,7 @@ function getProviderIcon(provider) {
     case 'claude-sdk':
       return <span className="text-indigo-500 font-bold text-xs">SDK</span>
     case 'ollama':
-      return <span className="text-gray-500 font-bold text-xs">L</span>
+      return <span className="text-text-tertiary font-bold text-xs">L</span>
     default:
       return <Cpu size={14} className="text-text-disabled" />
   }

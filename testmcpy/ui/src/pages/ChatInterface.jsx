@@ -4,9 +4,11 @@ import ReactJson from '@microlink/react-json-view'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useKeyboardShortcuts, useAnnounce } from '../hooks/useKeyboardShortcuts'
+import { useEditorTheme } from '../hooks/useEditorTheme'
 
 // JSON viewer component with IDE-like collapsible tree
 function JSONViewer({ data }) {
+  const { jsonTheme } = useEditorTheme()
   const [collapsed, setCollapsed] = useState(true)
 
   // Parse JSON strings recursively
@@ -53,10 +55,10 @@ function JSONViewer({ data }) {
         <span>Tool Output</span>
       </button>
       {!collapsed && (
-        <div className="bg-black/40 rounded-lg p-3 border border-white/10 overflow-x-auto">
+        <div className="bg-background-subtle rounded-lg p-3 border border-border overflow-x-auto">
           <ReactJson
             src={parsedData}
-            theme="monokai"
+            theme={jsonTheme}
             collapsed={false}
             displayDataTypes={false}
             displayObjectSize={true}
@@ -77,6 +79,7 @@ function JSONViewer({ data }) {
 }
 
 function ChatInterface({ selectedProfiles = [], selectedLlmProfile, llmProfiles = [] }) {
+  const { jsonTheme } = useEditorTheme()
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -848,10 +851,10 @@ ${evaluators}
                             {collapsedThinking[idx] ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
                             <Brain size={14} />
                             <span>Thinking</span>
-                            <span className="text-white/40 font-normal">({message.thinking.length.toLocaleString()} chars)</span>
+                            <span className="text-text-disabled font-normal">({message.thinking.length.toLocaleString()} chars)</span>
                           </button>
                           {!collapsedThinking[idx] && (
-                            <div className="bg-purple-900/20 border border-purple-500/30 rounded-lg p-3 text-sm text-white/80 max-h-64 overflow-y-auto">
+                            <div className="bg-purple-900/20 border border-purple-500/30 rounded-lg p-3 text-sm text-text-secondary max-h-64 overflow-y-auto">
                               <div className="whitespace-pre-wrap font-mono text-xs leading-relaxed">
                                 {message.thinking}
                               </div>
@@ -861,19 +864,19 @@ ${evaluators}
                       )}
 
                       {message.tool_calls && message.tool_calls.length > 0 && (
-                        <div className="mb-3 p-2 bg-primary/10 border border-primary/30 rounded-lg text-xs text-white/70">
+                        <div className="mb-3 p-2 bg-primary/10 border border-primary/30 rounded-lg text-xs text-text-secondary">
                           <span className="font-semibold text-primary-light">Note:</span> The LLM's interpretation may be inaccurate.
                           For actual tool results, see "Raw Tool Output" in the tool calls section below.
                         </div>
                       )}
-                      <div className="prose prose-invert prose-sm max-w-none leading-relaxed prose-p:my-2 prose-pre:bg-black/50 prose-pre:border prose-pre:border-white/10 prose-code:text-primary-light prose-a:text-primary-light prose-a:no-underline hover:prose-a:underline prose-strong:text-white prose-headings:text-white">
+                      <div className="prose prose-invert prose-sm max-w-none leading-relaxed prose-p:my-2 prose-pre:bg-background-subtle prose-pre:border prose-pre:border-border prose-code:text-primary-light prose-a:text-primary-light prose-a:no-underline hover:prose-a:underline prose-strong:text-text-primary prose-headings:text-text-primary">
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm]}
                           components={{
                             // Custom code block styling
                             code({node, inline, className, children, ...props}) {
                               return inline ? (
-                                <code className="bg-black/50 px-1.5 py-0.5 rounded text-primary-light" {...props}>
+                                <code className="bg-background-subtle px-1.5 py-0.5 rounded text-primary-light" {...props}>
                                   {children}
                                 </code>
                               ) : (
@@ -905,7 +908,7 @@ ${evaluators}
 
                   {/* Eval and Test Actions for Assistant Messages */}
                   {message.role === 'assistant' && !message.error && (
-                    <div className="mt-4 pt-4 border-t border-white/10 flex gap-2">
+                    <div className="mt-4 pt-4 border-t border-border flex gap-2">
                       <button
                         onClick={() => runEval(idx)}
                         disabled={runningEval === idx}
@@ -928,32 +931,32 @@ ${evaluators}
 
                   {/* Display Eval Results */}
                   {evalResults[idx] && (
-                    <div className="mt-4 pt-4 border-t border-white/10">
+                    <div className="mt-4 pt-4 border-t border-border">
                       <div className="flex items-center gap-2 mb-3">
                         <CheckCircle size={16} className={evalResults[idx].passed ? 'text-success' : 'text-error'} />
                         <span className="font-semibold text-sm">
                           Eval: {evalResults[idx].passed ? 'PASSED' : 'FAILED'}
                         </span>
-                        <span className="text-xs text-white/60">
+                        <span className="text-xs text-text-tertiary">
                           Score: {evalResults[idx].score?.toFixed(2) || 'N/A'}
                         </span>
                       </div>
                       {evalResults[idx].reason && (
-                        <p className="text-xs text-white/70 leading-relaxed mb-3">
+                        <p className="text-xs text-text-secondary leading-relaxed mb-3">
                           {evalResults[idx].reason}
                         </p>
                       )}
 
                       {/* Tool Calls Summary */}
                       {message.tool_calls && message.tool_calls.length > 0 && (
-                        <div className="mb-3 bg-black/30 rounded-lg p-3 border border-white/10">
-                          <div className="text-xs text-white/60 mb-2 flex items-center gap-2">
+                        <div className="mb-3 bg-background-subtle rounded-lg p-3 border border-border">
+                          <div className="text-xs text-text-tertiary mb-2 flex items-center gap-2">
                             <Wrench size={12} />
                             <span className="font-medium">Tool Calls ({message.tool_calls.length})</span>
                           </div>
                           <div className="space-y-2">
                             {message.tool_calls.map((call, callIdx) => (
-                              <div key={callIdx} className="bg-black/20 rounded p-2">
+                              <div key={callIdx} className="bg-surface-hover rounded p-2">
                                 <div className="flex items-center gap-2 mb-1">
                                   <span className="font-mono text-[11px] text-primary-light font-semibold">
                                     {call.name}
@@ -964,12 +967,12 @@ ${evaluators}
                                 </div>
                                 {call.arguments && Object.keys(call.arguments).length > 0 && (
                                   <div className="mt-1">
-                                    <div className="text-[10px] text-white/50 mb-1">Parameters:</div>
+                                    <div className="text-[10px] text-text-disabled mb-1">Parameters:</div>
                                     <div className="space-y-1">
                                       {Object.entries(call.arguments).map(([key, value]) => (
                                         <div key={key} className="flex items-start gap-2 text-[11px]">
-                                          <span className="text-white/60 font-medium min-w-[80px]">{key}:</span>
-                                          <span className="text-white/80 font-mono flex-1 break-all">
+                                          <span className="text-text-tertiary font-medium min-w-[80px]">{key}:</span>
+                                          <span className="text-text-secondary font-mono flex-1 break-all">
                                             {typeof value === 'object' ? JSON.stringify(value) : String(value)}
                                           </span>
                                         </div>
@@ -987,18 +990,18 @@ ${evaluators}
                       {evalResults[idx].evaluations && evalResults[idx].evaluations.length > 0 && (
                         <div className="space-y-2 mt-3">
                           {evalResults[idx].evaluations.map((evalItem, evalIdx) => (
-                            <div key={evalIdx} className="bg-black/20 rounded-lg p-2.5 border border-white/10">
+                            <div key={evalIdx} className="bg-surface-hover rounded-lg p-2.5 border border-border">
                               <div className="flex items-start gap-2">
                                 <CheckCircle size={14} className={evalItem.passed ? 'text-success mt-0.5' : 'text-error mt-0.5'} />
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2 mb-1">
-                                    <span className="text-xs font-medium text-white/90">{evalItem.evaluator || evalItem.name || 'Unknown Evaluator'}</span>
-                                    <span className="text-[10px] text-white/50">
+                                    <span className="text-xs font-medium text-text-primary">{evalItem.evaluator || evalItem.name || 'Unknown Evaluator'}</span>
+                                    <span className="text-[10px] text-text-disabled">
                                       {evalItem.passed ? '✓' : '✗'} Score: {evalItem.score?.toFixed(2)}
                                     </span>
                                   </div>
                                   {evalItem.reason && (
-                                    <p className="text-[11px] text-white/70 leading-relaxed">
+                                    <p className="text-[11px] text-text-secondary leading-relaxed">
                                       {evalItem.reason}
                                     </p>
                                   )}
@@ -1007,7 +1010,7 @@ ${evaluators}
                                     <div className="mt-2 bg-error/10 border border-error/30 rounded p-2">
                                       <div className="text-[10px] font-semibold text-error-light mb-1">Error Details:</div>
                                       {evalItem.details.errors.map((err, errIdx) => (
-                                        <div key={errIdx} className="text-[10px] text-white/80 mb-1">
+                                        <div key={errIdx} className="text-[10px] text-text-secondary mb-1">
                                           <span className="font-medium">Tool {err.tool}:</span> {err.error}
                                         </div>
                                       ))}
@@ -1035,7 +1038,7 @@ ${evaluators}
                     const hasMultipleTurns = turnNumbers.length > 1
 
                     return (
-                    <div className="mt-3 pt-3 border-t border-white/10">
+                    <div className="mt-3 pt-3 border-t border-border">
                       <button
                         onClick={() => setCollapsedToolCalls(prev => ({ ...prev, [idx]: !prev[idx] }))}
                         className="flex items-center gap-2 text-xs font-medium text-text-secondary hover:text-text-primary transition-colors"
@@ -1052,23 +1055,23 @@ ${evaluators}
                               <div key={turnNum}>
                                 {hasMultipleTurns && (
                                   <div className="flex items-center gap-2 mb-2">
-                                    <div className="h-px flex-1 bg-white/10" />
-                                    <span className="text-[10px] font-medium text-white/50 uppercase tracking-wider">
+                                    <div className="h-px flex-1 bg-border" />
+                                    <span className="text-[10px] font-medium text-text-disabled uppercase tracking-wider">
                                       Turn {turnNum}: {turnCalls.length} tool{turnCalls.length !== 1 ? 's' : ''}
                                     </span>
-                                    <div className="h-px flex-1 bg-white/10" />
+                                    <div className="h-px flex-1 bg-border" />
                                   </div>
                                 )}
                                 {turnCalls.map((call, callIdx) => (
                           <div
                             key={`${turnNum}-${callIdx}`}
-                            className="bg-black/20 rounded-lg p-3 border border-white/10"
+                            className="bg-surface-hover rounded-lg p-3 border border-border"
                           >
                             <div className="flex items-baseline gap-2 mb-2">
                               <span className="font-mono font-semibold text-primary-light text-sm">
                                 {call.name}
                               </span>
-                              <span className="text-xs text-white/40">
+                              <span className="text-xs text-text-disabled">
                                 ({Object.keys(call.arguments || {}).length} params)
                               </span>
                             </div>
@@ -1076,11 +1079,11 @@ ${evaluators}
                             {/* Arguments - shown as collapsible object */}
                             {call.arguments && Object.keys(call.arguments).length > 0 && (
                               <div className="mb-2">
-                                <div className="text-xs text-white/60 mb-1">Arguments:</div>
-                                <div className="bg-black/30 rounded p-2">
+                                <div className="text-xs text-text-tertiary mb-1">Arguments:</div>
+                                <div className="bg-background-subtle rounded p-2">
                                   <ReactJson
                                     src={call.arguments}
-                                    theme="monokai"
+                                    theme={jsonTheme}
                                     collapsed={1}
                                     displayDataTypes={false}
                                     displayObjectSize={true}
@@ -1101,8 +1104,8 @@ ${evaluators}
                             {/* Result - shown as collapsible object (same as arguments) */}
                             {call.result && (
                               <div className="mt-3">
-                                <div className="text-xs text-white/60 mb-2 font-semibold">Raw Tool Output:</div>
-                                <div className="bg-black/40 rounded-lg p-3 border border-white/10 overflow-x-auto">
+                                <div className="text-xs text-text-tertiary mb-2 font-semibold">Raw Tool Output:</div>
+                                <div className="bg-background-subtle rounded-lg p-3 border border-border overflow-x-auto">
                                   <ReactJson
                                     src={(() => {
                                       // Parse JSON strings recursively
@@ -1133,7 +1136,7 @@ ${evaluators}
                                       }
                                       return parseJsonStrings(call.result)
                                     })()}
-                                    theme="monokai"
+                                    theme={jsonTheme}
                                     collapsed={1}
                                     displayDataTypes={false}
                                     displayObjectSize={true}
@@ -1155,7 +1158,7 @@ ${evaluators}
                             {call.error && (
                               <div className="mt-3 p-3 bg-error/10 border border-error/30 rounded-lg">
                                 <div className="text-xs font-semibold text-error mb-1">Error:</div>
-                                <div className="text-xs text-white/80 font-mono">{call.error}</div>
+                                <div className="text-xs text-text-secondary font-mono">{call.error}</div>
                               </div>
                             )}
                             </div>
@@ -1171,7 +1174,7 @@ ${evaluators}
 
                   {/* Metadata - inline */}
                   {message.token_usage && (
-                    <div className="mt-3 pt-3 border-t border-white/10 flex items-center gap-4 text-[10px] opacity-70">
+                    <div className="mt-3 pt-3 border-t border-border flex items-center gap-4 text-[10px] opacity-70">
                       {message.totalTurns > 1 && (
                         <span className="flex items-center gap-1">
                           <span className="font-medium">{message.totalTurns}</span> turns

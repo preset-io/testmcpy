@@ -24,8 +24,10 @@ import {
   Wrench
 } from 'lucide-react'
 import Editor from '@monaco-editor/react'
+import { useEditorTheme } from '../hooks/useEditorTheme'
 
 function GenerationHistory() {
+  const { monacoTheme } = useEditorTheme()
   const [logs, setLogs] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -422,7 +424,7 @@ function GenerationHistory() {
               <div className="flex-1 overflow-auto p-4">
                 {/* Logs Section */}
                 {expandedSection === 'logs' && (
-                  <div className="space-y-1 font-mono text-sm bg-gray-950 rounded-lg p-4">
+                  <div className="space-y-1 font-mono text-sm bg-surface rounded-lg p-4">
                     {logDetails.logs?.map((log, idx) => (
                       <div
                         key={idx}
@@ -431,14 +433,14 @@ function GenerationHistory() {
                           log.includes('✓') || log.includes('Complete') ? 'text-green-400' :
                           log.includes('Sending') || log.includes('Analyzing') ? 'text-yellow-400' :
                           log.includes('Tool:') || log.includes('Using') ? 'text-blue-400' :
-                          'text-gray-300'
+                          'text-text-secondary'
                         }`}
                       >
                         {log}
                       </div>
                     ))}
                     {(!logDetails.logs || logDetails.logs.length === 0) && (
-                      <div className="text-gray-500 text-center py-4">No logs recorded</div>
+                      <div className="text-text-tertiary text-center py-4">No logs recorded</div>
                     )}
                   </div>
                 )}
@@ -473,7 +475,7 @@ function GenerationHistory() {
                             </button>
                           </div>
                           <div className="max-h-64 overflow-auto">
-                            <pre className="p-4 text-xs text-text-secondary whitespace-pre-wrap bg-gray-950">{call.prompt}</pre>
+                            <pre className="p-4 text-xs text-text-secondary whitespace-pre-wrap bg-surface">{call.prompt}</pre>
                           </div>
                         </div>
 
@@ -490,7 +492,7 @@ function GenerationHistory() {
                             </button>
                           </div>
                           <div className="max-h-64 overflow-auto">
-                            <pre className="p-4 text-xs text-text-secondary whitespace-pre-wrap bg-gray-950">{call.response}</pre>
+                            <pre className="p-4 text-xs text-text-secondary whitespace-pre-wrap bg-surface">{call.response}</pre>
                           </div>
                         </div>
                       </div>
@@ -595,7 +597,7 @@ function GenerationHistory() {
                         <Editor
                           height="500px"
                           defaultLanguage="yaml"
-                          theme="vs-dark"
+                          theme={monacoTheme}
                           value={logDetails.generated_yaml}
                           options={{
                             readOnly: true,

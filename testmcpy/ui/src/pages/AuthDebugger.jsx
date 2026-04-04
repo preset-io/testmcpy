@@ -21,6 +21,7 @@ import {
   Info
 } from 'lucide-react'
 import ReactJson from '@microlink/react-json-view'
+import { useEditorTheme } from '../hooks/useEditorTheme'
 import {
   ReactFlow,
   Background,
@@ -383,7 +384,7 @@ function OAuthSequenceDiagram({ steps = [], currentStep = -1 }) {
         <div className="text-xs font-semibold text-text-primary mb-2">Flow Status</div>
         <div className="space-y-1.5">
           <div className="flex items-center gap-2">
-            <div className="w-4 h-0.5 bg-gray-500 opacity-30" style={{ borderTop: '1.5px dashed' }}></div>
+            <div className="w-4 h-0.5 bg-text-tertiary opacity-30" style={{ borderTop: '1.5px dashed' }}></div>
             <span className="text-xs text-text-secondary">Pending</span>
           </div>
           <div className="flex items-center gap-2">
@@ -458,6 +459,7 @@ function StepExplanation({ stepName, visible, onClose }) {
 }
 
 function AuthDebugger() {
+  const { jsonTheme } = useEditorTheme()
   const [authType, setAuthType] = useState('oauth')
   const [profiles, setProfiles] = useState([])
   const [selectedProfile, setSelectedProfile] = useState('')
@@ -1220,7 +1222,7 @@ function AuthDebugger() {
                               {debugResult.auth_type?.toUpperCase()}
                             </span>
                           </div>
-                          <div className="text-sm text-error/90 mb-3 font-mono bg-black/20 p-2 rounded">
+                          <div className="text-sm text-error/90 mb-3 font-mono bg-surface-hover p-2 rounded">
                             {debugResult.error}
                           </div>
 
@@ -1378,12 +1380,12 @@ function AuthDebugger() {
                                 <div className="text-xs font-semibold text-text-secondary mb-1">
                                   Parsed Data
                                 </div>
-                                <div className="bg-black/40 rounded-lg p-3 border border-white/10">
+                                <div className="bg-background-subtle rounded-lg p-3 border border-border">
                                   <ReactJson
                                     src={Object.fromEntries(
                                       Object.entries(step.data).filter(([k]) => !['raw_request', 'raw_response'].includes(k))
                                     )}
-                                    theme="monokai"
+                                    theme={jsonTheme}
                                     collapsed={3}
                                     displayDataTypes={false}
                                     displayObjectSize={true}

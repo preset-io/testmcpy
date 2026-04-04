@@ -1,3 +1,8 @@
+/** @type {import('tailwindcss').Config} */
+
+// Helper to create color with alpha support from CSS variable containing RGB channels
+const c = (varName) => `rgb(var(${varName}) / <alpha-value>)`
+
 export default {
   content: [
     "./index.html",
@@ -7,44 +12,50 @@ export default {
   theme: {
     extend: {
       colors: {
-        background: '#0a0a0a',
-        'background-subtle': '#0f0f0f',
-        surface: '#161616',
-        'surface-hover': '#1e1e1e',
-        'surface-elevated': '#1a1a1a',
-        border: '#2a2a2a',
-        'border-subtle': '#1f1f1f',
+        background: {
+          DEFAULT: c('--color-background'),
+          subtle: c('--color-background-subtle'),
+        },
+        surface: {
+          DEFAULT: c('--color-surface'),
+          hover: c('--color-surface-hover'),
+          elevated: c('--color-surface-elevated'),
+        },
+        border: {
+          DEFAULT: c('--color-border'),
+          subtle: c('--color-border-subtle'),
+        },
         primary: {
-          DEFAULT: '#3b82f6',
-          hover: '#2563eb',
-          light: '#60a5fa',
-          dark: '#1d4ed8',
+          DEFAULT: c('--color-primary'),
+          hover: c('--color-primary-hover'),
+          light: c('--color-primary-light'),
+          dark: c('--color-primary-dark'),
         },
         success: {
-          DEFAULT: '#10b981',
-          light: '#34d399',
-          dark: '#059669',
+          DEFAULT: c('--color-success'),
+          light: c('--color-success-light'),
+          dark: c('--color-success-dark'),
         },
         error: {
-          DEFAULT: '#ef4444',
-          light: '#f87171',
-          dark: '#dc2626',
+          DEFAULT: c('--color-error'),
+          light: c('--color-error-light'),
+          dark: c('--color-error-dark'),
         },
         warning: {
-          DEFAULT: '#f59e0b',
-          light: '#fbbf24',
-          dark: '#d97706',
+          DEFAULT: c('--color-warning'),
+          light: c('--color-warning-light'),
+          dark: c('--color-warning-dark'),
         },
         info: {
-          DEFAULT: '#3b82f6',
-          light: '#60a5fa',
-          dark: '#2563eb',
+          DEFAULT: c('--color-info'),
+          light: c('--color-info-light'),
+          dark: c('--color-info-dark'),
         },
         text: {
-          primary: '#f5f5f5',
-          secondary: '#a3a3a3',
-          tertiary: '#737373',
-          disabled: '#525252',
+          primary: c('--color-text-primary'),
+          secondary: c('--color-text-secondary'),
+          tertiary: c('--color-text-tertiary'),
+          disabled: c('--color-text-disabled'),
         },
       },
       spacing: {
@@ -56,15 +67,19 @@ export default {
         '2xl': '1rem',
       },
       boxShadow: {
-        'soft': '0 2px 8px 0 rgba(0, 0, 0, 0.3)',
-        'medium': '0 4px 16px 0 rgba(0, 0, 0, 0.4)',
-        'strong': '0 8px 24px 0 rgba(0, 0, 0, 0.5)',
+        'soft': 'var(--shadow-soft)',
+        'medium': 'var(--shadow-medium)',
+        'strong': 'var(--shadow-strong)',
+        'glow-primary': 'var(--shadow-glow-primary)',
+        'glow-success': 'var(--shadow-glow-success)',
+        'inner-soft': 'var(--shadow-inner-soft)',
       },
       animation: {
         'fade-in': 'fadeIn 0.2s ease-in-out',
         'slide-in': 'slideIn 0.3s ease-out',
         'slide-up': 'slideUp 0.3s ease-out',
         'pulse-soft': 'pulseSoft 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'shimmer': 'shimmer 2s linear infinite',
       },
       keyframes: {
         fadeIn: {
@@ -82,6 +97,10 @@ export default {
         pulseSoft: {
           '0%, 100%': { opacity: '1' },
           '50%': { opacity: '0.5' },
+        },
+        shimmer: {
+          '0%': { backgroundPosition: '-200% 0' },
+          '100%': { backgroundPosition: '200% 0' },
         },
       },
     },

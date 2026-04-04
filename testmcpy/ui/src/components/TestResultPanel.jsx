@@ -66,15 +66,15 @@ function TestResultPanel({ result, initialExpanded = false }) {
                 <Terminal size={12} />
                 Provider Logs ({result.logs.length})
               </h4>
-              <div className="p-3 bg-gray-900 rounded-lg border border-border max-h-64 overflow-y-auto">
-                <pre className="text-xs font-mono text-gray-300 whitespace-pre-wrap">
+              <div className="p-3 bg-surface rounded-lg border border-border max-h-64 overflow-y-auto">
+                <pre className="text-xs font-mono text-text-secondary whitespace-pre-wrap">
                   {result.logs.map((log, idx) => (
                     <div key={idx} className={`leading-relaxed ${
                       log.includes('Error') || log.includes('❌') ? 'text-red-400' :
                       log.includes('Tool call') || log.includes('🔧') ? 'text-cyan-400' :
                       log.includes('✅') || log.includes('Parsed:') ? 'text-green-400' :
                       log.includes('Waiting') || log.includes('Running') ? 'text-yellow-400' :
-                      'text-gray-300'
+                      'text-text-secondary'
                     }`}>
                       {log}
                     </div>

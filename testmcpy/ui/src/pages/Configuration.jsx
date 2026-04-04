@@ -255,7 +255,7 @@ function Configuration() {
                     )}
                   </button>
                 </div>
-                <div className="bg-black/40 rounded p-3 font-mono text-xs text-green-400 overflow-x-auto">
+                <div className="bg-background-subtle rounded p-3 font-mono text-xs text-green-400 overflow-x-auto">
                   testmcpy config-mcp claude-desktop{getFullAuthToken() !== 'YOUR_BEARER_TOKEN' && ' --token "' + getAuthToken() + '"'}
                 </div>
               </div>
@@ -284,7 +284,7 @@ function Configuration() {
                     )}
                   </button>
                 </div>
-                <div className="bg-black/40 rounded p-3 font-mono text-xs text-green-400 overflow-x-auto">
+                <div className="bg-background-subtle rounded p-3 font-mono text-xs text-green-400 overflow-x-auto">
                   testmcpy config-mcp claude-code{getFullAuthToken() !== 'YOUR_BEARER_TOKEN' && ' --token "' + getAuthToken() + '"'}
                 </div>
               </div>
@@ -313,7 +313,7 @@ function Configuration() {
                     )}
                   </button>
                 </div>
-                <div className="bg-black/40 rounded p-3 font-mono text-xs text-green-400 overflow-x-auto">
+                <div className="bg-background-subtle rounded p-3 font-mono text-xs text-green-400 overflow-x-auto">
                   testmcpy config-mcp chatgpt-desktop{getFullAuthToken() !== 'YOUR_BEARER_TOKEN' && ' --token "' + getAuthToken() + '"'}
                 </div>
               </div>

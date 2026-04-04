@@ -24,6 +24,7 @@ import TestStatusIndicator from '../components/TestStatusIndicator'
 import TestResultPanel from '../components/TestResultPanel'
 import { useKeyboardShortcuts, useAnnounce } from '../hooks/useKeyboardShortcuts'
 import { useTestRun } from '../contexts/TestRunContext'
+import { useEditorTheme } from '../hooks/useEditorTheme'
 
 // Parse YAML content to find test locations (line numbers)
 function parseTestLocations(content) {
@@ -76,6 +77,7 @@ function parseTestLocations(content) {
 }
 
 function TestManager({ selectedProfiles = [], selectedLlmProfile = null, llmProfiles = [] }) {
+  const { monacoTheme } = useEditorTheme()
   // Get test run state from context (persists across navigation)
   const {
     running,
@@ -981,7 +983,7 @@ tests:
                 <Editor
                   height="100%"
                   defaultLanguage="yaml"
-                  theme="vs-dark"
+                  theme={monacoTheme}
                   value={fileContent}
                   onChange={(value) => setFileContent(value || '')}
                   onMount={handleEditorDidMount}
@@ -1105,9 +1107,9 @@ tests:
                       </div>
                     ) : (
                       /* Logs Content */
-                      <div className="h-full overflow-auto p-3 font-mono text-xs bg-gray-950">
+                      <div className="h-full overflow-auto p-3 font-mono text-xs bg-surface">
                         {streamingLogs.length === 0 ? (
-                          <div className="text-gray-500 text-center py-4">
+                          <div className="text-text-tertiary text-center py-4">
                             Waiting for test execution...
                           </div>
                         ) : (
@@ -1120,9 +1122,9 @@ tests:
                                 log.includes('✅') || log.includes('PASSED') ? 'text-green-400' :
                                 log.includes('⏱️') || log.includes('Running') || log.includes('🧪') ? 'text-yellow-400' :
                                 log.includes('📁') || log.includes('📋') || log.includes('🤖') || log.includes('🔌') ? 'text-blue-400' :
-                                log.includes('===') || log.includes('---') ? 'text-gray-600' :
+                                log.includes('===') || log.includes('---') ? 'text-text-disabled' :
                                 log.includes('💰') || log.includes('📊') ? 'text-purple-400' :
-                                'text-gray-300'
+                                'text-text-secondary'
                               }`}
                             >
                               {log}

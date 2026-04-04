@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react'
 import Editor from '@monaco-editor/react'
 import { Copy, Check } from 'lucide-react'
 import { FORMATS } from '../utils/formatConverters'
+import { useEditorTheme } from '../hooks/useEditorTheme'
 
 /**
  * IDE-like code viewer with syntax highlighting and multi-format export
  * Displays JSON Schema parameters in various developer-friendly formats
  */
 function SchemaCodeViewer({ schema, toolName = 'tool', profile = null }) {
+  const { monacoTheme } = useEditorTheme()
   const [selectedFormat, setSelectedFormat] = useState('json')
   const [code, setCode] = useState('')
   const [copied, setCopied] = useState(false)
@@ -150,7 +152,7 @@ function SchemaCodeViewer({ schema, toolName = 'tool', profile = null }) {
           height="300px"
           language={currentFormat?.language || 'json'}
           value={code}
-          theme="vs-dark"
+          theme={monacoTheme}
           options={{
             readOnly: true,
             minimap: { enabled: false },
@@ -178,7 +180,7 @@ function SchemaCodeViewer({ schema, toolName = 'tool', profile = null }) {
             padding: { top: 8, bottom: 8 },
           }}
           loading={
-            <div className="flex items-center justify-center h-full bg-[#1e1e1e]">
+            <div className="flex items-center justify-center h-full bg-surface-elevated">
               <div className="text-text-secondary text-sm">Loading editor...</div>
             </div>
           }
