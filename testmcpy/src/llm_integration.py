@@ -262,7 +262,7 @@ Response (use JSON format if calling a tool):"""
                         parsed = self._parse_tool_calls(match, tools)
                         if parsed:
                             tool_calls.extend(parsed)
-                except:
+                except (json.JSONDecodeError, KeyError, TypeError, ValueError):
                     continue
 
         return tool_calls
@@ -724,7 +724,7 @@ Assistant:"""
                     tool_calls.append(
                         {"name": data["tool"], "arguments": data.get("arguments", {})}
                     )
-        except:
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError):
             pass
         return tool_calls
 
@@ -1085,7 +1085,7 @@ class AnthropicProvider(LLMProvider):
                 try:
                     error_details += f"\nHTTP Status: {e.response.status_code}"
                     error_details += f"\nHTTP Response: {e.response.text}"
-                except:
+                except (AttributeError, TypeError):
                     pass
 
             # Check if it's a timeout

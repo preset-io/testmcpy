@@ -13,8 +13,16 @@ class CIGateConfig:
     required_tests: list[str] = field(default_factory=list)  # Tests that MUST pass
     block_on_regression: bool = True  # Fail if regression detected vs baseline
 
-    def evaluate(self, results: list[dict]) -> dict:
-        """Evaluate results against gate config. Returns {passed, reason, details}."""
+    def evaluate(self, results: list[dict], regressions: list[dict] | None = None) -> dict:
+        """Evaluate results against gate config.
+
+        Args:
+            results: List of test result dicts with "passed" and "test_name" keys.
+            regressions: Optional list of regression dicts (from BaselineStore.compare).
+
+        Returns:
+            Dict with passed, pass_rate, failures, total, passed_count.
+        """
         total = len(results)
         passed = sum(1 for r in results if r.get("passed"))
         pass_rate = (passed / total * 100) if total > 0 else 0
@@ -29,6 +37,11 @@ class CIGateConfig:
             missing = [t for t in self.required_tests if not result_map.get(t)]
             if missing:
                 failures.append(f"Required tests failed: {missing}")
+        if self.block_on_regression and regressions:
+            failures.append(
+                f"{len(regressions)} regression(s) detected: "
+                + ", ".join(r.get("test_name", "?") for r in regressions[:5])
+            )
 
         return {
             "passed": len(failures) == 0,
