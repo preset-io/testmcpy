@@ -1513,14 +1513,14 @@ class ClaudeSDKProvider(LLMProvider):
         pass
 
 
-_copilot_logger = logging.getLogger(__name__ + ".CopilotProvider")
+_assistant_logger = logging.getLogger(__name__ + ".AssistantProvider")
 
 
-class CopilotProvider(LLMProvider):
-    """LLM provider that sends prompts to the Preset copilot HTTP endpoint.
+class AssistantProvider(LLMProvider):
+    """LLM provider that sends prompts to the AI assistant conversation endpoint.
 
     Uses the same auth flow as MCP JWT auth to obtain a JWT token, then
-    creates a copilot conversation and streams SSE completions via httpx.
+    creates a assistant conversation and streams SSE completions via httpx.
 
     Config is resolved from kwargs, then env vars, then the default MCP
     profile auth settings (in that order).
@@ -1557,32 +1557,32 @@ class CopilotProvider(LLMProvider):
 
         self.workspace_hash = (
             workspace_hash
-            or os.environ.get("COPILOT_WORKSPACE_HASH")
+            or os.environ.get("ASSISTANT_WORKSPACE_HASH")
             or os.environ.get("PRESET_WORKSPACE_HASH", "")
         )
         self.domain = (
-            domain or os.environ.get("COPILOT_DOMAIN") or os.environ.get("PRESET_DOMAIN", "")
+            domain or os.environ.get("ASSISTANT_DOMAIN") or os.environ.get("PRESET_DOMAIN", "")
         )
         self.environment = (
             environment
-            or os.environ.get("COPILOT_ENVIRONMENT")
+            or os.environ.get("ASSISTANT_ENVIRONMENT")
             or os.environ.get("PRESET_ENVIRONMENT", "staging")
         )
         self.api_token = (
             api_token
-            or os.environ.get("COPILOT_API_TOKEN")
+            or os.environ.get("ASSISTANT_API_TOKEN")
             or os.environ.get("PRESET_API_TOKEN")
             or auth_cfg.get("api_token", "")
         )
         self.api_secret = (
             api_secret
-            or os.environ.get("COPILOT_API_SECRET")
+            or os.environ.get("ASSISTANT_API_SECRET")
             or os.environ.get("PRESET_API_SECRET")
             or auth_cfg.get("api_secret", "")
         )
         self.api_url = (
             api_url
-            or os.environ.get("COPILOT_API_URL")
+            or os.environ.get("ASSISTANT_API_URL")
             or os.environ.get("PRESET_API_URL")
             or auth_cfg.get("api_url", "")
             or self._ENV_API_URLS.get(self.environment, "")
@@ -1609,22 +1609,22 @@ class CopilotProvider(LLMProvider):
         self._client: httpx.AsyncClient | None = None
 
     async def initialize(self):
-        """Fetch JWT token and create a copilot conversation."""
+        """Fetch JWT token and create a assistant conversation."""
         if not self.base_url:
             raise ValueError(
-                "CopilotProvider requires workspace_hash + domain (or environment). "
-                "Set COPILOT_WORKSPACE_HASH and COPILOT_DOMAIN env vars, or pass them as kwargs."
+                "AssistantProvider requires workspace_hash + domain (or environment). "
+                "Set ASSISTANT_WORKSPACE_HASH and ASSISTANT_DOMAIN env vars, or pass them as kwargs."
             )
         if not self.api_token or not self.api_secret:
             raise ValueError(
-                "CopilotProvider requires api_token and api_secret for JWT auth. "
-                "Set COPILOT_API_TOKEN / COPILOT_API_SECRET env vars, or configure MCP profile auth."
+                "AssistantProvider requires api_token and api_secret for JWT auth. "
+                "Set ASSISTANT_API_TOKEN / ASSISTANT_API_SECRET env vars, or configure MCP profile auth."
             )
 
         self._client = httpx.AsyncClient(timeout=60.0)
 
         # --- Fetch JWT ---
-        _copilot_logger.info("[Copilot] Fetching JWT from: %s", self.api_url)
+        _assistant_logger.info("[Assistant] Fetching JWT from: %s", self.api_url)
         try:
             resp = await self._client.post(
                 self.api_url,
@@ -1637,7 +1637,7 @@ class CopilotProvider(LLMProvider):
             self._jwt_token = data.get("payload", {}).get("access_token", "")
             if not self._jwt_token:
                 raise ValueError(f"No access_token in auth response: {data}")
-            _copilot_logger.info("[Copilot] JWT obtained (length: %d)", len(self._jwt_token))
+            _assistant_logger.info("[Assistant] JWT obtained (length: %d)", len(self._jwt_token))
         except httpx.HTTPStatusError as e:
             raise RuntimeError(
                 f"JWT auth failed: HTTP {e.response.status_code} - {e.response.text}"
@@ -1647,7 +1647,7 @@ class CopilotProvider(LLMProvider):
 
         # --- Create conversation ---
         conv_url = f"{self.base_url}/api/v1/copilot/conversations"
-        _copilot_logger.info("[Copilot] Creating conversation at: %s", conv_url)
+        _assistant_logger.info("[Assistant] Creating conversation at: %s", conv_url)
         try:
             resp = await self._client.post(
                 conv_url,
@@ -1660,7 +1660,7 @@ class CopilotProvider(LLMProvider):
             self._conversation_id = conv_data.get("id")
             if not self._conversation_id:
                 raise ValueError(f"No conversation ID in response: {conv_data}")
-            _copilot_logger.info("[Copilot] Conversation created: %s", self._conversation_id)
+            _assistant_logger.info("[Assistant] Conversation created: %s", self._conversation_id)
         except httpx.HTTPStatusError as e:
             raise RuntimeError(
                 f"Conversation creation failed: HTTP {e.response.status_code} - {e.response.text}"
@@ -1684,22 +1684,22 @@ class CopilotProvider(LLMProvider):
         messages: list[dict[str, Any]] | None = None,
         **kwargs,
     ) -> LLMResult:
-        """Send prompt to copilot completions endpoint and stream SSE response.
+        """Send prompt to assistant completions endpoint and stream SSE response.
 
         The copilot endpoint handles tool calling internally (server-side),
         so we do not send tool schemas. Instead we parse SSE events for
-        tool_call / tool_result events emitted by the copilot backend.
+        tool_call / tool_result events emitted by the assistant backend.
         """
         start_time = time.time()
         logs: list[str] = []
 
         def log(msg: str):
-            _copilot_logger.info(msg)
+            _assistant_logger.info(msg)
             logs.append(msg)
 
         if not self._client or not self._jwt_token or not self._conversation_id:
             return LLMResult(
-                response="Error: CopilotProvider not initialized. Call initialize() first.",
+                response="Error: AssistantProvider not initialized. Call initialize() first.",
                 tool_calls=[],
                 duration=time.time() - start_time,
                 logs=logs,
@@ -1716,7 +1716,7 @@ class CopilotProvider(LLMProvider):
         completions_url = f"{self.base_url}/api/v1/copilot/completions"
         headers = {**self._build_headers(), "Accept": "text/event-stream"}
 
-        log(f"[Copilot] POST {completions_url} (conversation={self._conversation_id})")
+        log(f"[Assistant] POST {completions_url} (conversation={self._conversation_id})")
 
         response_text = ""
         tool_calls: list[dict[str, Any]] = []
@@ -1739,7 +1739,7 @@ class CopilotProvider(LLMProvider):
                 if resp.status_code != 200:
                     body = await resp.aread()
                     raise RuntimeError(
-                        f"Copilot API error: HTTP {resp.status_code} - {body.decode('utf-8', errors='replace')}"
+                        f"Assistant API error: HTTP {resp.status_code} - {body.decode('utf-8', errors='replace')}"
                     )
 
                 current_event: str | None = None
@@ -1768,7 +1768,7 @@ class CopilotProvider(LLMProvider):
                     try:
                         data = json.loads(json_str)
                     except json.JSONDecodeError:
-                        log(f"[Copilot] Failed to parse SSE data: {json_str[:100]}")
+                        log(f"[Assistant] Failed to parse SSE data: {json_str[:100]}")
                         continue
 
                     if current_event == "token":
@@ -1783,7 +1783,7 @@ class CopilotProvider(LLMProvider):
                             "arguments": data.get("input", {}),
                         }
                         tool_calls.append(tc)
-                        log(f"[Copilot] Tool call: {tc['name']} (id={tc['id']})")
+                        log(f"[Assistant] Tool call: {tc['name']} (id={tc['id']})")
 
                     elif current_event == "tool_result":
                         tr = {
@@ -1793,7 +1793,7 @@ class CopilotProvider(LLMProvider):
                         }
                         tool_results.append(tr)
                         log(
-                            f"[Copilot] Tool result: id={tr['tool_call_id']}, duration={tr['duration_ms']}ms"
+                            f"[Assistant] Tool result: id={tr['tool_call_id']}, duration={tr['duration_ms']}ms"
                         )
 
                     elif current_event == "usage":
@@ -1802,7 +1802,7 @@ class CopilotProvider(LLMProvider):
                             "completion": data.get("output_tokens", 0),
                             "total": data.get("total_tokens", 0),
                         }
-                        log(f"[Copilot] Usage: {token_usage}")
+                        log(f"[Assistant] Usage: {token_usage}")
 
                     elif current_event == "final":
                         got_final = True
@@ -1810,27 +1810,27 @@ class CopilotProvider(LLMProvider):
                         final_answer = data.get("answer", "") or data.get("message", "")
                         if final_answer and not response_text:
                             response_text = final_answer
-                        log(f"[Copilot] Final event received ({len(response_text)} chars)")
+                        log(f"[Assistant] Final event received ({len(response_text)} chars)")
 
                     elif current_event == "error":
                         got_error = True
                         error_message = data.get("error", "") or data.get(
                             "message", "unknown error"
                         )
-                        log(f"[Copilot] Error event: {error_message}")
+                        log(f"[Assistant] Error event: {error_message}")
 
         except httpx.TimeoutException:
             duration = time.time() - start_time
-            log(f"[Copilot] TIMEOUT after {duration:.1f}s")
+            log(f"[Assistant] TIMEOUT after {duration:.1f}s")
             return LLMResult(
-                response=f"Error: Copilot request timed out after {timeout}s",
+                response=f"Error: Assistant request timed out after {timeout}s",
                 tool_calls=tool_calls,
                 duration=duration,
                 logs=logs,
             )
         except (httpx.HTTPStatusError, httpx.ConnectError, RuntimeError) as e:
             duration = time.time() - start_time
-            log(f"[Copilot] Request failed: {e}")
+            log(f"[Assistant] Request failed: {e}")
             return LLMResult(
                 response=f"Error: {e}",
                 tool_calls=tool_calls,
@@ -1844,7 +1844,7 @@ class CopilotProvider(LLMProvider):
             response_text = f"Error: {error_message}"
 
         log(
-            f"[Copilot] Done: {len(response_text)} chars, "
+            f"[Assistant] Done: {len(response_text)} chars, "
             f"{len(tool_calls)} tool calls, {token_event_count} tokens, "
             f"final={'yes' if got_final else 'no'}, error={'yes' if got_error else 'no'}, "
             f"{duration:.2f}s"
@@ -1855,7 +1855,7 @@ class CopilotProvider(LLMProvider):
             tool_calls=tool_calls,
             tool_results=tool_results,
             token_usage=token_usage,
-            cost=0.0,  # Copilot usage is bundled with workspace subscription
+            cost=0.0,  # Assistant usage is bundled with workspace subscription
             duration=duration,
             tti_ms=tti_ms,
             logs=logs,
@@ -2267,7 +2267,7 @@ def create_llm_provider(provider: str, model: str, **kwargs) -> LLMProvider:
     Create an LLM provider instance.
 
     Args:
-        provider: Provider name (ollama, openai, openrouter, local, anthropic, claude-sdk, claude-cli, claude-code, copilot, chatbot, codex-cli)
+        provider: Provider name (ollama, openai, openrouter, local, anthropic, claude-sdk, claude-cli, claude-code, assistant, chatbot, codex-cli)
         model: Model name/path
         **kwargs: Additional provider-specific arguments
 
@@ -2285,8 +2285,9 @@ def create_llm_provider(provider: str, model: str, **kwargs) -> LLMProvider:
         "claude-sdk": ClaudeSDKProvider,  # Claude Agent SDK (uses Claude CLI)
         "claude-cli": ClaudeSDKProvider,  # Alias → claude-sdk
         "claude-code": ClaudeSDKProvider,  # Alias → claude-sdk
-        "copilot": CopilotProvider,  # Preset copilot endpoint
-        "chatbot": CopilotProvider,  # Alias → copilot
+        "assistant": AssistantProvider,  # AI assistant conversation endpoint
+        "chatbot": AssistantProvider,  # Alias → assistant
+        "copilot": AssistantProvider,  # Legacy alias → assistant
         "codex-cli": CodexCLIProvider,
         "codex": CodexCLIProvider,  # Alias
     }

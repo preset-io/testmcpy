@@ -15,7 +15,7 @@ import pytest
 from testmcpy.evals.base_evaluators import _match_tool_name, create_evaluator
 from testmcpy.src.llm_integration import (
     AnthropicProvider,
-    CopilotProvider,
+    AssistantProvider,
     LLMResult,
     OpenAIProvider,
     OpenRouterProvider,
@@ -40,7 +40,7 @@ class TestProviderFactory:
         provider = create_llm_provider(
             "copilot", "default", workspace_hash="test", domain="test.com"
         )
-        assert isinstance(provider, CopilotProvider)
+        assert isinstance(provider, AssistantProvider)
 
     def test_create_openrouter_provider(self):
         provider = create_llm_provider("openrouter", "anthropic/claude-haiku-4-5", api_key="test")

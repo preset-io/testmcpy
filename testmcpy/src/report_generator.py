@@ -140,7 +140,7 @@ class ReportGenerator:
             bool(re.match(r"^C\d", suite_name))  # C00, C01, etc.
             or bool(re.match(r"^D\d", suite_name))  # D01, D02, etc.
             or "chatbot" in lower_name
-            or "copilot" in lower_name
+            or "assistant" in lower_name
         )
         if is_chatbot:
             self.report.chatbot_requests += len(results)
