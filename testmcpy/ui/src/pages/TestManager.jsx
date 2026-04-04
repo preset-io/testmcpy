@@ -956,17 +956,21 @@ tests:
                   )}
                 </div>
 
-                {selectedLlmProvider && (
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="text-text-tertiary">Using:</span>
-                    <span className="px-2 py-1 rounded bg-surface-elevated border border-border text-text-secondary font-mono">
-                      {selectedLlmProvider.split(':')[1]}
-                    </span>
-                    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-blue-500/20 text-blue-400">
-                      {selectedLlmProvider.split(':')[0]}
-                    </span>
-                  </div>
-                )}
+                {selectedLlmProfile && llmProfiles.length > 0 && (() => {
+                  const profile = llmProfiles.find(p => p.profile_id === selectedLlmProfile)
+                  const defaultProv = profile?.providers?.find(p => p.default) || profile?.providers?.[0]
+                  return defaultProv ? (
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-text-tertiary">Using:</span>
+                      <span className="px-2 py-1 rounded bg-surface-elevated border border-border text-text-secondary font-mono">
+                        {defaultProv.model}
+                      </span>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-blue-500/20 text-blue-400">
+                        {defaultProv.provider}
+                      </span>
+                    </div>
+                  ) : null
+                })()}
               </div>
             </div>
 
