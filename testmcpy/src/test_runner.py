@@ -916,13 +916,13 @@ class TestRunner:
             )
             # Filter out exceptions from gather results
             filtered_results = []
-            for r in individual_results:
+            for idx, r in enumerate(individual_results):
                 if isinstance(r, BaseException):
                     filtered_results.append(
                         {
-                            "request_idx": -1,
+                            "request_idx": idx,
                             "success": False,
-                            "duration": 0,
+                            "duration": time.time() - start_time,
                             "response": None,
                             "error": str(r),
                             "score": 0.0,

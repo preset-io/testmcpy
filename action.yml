@@ -99,7 +99,7 @@ runs:
           --provider ${{ inputs.provider }} \
           ${PROFILE_ARGS} \
           --report results/report.${{ inputs.report_format }} \
-          --json results/results.json
+          --output results/results.json
     - name: Check pass threshold and set outputs
       shell: bash
       run: |
@@ -107,7 +107,11 @@ runs:
         import json
         d = json.load(open('results/results.json'))
         s = d.get('summary', {})
-        print(f\"{int(s.get('pass_rate', 0))} {s.get('total_tests', 0)} {s.get('passed', 0)} {s.get('failed', 0)}\")
+        total = s.get('total', 0)
+        passed = s.get('passed', 0)
+        failed = s.get('failed', 0)
+        rate = int(passed * 100 / total) if total > 0 else 0
+        print(f'{rate} {total} {passed} {failed}')
         ")
         read PASS_RATE TOTAL PASSED FAILED <<< "$RESULTS"
         echo "pass_rate=$PASS_RATE" >> $GITHUB_OUTPUT

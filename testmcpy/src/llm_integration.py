@@ -553,7 +553,10 @@ class OpenRouterProvider(OpenAIProvider):
                 "X-Title": "testmcpy",
             }
 
-            api_messages = [{"role": "user", "content": prompt}]
+            if messages:
+                api_messages = messages + [{"role": "user", "content": prompt}]
+            else:
+                api_messages = [{"role": "user", "content": prompt}]
 
             is_o1_model = self.model.startswith("o1")
 

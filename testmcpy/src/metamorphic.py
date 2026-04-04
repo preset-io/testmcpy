@@ -249,14 +249,14 @@ class MetamorphicTester:
 
         try:
             # Run source test
-            source_result = await self.runner.run_test(test_case)
+            source_result = await self.runner._run_test_with_retry(test_case)
 
             # Apply transform to get follow-up test case
             modified_case = relation.source_transform(test_case)
             followup_prompt = modified_case.prompt
 
             # Run follow-up test
-            followup_result = await self.runner.run_test(modified_case)
+            followup_result = await self.runner._run_test_with_retry(modified_case)
 
             # Check whether the relation holds
             relation_holds = relation.output_relation(source_result, followup_result)

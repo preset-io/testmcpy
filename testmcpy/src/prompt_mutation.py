@@ -196,7 +196,7 @@ class MutationTestRunner:
         plus consistency score (% of mutations that matched original tool calls).
         """
         # Run original test
-        original_result = await self.runner.run_test(test_case)
+        original_result = await self.runner._run_test_with_retry(test_case)
         original_tool_names = _extract_tool_names(original_result.tool_calls)
 
         report = MutationTestReport(
@@ -223,7 +223,7 @@ class MutationTestRunner:
 
             start = time.time()
             try:
-                result = await self.runner.run_test(mutated_case)
+                result = await self.runner._run_test_with_retry(mutated_case)
                 mutation_result.passed = result.passed
                 mutation_result.tool_calls = result.tool_calls
                 mutation_result.score = result.score
