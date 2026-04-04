@@ -885,7 +885,7 @@ class TestRunner:
                             "score": result.score,
                             "tool_calls": result.tool_calls,
                         }
-                    except Exception as e:
+                    except (RuntimeError, ValueError, OSError, asyncio.TimeoutError) as e:
                         duration = time.time() - req_start
                         return {
                             "request_idx": request_idx,
@@ -900,9 +900,27 @@ class TestRunner:
             # Launch all requests concurrently (semaphore limits concurrency)
             tasks = [_run_single(i) for i in range(requests)]
             individual_results = await asyncio.wait_for(
-                asyncio.gather(*tasks, return_exceptions=False),
+                asyncio.gather(*tasks, return_exceptions=True),
                 timeout=timeout,
             )
+            # Filter out exceptions from gather results
+            filtered_results = []
+            for r in individual_results:
+                if isinstance(r, BaseException):
+                    filtered_results.append(
+                        {
+                            "request_idx": -1,
+                            "success": False,
+                            "duration": 0,
+                            "response": None,
+                            "error": str(r),
+                            "score": 0.0,
+                            "tool_calls": [],
+                        }
+                    )
+                else:
+                    filtered_results.append(r)
+            individual_results = filtered_results
 
             total_duration = time.time() - start_time
             successes = sum(1 for r in individual_results if r.get("success", False))
@@ -995,7 +1013,7 @@ class TestRunner:
                 error=f"Load test timed out after {timeout}s",
                 reason=f"Load test timed out after {timeout}s",
             )
-        except Exception as e:
+        except (RuntimeError, ValueError, OSError, KeyError, TypeError) as e:
             return TestResult(
                 test_name=test_case.name,
                 passed=False,

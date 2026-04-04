@@ -1862,9 +1862,12 @@ class LatencyPercentile(BaseEvaluator):
         if not results:
             return EvalResult(passed=False, score=0.0, reason="No load test results")
 
+        import math
+
         durations = sorted(r.get("duration", 0) for r in results)
-        idx = int(len(durations) * self.percentile / 100)
-        idx = min(idx, len(durations) - 1)
+        # Nearest-rank percentile: ceil(N * P / 100) - 1
+        idx = int(math.ceil(len(durations) * self.percentile / 100)) - 1
+        idx = max(0, min(idx, len(durations) - 1))
         p_value = durations[idx]
         passed = p_value <= self.max_seconds
         return EvalResult(
