@@ -1809,6 +1809,72 @@ class NoLeakedData(BaseEvaluator):
         )
 
 
+# Load/burst test aggregate evaluators
+
+
+class SuccessRateAbove(BaseEvaluator):
+    """Check that success rate across multiple runs meets minimum threshold."""
+
+    def __init__(self, min_rate: float = 0.9):
+        self.min_rate = min_rate
+
+    @property
+    def name(self) -> str:
+        return f"success_rate_above:{self.min_rate:.0%}"
+
+    @property
+    def description(self) -> str:
+        return f"Checks that success rate is at least {self.min_rate:.0%}"
+
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
+        results = context.get("load_test_results", [])
+        if not results:
+            return EvalResult(passed=False, score=0.0, reason="No load test results")
+
+        successes = sum(1 for r in results if r.get("success", False))
+        rate = successes / len(results)
+        passed = rate >= self.min_rate
+        return EvalResult(
+            passed=passed,
+            score=rate,
+            reason=f"Success rate: {rate:.1%} (minimum: {self.min_rate:.1%})",
+            details={"success_rate": rate, "total": len(results), "successes": successes},
+        )
+
+
+class LatencyPercentile(BaseEvaluator):
+    """Check that a latency percentile is within bounds."""
+
+    def __init__(self, percentile: float = 95, max_seconds: float = 30.0):
+        self.percentile = percentile
+        self.max_seconds = max_seconds
+
+    @property
+    def name(self) -> str:
+        return f"latency_percentile:p{self.percentile}:{self.max_seconds}s"
+
+    @property
+    def description(self) -> str:
+        return f"Checks that P{self.percentile} latency is under {self.max_seconds}s"
+
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
+        results = context.get("load_test_results", [])
+        if not results:
+            return EvalResult(passed=False, score=0.0, reason="No load test results")
+
+        durations = sorted(r.get("duration", 0) for r in results)
+        idx = int(len(durations) * self.percentile / 100)
+        idx = min(idx, len(durations) - 1)
+        p_value = durations[idx]
+        passed = p_value <= self.max_seconds
+        return EvalResult(
+            passed=passed,
+            score=min(1.0, self.max_seconds / p_value) if p_value > 0 else 1.0,
+            reason=f"P{self.percentile}: {p_value:.1f}s (max: {self.max_seconds}s)",
+            details={"percentile": self.percentile, "value": p_value, "max": self.max_seconds},
+        )
+
+
 # Factory function for creating evaluators
 
 
@@ -1865,6 +1931,9 @@ def create_evaluator(name: str, **kwargs) -> BaseEvaluator:
         "token_valid": TokenValidEvaluator,
         "oauth2_flow_complete": OAuth2FlowEvaluator,
         "auth_error_handling": AuthErrorHandlingEvaluator,
+        # Load/burst test aggregate evaluators
+        "success_rate_above": SuccessRateAbove,
+        "latency_percentile": LatencyPercentile,
     }
 
     if name not in evaluators:

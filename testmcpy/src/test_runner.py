@@ -121,6 +121,7 @@ class TestCase:
     timeout: float = 30.0
     auth: dict[str, Any] | None = None
     steps: list[TestStep] | None = None  # For multi-turn tests
+    load_test: dict[str, Any] | None = None  # For load/burst tests
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "TestCase":
@@ -145,12 +146,18 @@ class TestCase:
             timeout=data.get("timeout", 30.0),
             auth=data.get("auth"),
             steps=steps,
+            load_test=data.get("load_test"),
         )
 
     @property
     def is_multi_turn(self) -> bool:
         """Check if this is a multi-turn test."""
         return self.steps is not None and len(self.steps) > 1
+
+    @property
+    def is_load_test(self) -> bool:
+        """Check if this is a load/burst test."""
+        return self.load_test is not None
 
 
 @dataclass
@@ -209,6 +216,7 @@ class TestRunner:
         verbose: bool = False,
         hide_tool_output: bool = False,
         log_callback=None,
+        provider_config: dict[str, Any] | None = None,
     ):
         self.model = model
         self.provider = provider
@@ -222,6 +230,8 @@ class TestRunner:
         self._owns_mcp_client = mcp_client is None
         # Optional callback for real-time log streaming
         self.log_callback = log_callback
+        # Additional provider-specific config (e.g., from suite-level override)
+        self.provider_config = provider_config or {}
 
     def _log(self, message: str, force: bool = False):
         """Log a message to console and optionally via callback."""
@@ -258,6 +268,7 @@ class TestRunner:
                 mcp_url=self.mcp_url,
                 auth=auth,
                 log_callback=self.log_callback,
+                **self.provider_config,
             )
             await self.llm_provider.initialize()
 
@@ -840,6 +851,160 @@ class TestRunner:
                 step_results=step_results,
             )
 
+    async def run_load_test(self, test_case: TestCase) -> TestResult:
+        """Run a load/burst test: execute the same test N times with M concurrent workers."""
+        if not test_case.is_load_test:
+            return await self.run_test(test_case)
+
+        start_time = time.time()
+        load_config = test_case.load_test
+        workers = load_config.get("workers", 1)
+        requests = load_config.get("requests", 1)
+        timeout = load_config.get("timeout", 120.0)
+
+        self._log(f"Load test: {requests} requests with {workers} concurrent workers", force=True)
+
+        try:
+            await self.initialize()
+
+            semaphore = asyncio.Semaphore(workers)
+            individual_results: list[dict[str, Any]] = []
+
+            async def _run_single(request_idx: int) -> dict[str, Any]:
+                async with semaphore:
+                    req_start = time.time()
+                    try:
+                        result = await self.run_test(test_case)
+                        duration = time.time() - req_start
+                        return {
+                            "request_idx": request_idx,
+                            "success": result.passed,
+                            "duration": duration,
+                            "response": result.response,
+                            "error": result.error,
+                            "score": result.score,
+                            "tool_calls": result.tool_calls,
+                        }
+                    except Exception as e:
+                        duration = time.time() - req_start
+                        return {
+                            "request_idx": request_idx,
+                            "success": False,
+                            "duration": duration,
+                            "response": None,
+                            "error": str(e),
+                            "score": 0.0,
+                            "tool_calls": [],
+                        }
+
+            # Launch all requests concurrently (semaphore limits concurrency)
+            tasks = [_run_single(i) for i in range(requests)]
+            individual_results = await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=False),
+                timeout=timeout,
+            )
+
+            total_duration = time.time() - start_time
+            successes = sum(1 for r in individual_results if r.get("success", False))
+            durations = [r.get("duration", 0) for r in individual_results]
+            avg_duration = sum(durations) / len(durations) if durations else 0
+
+            self._log(
+                f"Load test complete: {successes}/{requests} succeeded, "
+                f"avg duration {avg_duration:.1f}s, total {total_duration:.1f}s",
+                force=True,
+            )
+
+            # Build context with load_test_results for aggregate evaluators
+            context = {
+                "prompt": test_case.prompt,
+                "response": f"Load test: {successes}/{requests} succeeded",
+                "tool_calls": [],
+                "tool_results": [],
+                "load_test_results": individual_results,
+                "metadata": {
+                    "duration_seconds": total_duration,
+                    "model": self.model,
+                    "load_test": {
+                        "workers": workers,
+                        "requests": requests,
+                        "successes": successes,
+                        "avg_duration": avg_duration,
+                    },
+                },
+            }
+
+            # Run evaluators
+            evaluations = []
+            all_passed = True
+            total_score = 0.0
+
+            for eval_config in test_case.evaluators:
+                evaluator = self._create_evaluator(eval_config)
+                eval_result = evaluator.evaluate(context)
+
+                evaluations.append(
+                    {
+                        "evaluator": evaluator.name,
+                        "passed": eval_result.passed,
+                        "score": eval_result.score,
+                        "reason": eval_result.reason,
+                        "details": eval_result.details,
+                    }
+                )
+
+                if self.verbose:
+                    status = "PASS" if eval_result.passed else "FAIL"
+                    self._log(
+                        f"  Evaluator {evaluator.name}: {status} (score: {eval_result.score:.2f})"
+                    )
+
+                if not eval_result.passed:
+                    all_passed = False
+                total_score += eval_result.score
+
+            avg_score = total_score / len(test_case.evaluators) if test_case.evaluators else 0.0
+
+            return TestResult(
+                test_name=test_case.name,
+                passed=all_passed,
+                score=avg_score,
+                duration=total_duration,
+                reason=f"Load test: {successes}/{requests} succeeded, {len(evaluations)} evaluators run",
+                evaluations=evaluations,
+                response=json.dumps(
+                    {
+                        "load_test_summary": {
+                            "workers": workers,
+                            "requests": requests,
+                            "successes": successes,
+                            "failures": requests - successes,
+                            "avg_duration": round(avg_duration, 2),
+                            "total_duration": round(total_duration, 2),
+                        }
+                    }
+                ),
+            )
+
+        except asyncio.TimeoutError:
+            return TestResult(
+                test_name=test_case.name,
+                passed=False,
+                score=0.0,
+                duration=time.time() - start_time,
+                error=f"Load test timed out after {timeout}s",
+                reason=f"Load test timed out after {timeout}s",
+            )
+        except Exception as e:
+            return TestResult(
+                test_name=test_case.name,
+                passed=False,
+                score=0.0,
+                duration=time.time() - start_time,
+                error=str(e),
+                reason=f"Load test failed: {str(e)}",
+            )
+
     async def run_tests(self, test_cases: list[TestCase]) -> list[TestResult]:
         """Run multiple test cases."""
         results = []
@@ -880,8 +1045,10 @@ class TestRunner:
     ) -> TestResult:
         """Run a test with retry logic for rate limit failures."""
         for attempt in range(max_test_retries + 1):
-            # Use multi-turn runner for multi-step tests
-            if test_case.is_multi_turn:
+            # Dispatch to appropriate runner
+            if test_case.is_load_test:
+                result = await self.run_load_test(test_case)
+            elif test_case.is_multi_turn:
                 result = await self.run_multi_turn_test(test_case)
             else:
                 result = await self.run_test(test_case)
