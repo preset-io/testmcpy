@@ -509,6 +509,132 @@ class OpenAIProvider(LLMProvider):
         await self.client.aclose()
 
 
+class OpenRouterProvider(OpenAIProvider):
+    """OpenRouter API provider — OpenAI-compatible gateway to 100+ models.
+
+    Uses the same OpenAI chat/completions format but routes through
+    https://openrouter.ai/api/v1 with an OpenRouter API key.
+    """
+
+    def __init__(self, model: str, api_key: str | None = None):
+        resolved_key = api_key or os.environ.get("OPENROUTER_API_KEY", "")
+        super().__init__(
+            model=model,
+            api_key=resolved_key,
+            base_url="https://openrouter.ai/api/v1",
+        )
+
+    async def initialize(self):
+        """Validate that an API key is available."""
+        if not self.api_key:
+            config = get_config()
+            self.api_key = config.get("OPENROUTER_API_KEY", "")
+        if not self.api_key:
+            raise ValueError(
+                "OpenRouter API key not provided. "
+                "Set OPENROUTER_API_KEY in ~/.testmcpy or environment."
+            )
+
+    async def generate_with_tools(
+        self,
+        prompt: str,
+        tools: list[dict[str, Any]],
+        timeout: float = 30.0,
+        messages: list[dict[str, Any]] | None = None,
+    ) -> LLMResult:
+        """Generate with OpenRouter — adds required extra headers."""
+        start_time = time.time()
+
+        try:
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.api_key}",
+                "HTTP-Referer": "https://testmcpy.dev",
+                "X-Title": "testmcpy",
+            }
+
+            api_messages = [{"role": "user", "content": prompt}]
+
+            is_o1_model = self.model.startswith("o1")
+
+            request_data: dict[str, Any] = {
+                "model": self.model,
+                "messages": api_messages,
+            }
+
+            if is_o1_model:
+                request_data["max_completion_tokens"] = 1000
+            else:
+                openai_tools = self._convert_to_openai_tools(tools)
+                request_data["tools"] = openai_tools
+                request_data["tool_choice"] = "auto"
+                request_data["temperature"] = 0.1
+                request_data["max_tokens"] = 1000
+
+            response = await self.client.post(
+                f"{self.base_url}/chat/completions",
+                json=request_data,
+                headers=headers,
+                timeout=timeout,
+            )
+
+            if response.status_code != 200:
+                raise ValueError(f"OpenRouter API error: {response.status_code} - {response.text}")
+
+            result = response.json()
+            choice = result["choices"][0]
+            message = choice["message"]
+
+            tool_calls = []
+            if "tool_calls" in message:
+                for tc in message["tool_calls"]:
+                    tool_calls.append(
+                        {
+                            "name": tc["function"]["name"],
+                            "arguments": json.loads(tc["function"]["arguments"]),
+                        }
+                    )
+
+            usage = result.get("usage", {})
+            token_usage = {
+                "prompt": usage.get("prompt_tokens", 0),
+                "completion": usage.get("completion_tokens", 0),
+                "total": usage.get("total_tokens", 0),
+            }
+
+            # OpenRouter returns cost info when available
+            cost = 0.0
+            if "usage" in result and "cost" in result["usage"]:
+                cost = float(result["usage"]["cost"])
+            else:
+                # Fallback estimate
+                cost = (token_usage["prompt"] * 0.03 + token_usage["completion"] * 0.06) / 1000
+
+            duration = time.time() - start_time
+            tti_ms = int(duration * 1000)
+
+            return LLMResult(
+                response=message.get("content") or "",
+                tool_calls=tool_calls,
+                token_usage=token_usage,
+                cost=cost,
+                duration=duration,
+                tti_ms=tti_ms,
+                raw_response=result,
+            )
+
+        except ValueError:
+            raise
+        except (httpx.HTTPError, KeyError, json.JSONDecodeError) as e:
+            duration = time.time() - start_time
+            return LLMResult(
+                response=f"Error: {str(e)}",
+                tool_calls=[],
+                duration=duration,
+                tti_ms=int(duration * 1000),
+            )
+
+
 class LocalModelProvider(LLMProvider):
     """Provider for local models using transformers or llama.cpp."""
 
@@ -2141,7 +2267,7 @@ def create_llm_provider(provider: str, model: str, **kwargs) -> LLMProvider:
     Create an LLM provider instance.
 
     Args:
-        provider: Provider name (ollama, openai, local, anthropic, claude-sdk, claude-cli, claude-code, copilot, chatbot, codex-cli)
+        provider: Provider name (ollama, openai, openrouter, local, anthropic, claude-sdk, claude-cli, claude-code, copilot, chatbot, codex-cli)
         model: Model name/path
         **kwargs: Additional provider-specific arguments
 
@@ -2151,6 +2277,7 @@ def create_llm_provider(provider: str, model: str, **kwargs) -> LLMProvider:
     providers = {
         "ollama": OllamaProvider,
         "openai": OpenAIProvider,
+        "openrouter": OpenRouterProvider,
         "local": LocalModelProvider,
         "anthropic": AnthropicProvider,
         "gemini": GeminiProvider,
