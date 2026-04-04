@@ -6,6 +6,8 @@ from testmcpy.cli.app import app, console
 from testmcpy.cli.commands import (
     agent,  # noqa: F401
     mcp,  # noqa: F401
+    metamorphic,  # noqa: F401
+    mutate,  # noqa: F401
     run,  # noqa: F401
     server,  # noqa: F401
     tools,  # noqa: F401
