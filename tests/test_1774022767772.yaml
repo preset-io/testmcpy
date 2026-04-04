@@ -1,0 +1,15 @@
+version: "1.0"
+tests:
+  - name: test_1774022767772
+    prompt: "list my dashboards"
+    evaluators:
+      - name: execution_successful
+      - name: was_mcp_tool_called
+        args:
+          tool_name: "ToolSearch"
+      - name: tool_called_with_parameters
+        args:
+          tool_name: "ToolSearch"
+          parameters:
+            query: "get_instance_info"
+          partial_match: true

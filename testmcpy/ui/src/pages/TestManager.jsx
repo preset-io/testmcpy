@@ -75,7 +75,7 @@ function parseTestLocations(content) {
   return tests
 }
 
-function TestManager({ selectedProfiles = [] }) {
+function TestManager({ selectedProfiles = [], selectedLlmProfile = null, llmProfiles = [] }) {
   // Get test run state from context (persists across navigation)
   const {
     running,
@@ -111,11 +111,6 @@ function TestManager({ selectedProfiles = [] }) {
   const logsEndRef = useRef(null)
   const [testProfiles, setTestProfiles] = useState([])
   const [selectedTestProfile, setSelectedTestProfile] = useState(null)
-  const [mcpProfiles, setMcpProfiles] = useState([])
-  const [selectedMcpProfile, setSelectedMcpProfile] = useState(null)
-  const [llmProfiles, setLlmProfiles] = useState([])
-  const [selectedLlmProfile, setSelectedLlmProfile] = useState(null)
-  const [selectedLlmProvider, setSelectedLlmProvider] = useState(null) // specific provider within profile
   const [runAllLlmsMode, setRunAllLlmsMode] = useState(false)
   const [allLlmsResults, setAllLlmsResults] = useState(null) // results from running all LLMs
   const [resultsHistory, setResultsHistory] = useState([])
@@ -126,8 +121,6 @@ function TestManager({ selectedProfiles = [] }) {
   useEffect(() => {
     loadTestFiles()
     loadTestProfiles()
-    loadMcpProfiles()
-    loadLlmProfiles()
   }, [])
 
   // Screen reader announcements
@@ -203,86 +196,9 @@ function TestManager({ selectedProfiles = [] }) {
     localStorage.setItem('selectedTestProfile', profileId)
   }
 
-  const loadMcpProfiles = async () => {
-    try {
-      const res = await fetch('/api/mcp/profiles')
-      const data = await res.json()
-      setMcpProfiles(data.profiles || [])
-
-      // Check localStorage for saved MCP profile
-      const savedProfile = localStorage.getItem('selectedMCPProfileForTests')
-      if (savedProfile) {
-        setSelectedMcpProfile(savedProfile)
-      } else if (data.default_selection) {
-        setSelectedMcpProfile(data.default_selection)
-        localStorage.setItem('selectedMCPProfileForTests', data.default_selection)
-      }
-    } catch (error) {
-      console.error('Failed to load MCP profiles:', error)
-    }
-  }
-
-  const loadLlmProfiles = async () => {
-    try {
-      const res = await fetch('/api/llm/profiles')
-      const data = await res.json()
-      setLlmProfiles(data.profiles || [])
-
-      // Check localStorage for saved LLM profile and provider
-      // First check test-specific settings, then fall back to global settings
-      const savedProfile = localStorage.getItem('selectedLLMProfileForTests') || localStorage.getItem('selectedLLMProfile')
-      const savedProvider = localStorage.getItem('selectedLLMProviderForTests') || localStorage.getItem('selectedLLMProvider')
-
-      if (savedProfile) {
-        setSelectedLlmProfile(savedProfile)
-        if (savedProvider) {
-          setSelectedLlmProvider(savedProvider)
-        } else {
-          // Set provider from the profile's default
-          const profileData = data.profiles?.find(p => p.profile_id === savedProfile)
-          if (profileData?.providers?.length > 0) {
-            const defaultProv = profileData.providers.find(p => p.default) || profileData.providers[0]
-            const provKey = `${defaultProv.provider}:${defaultProv.model}`
-            setSelectedLlmProvider(provKey)
-          }
-        }
-      } else if (data.default) {
-        setSelectedLlmProfile(data.default)
-        // Set default provider from the profile
-        const defaultProfileData = data.profiles?.find(p => p.profile_id === data.default)
-        if (defaultProfileData?.providers?.length > 0) {
-          const defaultProv = defaultProfileData.providers.find(p => p.default) || defaultProfileData.providers[0]
-          const provKey = `${defaultProv.provider}:${defaultProv.model}`
-          setSelectedLlmProvider(provKey)
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load LLM profiles:', error)
-    }
-  }
-
-  const handleMcpProfileChange = (profileSelection) => {
-    setSelectedMcpProfile(profileSelection)
-    localStorage.setItem('selectedMCPProfileForTests', profileSelection)
-  }
-
-  const handleLlmProfileChange = (profileId) => {
-    setSelectedLlmProfile(profileId)
-    localStorage.setItem('selectedLLMProfileForTests', profileId)
-    // Reset provider selection when profile changes
-    const profile = llmProfiles.find(p => p.profile_id === profileId)
-    if (profile?.providers?.length > 0) {
-      const defaultProv = profile.providers.find(p => p.default) || profile.providers[0]
-      const provKey = `${defaultProv.provider}:${defaultProv.model}`
-      setSelectedLlmProvider(provKey)
-      localStorage.setItem('selectedLLMProviderForTests', provKey)
-    }
-  }
-
-  const handleLlmProviderChange = (providerKey) => {
-    setSelectedLlmProvider(providerKey)
-    localStorage.setItem('selectedLLMProviderForTests', providerKey)
-  }
+  // Derive MCP profile from global selectedProfiles prop
+  // selectedProfiles is an array of "profile_id:mcp_name" strings
+  const selectedMcpProfile = selectedProfiles.length > 0 ? selectedProfiles[0] : null
 
   // Load results history for current file
   const loadResultsHistory = async (testFile) => {
@@ -325,10 +241,6 @@ function TestManager({ selectedProfiles = [] }) {
 
   // Get model and provider from selected LLM provider
   const getLlmConfig = () => {
-    if (selectedLlmProvider) {
-      const [provider, model] = selectedLlmProvider.split(':')
-      return { model, provider }
-    }
     if (!selectedLlmProfile || llmProfiles.length === 0) {
       return { model: 'claude-sonnet-4-20250514', provider: 'anthropic' }
     }
@@ -778,75 +690,6 @@ tests:
 
   return (
     <div className="h-full flex flex-col">
-      {/* Profile Selectors */}
-      <div className="px-6 py-3 border-b border-border bg-surface-elevated">
-        <div className="grid grid-cols-4 gap-4">
-          {/* MCP Profile Selector */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-text-tertiary uppercase tracking-wide">
-              MCP Profile
-            </label>
-            <select
-              value={selectedMcpProfile || ''}
-              onChange={(e) => handleMcpProfileChange(e.target.value)}
-              className="input text-sm"
-            >
-              {!selectedMcpProfile && <option value="">Select MCP...</option>}
-              {mcpProfiles.map(profile => (
-                <option key={profile.id} value={profile.id}>
-                  {profile.name} ({profile.mcps.length} server{profile.mcps.length !== 1 ? 's' : ''})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* LLM Profile Selector */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-text-tertiary uppercase tracking-wide">
-              LLM Profile
-            </label>
-            <select
-              value={selectedLlmProfile || ''}
-              onChange={(e) => handleLlmProfileChange(e.target.value)}
-              className="input text-sm"
-            >
-              {!selectedLlmProfile && <option value="">Select LLM...</option>}
-              {llmProfiles.map(profile => {
-                const defaultProvider = profile.providers?.find(p => p.default) || profile.providers?.[0]
-                return (
-                  <option key={profile.profile_id} value={profile.profile_id}>
-                    {profile.name} {defaultProvider ? `(${defaultProvider.model})` : ''}
-                  </option>
-                )
-              })}
-            </select>
-          </div>
-
-          {/* LLM Provider Selector (within selected profile) */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-text-tertiary uppercase tracking-wide">
-              LLM Provider
-            </label>
-            <select
-              value={selectedLlmProvider || ''}
-              onChange={(e) => handleLlmProviderChange(e.target.value)}
-              className="input text-sm"
-              disabled={!selectedLlmProfile}
-            >
-              {!selectedLlmProvider && <option value="">Select provider...</option>}
-              {selectedLlmProfile && llmProfiles.find(p => p.profile_id === selectedLlmProfile)?.providers?.map(prov => {
-                const provKey = `${prov.provider}:${prov.model}`
-                return (
-                  <option key={provKey} value={provKey}>
-                    {prov.name || prov.model} ({prov.provider})
-                  </option>
-                )
-              })}
-            </select>
-          </div>
-        </div>
-      </div>
-
       <div className="flex-1 flex overflow-hidden min-h-0">
         {/* File List Sidebar */}
         <div className="w-80 flex-shrink-0 border-r border-border flex flex-col bg-surface-elevated overflow-hidden">

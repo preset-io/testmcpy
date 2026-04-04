@@ -80,6 +80,7 @@ function ChatInterface({ selectedProfiles = [], selectedLlmProfile, llmProfiles 
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [streamingStatus, setStreamingStatus] = useState('')
   const messagesEndRef = useRef(null)
   const [showEvalDialog, setShowEvalDialog] = useState(false)
   const [selectedMessageIndex, setSelectedMessageIndex] = useState(null)
@@ -89,6 +90,7 @@ function ChatInterface({ selectedProfiles = [], selectedLlmProfile, llmProfiles 
   const [collapsedThinking, setCollapsedThinking] = useState({})
   const textareaRef = useRef(null)
   const [historySize, setHistorySize] = useState(10)  // Number of messages to keep in history
+  const abortControllerRef = useRef(null)
 
   // For Chat, only use the first selected profile (single MCP at a time)
   const activeProfile = selectedProfiles.length > 0 ? selectedProfiles[0] : null
@@ -225,16 +227,43 @@ function ChatInterface({ selectedProfiles = [], selectedLlmProfile, llmProfiles 
     setMessages(updatedMessages)
     setInput('')
     setLoading(true)
+    setStreamingStatus('Connecting...')
+
+    // Create a placeholder assistant message
+    const assistantMessage = {
+      role: 'assistant',
+      content: '',
+      tool_calls: [],
+      thinking: null,
+      token_usage: null,
+      cost: 0,
+      duration: 0,
+      model: null,
+      provider: null,
+      streaming: true,
+      currentTurn: 0,
+      totalTurns: 0,
+    }
+    const messagesWithPlaceholder = [...updatedMessages, assistantMessage]
+    setMessages(messagesWithPlaceholder)
+
+    // Track the assistant message index for updates
+    const assistantIdx = updatedMessages.length
+
+    // Expand thinking by default during streaming
+    setCollapsedThinking(prev => ({ ...prev, [assistantIdx]: false }))
+
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
 
     try {
-      // Build history for API - last N messages (excluding current one we just added)
       const historyForAPI = messages.slice(-historySize).map(msg => ({
         role: msg.role,
         content: msg.content
       }))
 
       const llmConfig = getLlmConfig()
-      const res = await fetch('/api/chat', {
+      const res = await fetch('/api/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -245,39 +274,171 @@ function ChatInterface({ selectedProfiles = [], selectedLlmProfile, llmProfiles 
           profiles: activeProfile ? [activeProfile] : null,
           history: historyForAPI.length > 0 ? historyForAPI : null,
         }),
+        signal: abortController.signal,
       })
 
-      const data = await res.json()
-
-      const assistantMessage = {
-        role: 'assistant',
-        content: data.response || '',
-        tool_calls: data.tool_calls || [],
-        thinking: data.thinking || null,
-        token_usage: data.token_usage,
-        cost: data.cost,
-        duration: data.duration,
-        model: data.model || null,
-        provider: data.provider || null,
+      if (!res.ok) {
+        const errorText = await res.text()
+        throw new Error(`HTTP ${res.status}: ${errorText}`)
       }
 
-      const finalMessages = [...updatedMessages, assistantMessage]
-      setMessages(finalMessages)
-      saveChatHistory(finalMessages)
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      // Accumulate state for the assistant message
+      let accContent = ''
+      let accThinking = ''
+      let accToolCalls = []
+      let currentTurn = 0
+      let totalTurns = 0
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+
+        // Parse SSE events from buffer
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || '' // keep incomplete line in buffer
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const jsonStr = line.slice(6)
+          if (!jsonStr.trim()) continue
+
+          let event
+          try {
+            event = JSON.parse(jsonStr)
+          } catch (e) {
+            console.warn('Failed to parse SSE event:', jsonStr)
+            continue
+          }
+
+          const { type, data } = event
+
+          if (type === 'status') {
+            setStreamingStatus(data)
+          } else if (type === 'turn_start') {
+            currentTurn = data.turn
+            setMessages(prev => {
+              const updated = [...prev]
+              updated[assistantIdx] = { ...updated[assistantIdx], currentTurn: data.turn }
+              return updated
+            })
+            setStreamingStatus(`Turn ${data.turn}/${data.max_turns} — Thinking...`)
+          } else if (type === 'thinking') {
+            accThinking += data
+            setMessages(prev => {
+              const updated = [...prev]
+              updated[assistantIdx] = { ...updated[assistantIdx], thinking: accThinking }
+              return updated
+            })
+          } else if (type === 'token') {
+            accContent += data
+            setMessages(prev => {
+              const updated = [...prev]
+              updated[assistantIdx] = { ...updated[assistantIdx], content: accContent }
+              return updated
+            })
+            if (currentTurn > 1) {
+              setStreamingStatus(`Turn ${currentTurn} — Streaming response...`)
+            } else {
+              setStreamingStatus('')
+            }
+          } else if (type === 'tool_call') {
+            const turn = data.turn || currentTurn || 1
+            accToolCalls = [...accToolCalls, { id: data.id, name: data.name, arguments: data.arguments, result: null, error: null, is_error: false, turn }]
+            setMessages(prev => {
+              const updated = [...prev]
+              updated[assistantIdx] = { ...updated[assistantIdx], tool_calls: accToolCalls }
+              return updated
+            })
+            setStreamingStatus(`Turn ${turn} — Executing: ${data.name}...`)
+          } else if (type === 'tool_result') {
+            const turn = data.turn || currentTurn || 1
+            // Update the matching tool call with its result (match by unique tool ID)
+            accToolCalls = accToolCalls.map(tc =>
+              tc.id && data.id && tc.id === data.id
+                ? { ...tc, result: data.result, error: data.error, is_error: data.is_error }
+                : (!tc.id && tc.name === data.name && tc.result === null && tc.turn === turn)
+                  ? { ...tc, result: data.result, error: data.error, is_error: data.is_error }
+                  : tc
+            )
+            setMessages(prev => {
+              const updated = [...prev]
+              updated[assistantIdx] = { ...updated[assistantIdx], tool_calls: accToolCalls }
+              return updated
+            })
+            setStreamingStatus('')
+          } else if (type === 'turn_complete') {
+            totalTurns = data.turn
+            setMessages(prev => {
+              const updated = [...prev]
+              updated[assistantIdx] = { ...updated[assistantIdx], totalTurns: data.turn }
+              return updated
+            })
+            if (data.tool_count > 0) {
+              setStreamingStatus(`Turn ${data.turn} complete (${data.tool_count} tool${data.tool_count !== 1 ? 's' : ''})`)
+            }
+          } else if (type === 'complete') {
+            setMessages(prev => {
+              const updated = [...prev]
+              updated[assistantIdx] = {
+                ...updated[assistantIdx],
+                token_usage: data.token_usage,
+                cost: data.cost || 0,
+                duration: data.duration || 0,
+                model: data.model,
+                provider: data.provider,
+                totalTurns: data.total_turns || totalTurns || 1,
+                streaming: false,
+              }
+              return updated
+            })
+          } else if (type === 'error') {
+            setMessages(prev => {
+              const updated = [...prev]
+              updated[assistantIdx] = {
+                ...updated[assistantIdx],
+                content: `Error: ${data}`,
+                error: true,
+                streaming: false,
+              }
+              return updated
+            })
+          }
+        }
+      }
+
+      // Save final state to localStorage
+      setMessages(prev => {
+        const final = prev.map((m, i) => i === assistantIdx ? { ...m, streaming: false } : m)
+        saveChatHistory(final)
+        return final
+      })
     } catch (error) {
-      console.error('Failed to send message:', error)
-      const errorMessages = [
-        ...updatedMessages,
-        {
-          role: 'assistant',
-          content: `Error: ${error.message}`,
-          error: true,
-        },
-      ]
-      setMessages(errorMessages)
-      saveChatHistory(errorMessages)
+      if (error.name === 'AbortError') {
+        setMessages(prev => {
+          const updated = [...prev]
+          updated[assistantIdx] = { ...updated[assistantIdx], content: updated[assistantIdx].content + '\n\n[Cancelled]', streaming: false }
+          saveChatHistory(updated)
+          return updated
+        })
+      } else {
+        console.error('Failed to send message:', error)
+        setMessages(prev => {
+          const updated = [...prev]
+          updated[assistantIdx] = { ...updated[assistantIdx], content: `Error: ${error.message}`, error: true, streaming: false }
+          saveChatHistory(updated)
+          return updated
+        })
+      }
     } finally {
       setLoading(false)
+      setStreamingStatus('')
+      abortControllerRef.current = null
     }
   }
 
@@ -619,13 +780,13 @@ ${evaluators}
                         <div className="mb-3 flex items-center gap-2">
                           {/* Provider/Model Pill */}
                           <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border ${
-                            message.provider === 'anthropic' || message.provider === 'claude-sdk' || message.provider === 'claude-cli'
+                            message.provider === 'anthropic' || message.provider === 'claude-sdk'
                               ? 'bg-orange-500/10 text-orange-400 border-orange-500/30'
                               : message.provider === 'openai' || message.provider === 'codex-cli'
                               ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
                               : 'bg-blue-500/10 text-blue-400 border-blue-500/30'
                           }`}>
-                            {message.provider === 'anthropic' || message.provider === 'claude-sdk' || message.provider === 'claude-cli' ? (
+                            {message.provider === 'anthropic' || message.provider === 'claude-sdk' ? (
                               <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M17.59 6.91L12 12.5L6.41 6.91L5 8.33L12 15.33L19 8.33L17.59 6.91Z"/>
                               </svg>
@@ -638,24 +799,16 @@ ${evaluators}
                             )}
                             <span>{message.model}</span>
                           </span>
-                          {/* CLI/API/SDK Badge */}
+                          {/* Provider Badge */}
                           {message.provider && (
                             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium ${
-                              message.provider === 'claude-cli' || message.provider === 'codex-cli'
+                              message.provider === 'codex-cli'
                                 ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
                                 : message.provider === 'claude-sdk'
                                 ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
                                 : 'bg-slate-500/20 text-slate-300 border border-slate-500/30'
                             }`}>
-                              {message.provider === 'claude-cli' ? (
-                                <>
-                                  <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <polyline points="4 17 10 11 4 5"></polyline>
-                                    <line x1="12" y1="19" x2="20" y2="19"></line>
-                                  </svg>
-                                  Claude CLI
-                                </>
-                              ) : message.provider === 'codex-cli' ? (
+                              {message.provider === 'codex-cli' ? (
                                 <>
                                   <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                     <polyline points="4 17 10 11 4 5"></polyline>
@@ -670,7 +823,7 @@ ${evaluators}
                                     <line x1="3" y1="9" x2="21" y2="9"></line>
                                     <line x1="9" y1="21" x2="9" y2="9"></line>
                                   </svg>
-                                  SDK
+                                  Agent SDK
                                 </>
                               ) : (
                                 <>
@@ -739,8 +892,11 @@ ${evaluators}
                             }
                           }}
                         >
-                          {message.content}
+                          {message.content || ''}
                         </ReactMarkdown>
+                        {message.streaming && message.content && (
+                          <span className="inline-block w-2 h-4 bg-primary animate-pulse ml-0.5 align-text-bottom" />
+                        )}
                       </div>
                     </>
                   ) : (
@@ -866,8 +1022,19 @@ ${evaluators}
                     </div>
                   )}
 
-                  {/* Tool calls - collapsed by default */}
-                  {message.tool_calls && message.tool_calls.length > 0 && (
+                  {/* Tool calls - grouped by turn, collapsed by default */}
+                  {message.tool_calls && message.tool_calls.length > 0 && (() => {
+                    // Group tool calls by turn
+                    const turnGroups = {}
+                    message.tool_calls.forEach(call => {
+                      const turn = call.turn || 1
+                      if (!turnGroups[turn]) turnGroups[turn] = []
+                      turnGroups[turn].push(call)
+                    })
+                    const turnNumbers = Object.keys(turnGroups).map(Number).sort((a, b) => a - b)
+                    const hasMultipleTurns = turnNumbers.length > 1
+
+                    return (
                     <div className="mt-3 pt-3 border-t border-white/10">
                       <button
                         onClick={() => setCollapsedToolCalls(prev => ({ ...prev, [idx]: !prev[idx] }))}
@@ -875,13 +1042,26 @@ ${evaluators}
                       >
                         {collapsedToolCalls[idx] ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
                         <Wrench size={14} />
-                        <span>Used {message.tool_calls.length} tool(s)</span>
+                        <span>Used {message.tool_calls.length} tool(s){hasMultipleTurns ? ` across ${turnNumbers.length} turns` : ''}</span>
                       </button>
                       {!collapsedToolCalls[idx] && (
                         <div className="mt-3 space-y-3">
-                          {message.tool_calls.map((call, callIdx) => (
+                          {turnNumbers.map(turnNum => {
+                            const turnCalls = turnGroups[turnNum]
+                            return (
+                              <div key={turnNum}>
+                                {hasMultipleTurns && (
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <div className="h-px flex-1 bg-white/10" />
+                                    <span className="text-[10px] font-medium text-white/50 uppercase tracking-wider">
+                                      Turn {turnNum}: {turnCalls.length} tool{turnCalls.length !== 1 ? 's' : ''}
+                                    </span>
+                                    <div className="h-px flex-1 bg-white/10" />
+                                  </div>
+                                )}
+                                {turnCalls.map((call, callIdx) => (
                           <div
-                            key={callIdx}
+                            key={`${turnNum}-${callIdx}`}
                             className="bg-black/20 rounded-lg p-3 border border-white/10"
                           >
                             <div className="flex items-baseline gap-2 mb-2">
@@ -979,15 +1159,24 @@ ${evaluators}
                               </div>
                             )}
                             </div>
-                          ))}
+                                ))}
+                              </div>
+                            )
+                          })}
                         </div>
                       )}
                     </div>
-                  )}
+                    )
+                  })()}
 
                   {/* Metadata - inline */}
                   {message.token_usage && (
                     <div className="mt-3 pt-3 border-t border-white/10 flex items-center gap-4 text-[10px] opacity-70">
+                      {message.totalTurns > 1 && (
+                        <span className="flex items-center gap-1">
+                          <span className="font-medium">{message.totalTurns}</span> turns
+                        </span>
+                      )}
                       <span className="flex items-center gap-1">
                         <span className="font-medium">{message.token_usage.total?.toLocaleString()}</span> tokens
                       </span>
@@ -1003,12 +1192,12 @@ ${evaluators}
                 </div>
               </div>
             ))}
-            {loading && (
+            {loading && streamingStatus && (
               <div className="flex justify-start animate-fade-in">
                 <div className="bg-surface border border-border rounded-xl p-5 shadow-soft">
                   <div className="flex items-center gap-3">
                     <Loader className="animate-spin text-primary" size={20} />
-                    <span className="text-text-secondary text-sm">Thinking...</span>
+                    <span className="text-text-secondary text-sm">{streamingStatus}</span>
                   </div>
                 </div>
               </div>

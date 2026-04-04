@@ -4,6 +4,7 @@ LLM integration module for supporting multiple model providers.
 
 import asyncio
 import json
+import logging
 import os
 import re
 import subprocess
@@ -978,67 +979,77 @@ class AnthropicProvider(LLMProvider):
         await self.client.aclose()
 
 
-class ClaudeSDKProvider(LLMProvider):
-    """Claude Agent SDK provider with MCP integration."""
+_claude_sdk_logger = logging.getLogger(__name__ + ".ClaudeSDKProvider")
 
-    def __init__(self, model: str, api_key: str | None = None, mcp_url: str | None = None):
+
+class ClaudeSDKProvider(LLMProvider):
+    """Claude Agent SDK provider with native MCP integration.
+
+    Uses the claude-agent-sdk Python package (wraps Claude Code CLI internally).
+    The SDK handles MCP tool discovery natively via McpHttpServerConfig —
+    no need for our own ToolDiscoveryService.
+
+    Supports JWT, OAuth, and Bearer auth for MCP servers.
+    Uses Claude Code subscription (no API credits) by clearing ANTHROPIC_API_KEY from env.
+    """
+
+    def __init__(
+        self,
+        model: str,
+        mcp_url: str | None = None,
+        auth: dict[str, Any] | None = None,
+        log_callback=None,
+    ):
         self.model = model
-        # Use config system for API key
+        self.log_callback = log_callback
         config = get_config()
-        self.api_key = api_key or config.get("ANTHROPIC_API_KEY", "")
+
         # Use MCP_URL and auth from default profile if not provided
         if mcp_url is None:
             mcp_url = config.get_mcp_url()
         self.mcp_url = mcp_url
-        # Get auth from default MCP server
-        auth = None
-        default_mcp = config.get_default_mcp_server()
-        if default_mcp and default_mcp.auth:
-            auth = default_mcp.auth.to_dict()
-        self.auth_config = auth  # Store auth config for initialize
-        self.tool_discovery = ToolDiscoveryService(mcp_url, auth=auth)
-        self._sdk_tools: list[Any] = []
+
+        if auth is None:
+            default_mcp = config.get_default_mcp_server()
+            if default_mcp and default_mcp.auth:
+                auth = default_mcp.auth.to_dict()
+        self.auth_config = auth
+
         self._mcp_server_config: dict[str, Any] | None = None
 
     async def initialize(self):
-        """Initialize Claude SDK provider."""
-        if not self.api_key:
+        """Initialize Claude SDK provider — build MCP server config with auth."""
+        try:
+            from claude_agent_sdk import CLINotFoundError  # noqa: F401
+        except ImportError:
             raise ValueError(
-                "Anthropic API key not provided. Set ANTHROPIC_API_KEY in ~/.testmcpy, .env, or environment."
+                "claude-agent-sdk package not installed. Install with: pip install claude-agent-sdk"
             )
 
         # Configure HTTP MCP server
-        try:
-            from claude_agent_sdk.types import McpHttpServerConfig
+        from claude_agent_sdk.types import McpHttpServerConfig
 
-            # Build HTTP server config
-            server_config: McpHttpServerConfig = {"type": "http", "url": self.mcp_url}
+        server_config: McpHttpServerConfig = {"type": "http", "url": self.mcp_url}
 
-            # Fetch auth token based on auth config type
-            token = None
-            if self.auth_config:
-                auth_type = self.auth_config.get("type", "")
-                if auth_type == "jwt":
-                    # Fetch JWT token dynamically
-                    token = await self._fetch_jwt_token()
-                elif auth_type == "bearer":
-                    token = self.auth_config.get("token", "")
-                elif auth_type == "oauth":
-                    # Fetch OAuth token dynamically
-                    token = await self._fetch_oauth_token()
+        # Fetch auth token based on auth config type
+        token = None
+        if self.auth_config:
+            auth_type = self.auth_config.get("type", "")
+            if auth_type == "jwt":
+                token = await self._fetch_jwt_token()
+            elif auth_type == "bearer":
+                token = self.auth_config.get("token", "")
+            elif auth_type == "oauth":
+                token = await self._fetch_oauth_token()
 
-            if token:
-                server_config["headers"] = {"Authorization": f"Bearer {token}"}
-                print("[SDK] Configured MCP HTTP server with auth token")
-            else:
-                print("[SDK] Configured MCP HTTP server without auth")
+        if token:
+            server_config["headers"] = {"Authorization": f"Bearer {token}"}
+            _claude_sdk_logger.info("[ClaudeSDK] MCP server configured with auth token")
+        else:
+            _claude_sdk_logger.info("[ClaudeSDK] MCP server configured without auth")
 
-            self._mcp_server_config = server_config
-            print(f"[SDK] ✓ MCP Server configured: {self.mcp_url}")
-
-        except Exception as e:
-            print(f"[SDK] ❌ Failed to configure MCP server: {e}")
-            self._mcp_server_config = None
+        self._mcp_server_config = server_config
+        _claude_sdk_logger.info("[ClaudeSDK] MCP server ready: %s", self.mcp_url)
 
     async def _fetch_jwt_token(self) -> str | None:
         """Fetch JWT token from API."""
@@ -1050,14 +1061,12 @@ class ClaudeSDKProvider(LLMProvider):
         api_secret = self.auth_config.get("api_secret", "")
 
         if not all([api_url, api_token, api_secret]):
-            print("[SDK] JWT auth config incomplete")
+            _claude_sdk_logger.warning("[ClaudeSDK] JWT auth config incomplete")
             return None
 
-        try:
-            import httpx
-
-            print(f"[SDK] Fetching JWT token from: {api_url}")
-            async with httpx.AsyncClient() as client:
+        _claude_sdk_logger.info("[ClaudeSDK] Fetching JWT token from: %s", api_url)
+        async with httpx.AsyncClient() as client:
+            try:
                 response = await client.post(
                     api_url,
                     headers={
@@ -1071,11 +1080,13 @@ class ClaudeSDKProvider(LLMProvider):
                 data = response.json()
                 token = data.get("payload", {}).get("access_token", "")
                 if token:
-                    print(f"[SDK] JWT token fetched successfully (length: {len(token)})")
+                    _claude_sdk_logger.info(
+                        "[ClaudeSDK] JWT token fetched (length: %d)", len(token)
+                    )
                 return token
-        except Exception as e:
-            print(f"[SDK] Failed to fetch JWT token: {e}")
-            return None
+            except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as e:
+                _claude_sdk_logger.warning("[ClaudeSDK] Failed to fetch JWT token: %s", e)
+                return None
 
     async def _fetch_oauth_token(self) -> str | None:
         """Fetch OAuth token using client credentials."""
@@ -1087,14 +1098,12 @@ class ClaudeSDKProvider(LLMProvider):
         client_secret = self.auth_config.get("client_secret", "")
 
         if not all([token_url, client_id, client_secret]):
-            print("[SDK] OAuth auth config incomplete")
+            _claude_sdk_logger.warning("[ClaudeSDK] OAuth auth config incomplete")
             return None
 
-        try:
-            import httpx
-
-            print(f"[SDK] Fetching OAuth token from: {token_url}")
-            async with httpx.AsyncClient() as client:
+        _claude_sdk_logger.info("[ClaudeSDK] Fetching OAuth token from: %s", token_url)
+        async with httpx.AsyncClient() as client:
+            try:
                 response = await client.post(
                     token_url,
                     data={
@@ -1108,336 +1117,13 @@ class ClaudeSDKProvider(LLMProvider):
                 data = response.json()
                 token = data.get("access_token", "")
                 if token:
-                    print(f"[SDK] OAuth token fetched successfully (length: {len(token)})")
+                    _claude_sdk_logger.info(
+                        "[ClaudeSDK] OAuth token fetched (length: %d)", len(token)
+                    )
                 return token
-        except Exception as e:
-            print(f"[SDK] Failed to fetch OAuth token: {e}")
-            return None
-
-    def _create_sdk_tool(self, tool_schema: ToolSchema):
-        """Create an SDK tool wrapper for an MCP tool."""
-        from claude_agent_sdk import tool
-
-        # Create a closure that captures the tool schema
-        tool_name = tool_schema.name
-        tool_description = tool_schema.description
-        tool_params = tool_schema.parameters
-
-        # Convert parameters to SDK format (simplified schema)
-        # SDK expects {param_name: type} format, but we have JSON Schema
-        # We'll use the JSON Schema directly since SDK supports that too
-        input_schema = tool_params
-
-        # Create the async function that will execute the tool
-        async def tool_executor(args):
-            """Execute the tool via our MCP service."""
-            try:
-                tool_call = {
-                    "name": tool_name,
-                    "arguments": args,
-                    "id": f"tool_{tool_name}_{time.time()}",
-                }
-
-                result = await self.tool_discovery.execute_tool_call(tool_call)
-
-                if result.is_error:
-                    return {
-                        "content": [{"type": "text", "text": f"Error: {result.error_message}"}],
-                        "is_error": True,
-                    }
-                else:
-                    # Format result content
-                    content = []
-                    if isinstance(result.content, str):
-                        content.append({"type": "text", "text": result.content})
-                    elif isinstance(result.content, list):
-                        content = result.content
-                    else:
-                        content.append({"type": "text", "text": str(result.content)})
-
-                    return {"content": content}
-
-            except Exception as e:
-                return {
-                    "content": [{"type": "text", "text": f"Tool execution error: {str(e)}"}],
-                    "is_error": True,
-                }
-
-        # Apply the tool decorator
-        sdk_tool = tool(tool_name, tool_description, input_schema)(tool_executor)
-        return sdk_tool
-
-    async def generate_with_tools(
-        self,
-        prompt: str,
-        tools: list[dict[str, Any]],
-        timeout: float = 30.0,
-        messages: list[dict[str, Any]] | None = None,
-    ) -> LLMResult:
-        """Generate response using Claude Agent SDK."""
-        start_time = time.time()
-
-        try:
-            from claude_agent_sdk import ClaudeAgentOptions, query
-
-            # Create options for the SDK
-            options = ClaudeAgentOptions(
-                model=self.model,
-                permission_mode="bypassPermissions",  # Skip permission prompts for automation
-                mcp_servers={},
-            )
-
-            # Add our MCP server if we have config
-            if self._mcp_server_config:
-                options.mcp_servers["superset"] = self._mcp_server_config
-                # Mask token for logging
-                masked_config = dict(self._mcp_server_config)
-                if "headers" in masked_config and "Authorization" in masked_config["headers"]:
-                    token = masked_config["headers"]["Authorization"].replace("Bearer ", "")
-                    if len(token) > 30:
-                        masked_token = f"{token[:20]}...{token[-8:]}"
-                        masked_config["headers"]["Authorization"] = f"Bearer {masked_token}"
-                print("[SDK] Added MCP server 'superset' to SDK options")
-                print(f"[SDK] URL: {masked_config.get('url')}")
-                print(f"[SDK] Auth: {'Yes (token masked)' if 'headers' in masked_config else 'No'}")
-            else:
-                print("[SDK] Warning: No MCP server config available - SDK will not have MCP tools")
-
-            # Execute query with timeout wrapper
-            response_text = ""
-            tool_calls = []
-            token_usage = None
-            cost = 0.0
-
-            print(f"[SDK] Starting query (timeout={timeout}s)...")
-
-            # Wrap the query in a timeout
-            async def execute_query():
-                nonlocal response_text, token_usage, cost
-                message_count = 0
-                async for message in query(prompt=prompt, options=options):
-                    message_count += 1
-                    msg_type = type(message).__name__
-                    print(f"[SDK] Message #{message_count}: {msg_type}")
-
-                    # Extract text from AssistantMessage
-                    if hasattr(message, "content"):
-                        for block in message.content:
-                            if hasattr(block, "text"):
-                                response_text += block.text
-                                preview = block.text[:80].replace("\n", " ")
-                                print(f"[SDK]   └─ Text: {preview}...")
-                            elif hasattr(block, "type") and block.type == "tool_use":
-                                # Log tool calls
-                                tool_name = getattr(block, "name", "unknown")
-                                tool_input = getattr(block, "input", {})
-                                print(f"[SDK]   └─ 🔧 Tool Call: {tool_name}")
-                                # Show abbreviated input
-                                if tool_input:
-                                    import json
-
-                                    input_str = json.dumps(tool_input, indent=2)
-                                    if len(input_str) > 200:
-                                        input_str = input_str[:200] + "..."
-                                    print(f"[SDK]      Input: {input_str}")
-
-                    # Log tool results from UserMessage (SDK sends tool results as user messages)
-                    if msg_type == "UserMessage" and hasattr(message, "content"):
-                        for block in message.content:
-                            if hasattr(block, "type") and block.type == "tool_result":
-                                tool_id = getattr(block, "tool_use_id", "unknown")
-                                is_error = getattr(block, "is_error", False)
-                                print(f"[SDK]   └─ ✅ Tool Result (id={tool_id}, error={is_error})")
-
-                    # Extract usage from ResultMessage
-                    if hasattr(message, "usage"):
-                        usage = message.usage
-                        token_usage = {
-                            "prompt": usage.get("input_tokens", 0)
-                            + usage.get("cache_read_input_tokens", 0)
-                            + usage.get("cache_creation_input_tokens", 0),
-                            "completion": usage.get("output_tokens", 0),
-                            "total": (
-                                usage.get("input_tokens", 0)
-                                + usage.get("cache_read_input_tokens", 0)
-                                + usage.get("cache_creation_input_tokens", 0)
-                                + usage.get("output_tokens", 0)
-                            ),
-                        }
-                        print(
-                            f"[SDK] Token usage: {token_usage['total']:,} tokens (prompt: {token_usage['prompt']:,}, completion: {token_usage['completion']:,})"
-                        )
-
-                        # Get cost from SDK result
-                        if hasattr(message, "total_cost_usd"):
-                            cost = message.total_cost_usd
-                            print(f"[SDK] Cost: ${cost:.4f}")
-
-                print(
-                    f"[SDK] Query completed: {message_count} messages, {len(response_text)} chars"
-                )
-
-            # Execute with timeout
-            try:
-                await asyncio.wait_for(execute_query(), timeout=timeout)
-            except asyncio.TimeoutError:
-                raise Exception(f"SDK query timed out after {timeout}s")
-
-            return LLMResult(
-                response=response_text,
-                tool_calls=tool_calls,
-                token_usage=token_usage,
-                cost=cost,
-                duration=time.time() - start_time,
-                raw_response=None,
-            )
-
-        except Exception as e:
-            print(f"[SDK] ❌ Error: {type(e).__name__}: {str(e)}")
-            return LLMResult(
-                response=f"Error: {str(e)}", tool_calls=[], duration=time.time() - start_time
-            )
-
-    async def close(self):
-        """Close connections."""
-        await self.tool_discovery.close()
-
-
-class ClaudeCodeProvider(LLMProvider):
-    """Claude Code CLI provider via subprocess with JSON output support.
-
-    This provider uses Claude Code's subscription (no API credits required).
-    It supports:
-    - Structured JSON output with tool calls, thinking, and usage stats
-    - Direct MCP server integration via Claude Code's native MCP support
-    - Extended thinking capture when available
-    """
-
-    def __init__(
-        self,
-        model: str,
-        claude_cli_path: str | None = None,
-        mcp_url: str | None = None,
-        auth: dict[str, Any] | None = None,
-        output_format: str = "json",  # 'json' for structured, 'text' for plain
-        log_callback=None,
-    ):
-        self.model = model
-        self.claude_cli_path = claude_cli_path or self._find_claude_cli()
-        self.output_format = output_format
-        self.log_callback = log_callback  # Real-time log streaming callback
-        # Use MCP_URL and auth from default profile if not provided
-        config = get_config()
-        if mcp_url is None:
-            mcp_url = config.get_mcp_url()
-        self.mcp_url = mcp_url
-        if auth is None:
-            # Get auth from default MCP server
-            default_mcp = config.get_default_mcp_server()
-            if default_mcp and default_mcp.auth:
-                auth = default_mcp.auth.to_dict()
-        self.auth_config = auth
-        self.tool_discovery = ToolDiscoveryService(mcp_url, auth=auth)
-
-    def _find_claude_cli(self) -> str:
-        """Find Claude CLI in PATH or common locations."""
-        # Check environment variable first
-        cli_path = os.environ.get("CLAUDE_CLI_PATH")
-        if cli_path and os.path.exists(cli_path):
-            return cli_path
-
-        # Check common locations
-        common_paths = [
-            "/usr/local/bin/claude",
-            "/opt/homebrew/bin/claude",
-            os.path.expanduser("~/.local/bin/claude"),
-        ]
-
-        # Add nvm paths - check all installed node versions
-        nvm_dir = os.path.expanduser("~/.nvm/versions/node")
-        if os.path.isdir(nvm_dir):
-            for version_dir in os.listdir(nvm_dir):
-                nvm_claude = os.path.join(nvm_dir, version_dir, "bin", "claude")
-                if os.path.exists(nvm_claude):
-                    common_paths.insert(0, nvm_claude)  # Prioritize nvm paths
-
-        # Also try shutil.which which respects PATH
-        import shutil
-
-        which_result = shutil.which("claude")
-        if which_result:
-            common_paths.insert(0, which_result)
-
-        # Finally add "claude" for PATH lookup
-        common_paths.append("claude")
-
-        for path in common_paths:
-            try:
-                result = subprocess.run([path, "--version"], capture_output=True, timeout=5)
-                if result.returncode == 0:
-                    return path
-            except (subprocess.TimeoutExpired, FileNotFoundError):
-                continue
-
-        raise Exception("Claude CLI not found. Please install Claude Code or set CLAUDE_CLI_PATH")
-
-    async def initialize(self):
-        """Initialize Claude Code provider."""
-        # Verify Claude CLI is working
-        try:
-            result = subprocess.run(
-                [self.claude_cli_path, "--version"], capture_output=True, timeout=10, text=True
-            )
-            if result.returncode != 0:
-                raise Exception(f"Claude CLI error: {result.stderr}")
-            version = result.stdout.strip()
-            print(f"[ClaudeCode] CLI version: {version}")
-        except subprocess.TimeoutExpired:
-            raise Exception("Claude CLI timeout during initialization")
-
-        # Try to pre-discover tools for tool schema info
-        try:
-            await self.tool_discovery.discover_tools()
-            print(f"[ClaudeCode] ✅ MCP service available at {self.tool_discovery.mcp_url}")
-        except Exception as e:
-            print(f"[ClaudeCode] ⚠️  MCP tools not available: {e}")
-
-    async def _fetch_jwt_token(self) -> str | None:
-        """Fetch JWT token from API."""
-        if not self.auth_config:
-            return None
-
-        api_url = self.auth_config.get("api_url", "")
-        api_token = self.auth_config.get("api_token", "")
-        api_secret = self.auth_config.get("api_secret", "")
-
-        if not all([api_url, api_token, api_secret]):
-            print("[ClaudeCode] JWT auth config incomplete")
-            return None
-
-        try:
-            import httpx
-
-            print(f"[ClaudeCode] Fetching JWT token from: {api_url}")
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    api_url,
-                    headers={
-                        "Content-Type": "application/json",
-                        "Accept": "application/json",
-                    },
-                    json={"name": api_token, "secret": api_secret},
-                    timeout=30.0,
-                )
-                response.raise_for_status()
-                data = response.json()
-                token = data.get("payload", {}).get("access_token", "")
-                if token:
-                    print(f"[ClaudeCode] JWT token fetched successfully (length: {len(token)})")
-                return token
-        except Exception as e:
-            print(f"[ClaudeCode] Failed to fetch JWT token: {e}")
-            return None
+            except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as e:
+                _claude_sdk_logger.warning("[ClaudeSDK] Failed to fetch OAuth token: %s", e)
+                return None
 
     async def generate_with_tools(
         self,
@@ -1446,324 +1132,193 @@ class ClaudeCodeProvider(LLMProvider):
         timeout: float = 120.0,
         messages: list[dict[str, Any]] | None = None,
     ) -> LLMResult:
-        """Generate response using Claude Code CLI with JSON output."""
+        """Generate response using Claude Agent SDK."""
         start_time = time.time()
-        logs = []  # Capture logs for UI display
+        logs: list[str] = []
 
         def log(msg: str):
-            """Log a message to console, logs list, and optionally via callback."""
-            print(msg)
+            """Log to module logger, logs list, and optionally stream via callback."""
+            _claude_sdk_logger.info(msg)
             logs.append(msg)
-            # Stream to callback if available (for real-time UI updates)
             if self.log_callback:
-                import asyncio
-
                 if asyncio.iscoroutinefunction(self.log_callback):
                     try:
-                        loop = asyncio.get_event_loop()
-                        if loop.is_running():
-                            asyncio.create_task(self.log_callback(msg))
-                        else:
-                            loop.run_until_complete(self.log_callback(msg))
+                        asyncio.get_event_loop().call_soon(
+                            lambda m=msg: asyncio.ensure_future(self.log_callback(m))
+                        )
                     except RuntimeError:
-                        # No event loop, skip callback
                         pass
                 else:
                     self.log_callback(msg)
 
         try:
-            log(f"[ClaudeCode] Running with timeout={timeout}s, output_format=stream-json")
-
-            # Build command with stream-json output for structured responses with tool calls
-            # Note: -p/--print enables non-interactive mode, prompt is positional arg
-            # stream-json + verbose exposes tool_use and tool_result events
-            cmd = [
-                self.claude_cli_path,
-                "-p",  # --print mode (non-interactive)
-                "--output-format",
-                "stream-json",  # Use stream-json to get tool call details
-                "--verbose",  # Required for stream-json in print mode
-                "--dangerously-skip-permissions",
-            ]
-
-            # Add model if specified
-            if self.model:
-                cmd.extend(["--model", self.model])
-
-            # Add MCP server config if we have one AND tools are expected - write to temp file
-            # Only add MCP config when tools are provided (otherwise it's just text generation)
-            mcp_config_file = None
-            if self.mcp_url and tools:
-                import tempfile
-
-                # Build MCP config JSON for the server
-                mcp_config = {
-                    "mcpServers": {
-                        "testmcpy": {
-                            "type": "http",
-                            "url": self.mcp_url,
-                        }
-                    }
-                }
-                # Add auth header based on auth config type
-                auth_token = None
-                if self.auth_config:
-                    auth_type = self.auth_config.get("type", "")
-                    if auth_type == "jwt":
-                        # Fetch JWT token dynamically
-                        auth_token = await self._fetch_jwt_token()
-                        log(
-                            f"[ClaudeCode] Fetched JWT token (length: {len(auth_token) if auth_token else 0})"
-                        )
-                    elif auth_type == "bearer":
-                        auth_token = self.auth_config.get("token", "")
-                    elif self.auth_config.get("token"):
-                        # Legacy: direct token
-                        auth_token = self.auth_config.get("token")
-
-                if auth_token:
-                    mcp_config["mcpServers"]["testmcpy"]["headers"] = {
-                        "Authorization": f"Bearer {auth_token}"
-                    }
-
-                # Write config to temp file
-                mcp_config_file = tempfile.NamedTemporaryFile(
-                    mode="w", suffix=".json", delete=False
-                )
-                json.dump(mcp_config, mcp_config_file)
-                mcp_config_file.close()
-                cmd.extend(["--mcp-config", mcp_config_file.name])
-                log(f"[ClaudeCode] MCP config file: {mcp_config_file.name}")
-                log(f"[ClaudeCode] MCP URL: {self.mcp_url}")
-            elif not tools:
-                log("[ClaudeCode] No tools - skipping MCP config (text generation mode)")
-
-            # Use -- to separate options from positional argument (needed for --mcp-config)
-            cmd.append("--")
-            cmd.append(prompt)
-
-            # Print full command for debugging (mask prompt)
-            cmd_debug = cmd[:-1] + ["<prompt>"]  # Replace actual prompt with placeholder
-            log(f"[ClaudeCode] Full command: {' '.join(cmd_debug)}")
-
-            # Show prompt details
-            prompt_preview = prompt[:500] + "..." if len(prompt) > 500 else prompt
-            log(f"[ClaudeCode] Prompt ({len(prompt)} chars):\n{prompt_preview}")
-            log(f"[ClaudeCode] Tools provided: {len(tools)}")
-            if tools:
-                tool_names = [t.get("function", {}).get("name", "unknown") for t in tools[:10]]
-                log(f"[ClaudeCode] Tool names (first 10): {tool_names}")
-
-            # Execute Claude CLI
-            # IMPORTANT: Clear ANTHROPIC_API_KEY from env so CLI uses subscription, not API credits
-            cli_env = os.environ.copy()
-            cli_env.pop("ANTHROPIC_API_KEY", None)  # Remove API key if present
-
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdin=asyncio.subprocess.DEVNULL,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                env=cli_env,
+            from claude_agent_sdk import (
+                AssistantMessage,
+                ClaudeAgentOptions,
+                ClaudeSDKError,
+                CLIConnectionError,
+                CLINotFoundError,
+                ProcessError,
+                ResultMessage,
+                TextBlock,
+                ThinkingBlock,
+                ToolUseBlock,
+                UserMessage,
+                query,
             )
+            from claude_agent_sdk.types import ToolResultBlock
+
+            # Build SDK options
+            mcp_servers = {}
+            if self._mcp_server_config:
+                mcp_servers["mcp-service"] = self._mcp_server_config
+                log(f"[ClaudeSDK] MCP server configured: {self._mcp_server_config.get('url', '?')}")
+            else:
+                log("[ClaudeSDK] No MCP server config — SDK will have no MCP tools")
+
+            # Build a clean env: inherit current env but remove Claude Code
+            # session vars that prevent nested CLI spawning
+            clean_env = {
+                k: v
+                for k, v in os.environ.items()
+                if not k.startswith("CLAUDE_CODE") and k != "CLAUDECODE"
+            }
+            clean_env["ANTHROPIC_API_KEY"] = ""  # Force subscription usage, not API credits
+
+            options = ClaudeAgentOptions(
+                model=self.model,
+                permission_mode="bypassPermissions",
+                mcp_servers=mcp_servers,
+                max_turns=25,
+                env=clean_env,
+            )
+
+            # Execute query with timeout
+            response_text = ""
+            thinking_text = ""
+            tool_calls = []
+            tool_results_map: dict[str, dict[str, Any]] = {}
+            token_usage = None
+            cost = 0.0
+            raw_events = []
+
+            log(f"[ClaudeSDK] Starting query (model={self.model}, timeout={timeout}s)...")
+
+            async def execute_query():
+                nonlocal response_text, thinking_text, token_usage, cost
+                message_count = 0
+                try:
+                    async for message in query(prompt=prompt, options=options):
+                        message_count += 1
+                        raw_events.append({"type": type(message).__name__})
+
+                        if isinstance(message, AssistantMessage):
+                            for block in message.content:
+                                if isinstance(block, TextBlock):
+                                    response_text += block.text
+                                    preview = block.text[:80].replace("\n", " ")
+                                    log(f"[ClaudeSDK] Text: {preview}...")
+                                elif isinstance(block, ThinkingBlock):
+                                    thinking_text += block.thinking
+                                    log(f"[ClaudeSDK] Thinking ({len(block.thinking)} chars)")
+                                elif isinstance(block, ToolUseBlock):
+                                    tool_call = {
+                                        "id": block.id,
+                                        "name": block.name,
+                                        "arguments": block.input,
+                                    }
+                                    tool_calls.append(tool_call)
+                                    args_str = json.dumps(block.input)
+                                    if len(args_str) > 200:
+                                        args_str = args_str[:200] + "..."
+                                    log(f"[ClaudeSDK] Tool Call: {block.name} | Args: {args_str}")
+
+                        elif isinstance(message, UserMessage):
+                            # Tool results come back as UserMessage content
+                            if isinstance(message.content, list):
+                                for block in message.content:
+                                    if isinstance(block, ToolResultBlock):
+                                        tool_use_id = block.tool_use_id
+                                        is_error = block.is_error or False
+                                        # Serialize content to a plain string
+                                        raw_content = block.content or ""
+                                        if isinstance(raw_content, list):
+                                            parts = []
+                                            for item in raw_content:
+                                                if hasattr(item, "text"):
+                                                    parts.append(item.text)
+                                                else:
+                                                    parts.append(str(item))
+                                            content = "\n".join(parts)
+                                        elif hasattr(raw_content, "text"):
+                                            content = raw_content.text
+                                        elif not isinstance(raw_content, str):
+                                            content = str(raw_content)
+                                        else:
+                                            content = raw_content
+                                        tool_results_map[tool_use_id] = {
+                                            "content": content,
+                                            "is_error": is_error,
+                                        }
+                                        status = "Error" if is_error else "Success"
+                                        content_preview = str(content)[:200]
+                                        log(
+                                            f"[ClaudeSDK] Tool Result ({status}): {content_preview}"
+                                        )
+
+                        elif isinstance(message, ResultMessage):
+                            if message.usage:
+                                usage = message.usage
+                                token_usage = {
+                                    "prompt": (
+                                        usage.get("input_tokens", 0)
+                                        + usage.get("cache_read_input_tokens", 0)
+                                        + usage.get("cache_creation_input_tokens", 0)
+                                    ),
+                                    "completion": usage.get("output_tokens", 0),
+                                    "total": (
+                                        usage.get("input_tokens", 0)
+                                        + usage.get("cache_read_input_tokens", 0)
+                                        + usage.get("cache_creation_input_tokens", 0)
+                                        + usage.get("output_tokens", 0)
+                                    ),
+                                    "cache_creation": usage.get("cache_creation_input_tokens", 0),
+                                    "cache_read": usage.get("cache_read_input_tokens", 0),
+                                }
+                            if message.total_cost_usd is not None:
+                                cost = message.total_cost_usd
+                            duration_ms = getattr(message, "duration_ms", 0)
+                            log(
+                                f"[ClaudeSDK] Result: {message.num_turns} turns, "
+                                f"{duration_ms}ms, ${cost:.4f}"
+                            )
+                except ClaudeSDKError as e:
+                    # SDK may throw on unknown message types (e.g. rate_limit_event).
+                    # If we already collected any response or tool calls, treat as complete.
+                    log(f"[ClaudeSDK] SDK error during iteration: {e}")
+                    if not response_text and not tool_calls:
+                        raise
+
+                log(f"[ClaudeSDK] Completed: {message_count} messages, {len(response_text)} chars")
 
             try:
-                log("[ClaudeCode] Waiting for response...")
-                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
-                elapsed = time.time() - start_time
-                log(
-                    f"[ClaudeCode] Got response after {elapsed:.1f}s, returncode={process.returncode}"
-                )
+                await asyncio.wait_for(execute_query(), timeout=timeout)
             except asyncio.TimeoutError:
-                log(f"[ClaudeCode] TIMEOUT after {timeout}s - killing process")
-                process.kill()
-                await process.wait()
-                raise Exception(f"Claude CLI timeout after {timeout}s")
-
-            stdout_text = stdout.decode().strip()
-            stderr_text = stderr.decode().strip()
-
-            log(f"[ClaudeCode] Response size: {len(stdout_text)} chars")
-            if stderr_text:
-                log(f"[ClaudeCode] stderr: {stderr_text[:500]}...")
-
-            # Show raw response preview
-            if stdout_text:
-                response_preview = (
-                    stdout_text[:1000] + "..." if len(stdout_text) > 1000 else stdout_text
+                log(f"[ClaudeSDK] TIMEOUT after {timeout}s")
+                return LLMResult(
+                    response=f"Error: SDK query timed out after {timeout}s",
+                    tool_calls=[],
+                    duration=time.time() - start_time,
+                    logs=logs,
                 )
-                log(f"[ClaudeCode] Raw response:\n{response_preview}")
 
-            # Parse stream-json output (multiple JSON lines)
-            return self._parse_stream_json_response(stdout_text, start_time, logs)
-
-        except Exception as e:
-            duration = time.time() - start_time
-            log(f"[ClaudeCode] ❌ Error: {type(e).__name__}: {str(e)}")
-            return LLMResult(
-                response=f"Error: {str(e)}",
-                tool_calls=[],
-                duration=duration,
-                logs=logs,
-            )
-        finally:
-            # Clean up temp MCP config file
-            if mcp_config_file and os.path.exists(mcp_config_file.name):
-                try:
-                    os.unlink(mcp_config_file.name)
-                except Exception:
-                    pass
-
-    def _parse_stream_json_response(
-        self, output: str, start_time: float, logs: list[str] | None = None
-    ) -> LLMResult:
-        """Parse stream-json output from Claude CLI.
-
-        Stream-json format outputs multiple JSON lines with different event types:
-        - {"type":"assistant","message":{"content":[{"type":"text","text":"..."},{"type":"tool_use",...}]}}
-        - {"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"...","content":"..."}]}}
-        - {"type":"result","duration_ms":...,"usage":{...},"cost_usd":...}
-        """
-        logs = logs or []
-        response_text = ""
-        thinking_text = ""
-        tool_calls = []
-        tool_results = {}  # Map tool_use_id to result
-        token_usage = None
-        cost = 0.0
-        raw_events = []
-
-        try:
-            # Parse each line as a separate JSON event
-            lines = output.strip().split("\n")
-            logs.append(f"[ClaudeCode] Parsing {len(lines)} stream-json lines")
-            print(f"[ClaudeCode] Parsing {len(lines)} stream-json lines")
-
-            for line_num, line in enumerate(lines):
-                line = line.strip()
-                if not line:
-                    continue
-
-                try:
-                    event = json.loads(line)
-                    raw_events.append(event)
-                    event_type = event.get("type", "")
-
-                    if event_type == "assistant":
-                        # Assistant message with text and/or tool_use blocks
-                        message = event.get("message", {})
-                        content = message.get("content", [])
-
-                        for block in content:
-                            block_type = block.get("type", "")
-
-                            if block_type == "text":
-                                text = block.get("text", "")
-                                response_text += text
-                                logs.append(f"[ClaudeCode] 📝 Text ({len(text)} chars)")
-                                print(f"[ClaudeCode] 📝 Text ({len(text)} chars)")
-
-                            elif block_type == "thinking":
-                                thinking = block.get("thinking", "")
-                                thinking_text += thinking
-                                logs.append(f"[ClaudeCode] 🧠 Thinking ({len(thinking)} chars)")
-                                print(f"[ClaudeCode] 🧠 Thinking ({len(thinking)} chars)")
-
-                            elif block_type == "tool_use":
-                                tool_call = {
-                                    "id": block.get("id", ""),
-                                    "name": block.get("name", ""),
-                                    "arguments": block.get("input", {}),
-                                }
-                                tool_calls.append(tool_call)
-                                logs.append(
-                                    f"[ClaudeCode] 🔧 Tool Call: {tool_call['name']} (id={tool_call['id'][:20]}...)"
-                                )
-                                print(
-                                    f"[ClaudeCode] 🔧 Tool Call: {tool_call['name']} (id={tool_call['id'][:20]}...)"
-                                )
-                                # Log arguments preview
-                                args_str = json.dumps(tool_call["arguments"])
-                                if len(args_str) > 200:
-                                    args_str = args_str[:200] + "..."
-                                logs.append(f"[ClaudeCode]    Args: {args_str}")
-                                print(f"[ClaudeCode]    Args: {args_str}")
-
-                    elif event_type == "user":
-                        # User message containing tool_result blocks
-                        message = event.get("message", {})
-                        content = message.get("content", [])
-
-                        for block in content:
-                            if block.get("type") == "tool_result":
-                                tool_use_id = block.get("tool_use_id", "")
-                                is_error = block.get("is_error", False)
-                                result_content = block.get("content", "")
-
-                                # Store the result
-                                tool_results[tool_use_id] = {
-                                    "content": result_content,
-                                    "is_error": is_error,
-                                }
-
-                                # Log result preview
-                                content_preview = (
-                                    str(result_content)[:200] + "..."
-                                    if len(str(result_content)) > 200
-                                    else str(result_content)
-                                )
-                                status = "❌ Error" if is_error else "✅ Success"
-                                logs.append(
-                                    f"[ClaudeCode] {status} Tool Result (id={tool_use_id[:20]}...)"
-                                )
-                                logs.append(f"[ClaudeCode]    Content: {content_preview}")
-                                print(
-                                    f"[ClaudeCode] {status} Tool Result (id={tool_use_id[:20]}...)"
-                                )
-                                print(f"[ClaudeCode]    Content: {content_preview}")
-
-                    elif event_type == "result":
-                        # Final result with usage and cost
-                        usage = event.get("usage", {})
-                        token_usage = {
-                            "prompt": usage.get("input_tokens", 0),
-                            "completion": usage.get("output_tokens", 0),
-                            "total": usage.get("input_tokens", 0) + usage.get("output_tokens", 0),
-                            "cache_creation": usage.get("cache_creation_input_tokens", 0),
-                            "cache_read": usage.get("cache_read_input_tokens", 0),
-                        }
-
-                        cost = event.get("cost_usd", 0.0)
-
-                        logs.append(
-                            f"[ClaudeCode] 📊 Result: {token_usage['total']} tokens, ${cost:.4f}"
-                        )
-                        print(f"[ClaudeCode] 📊 Result: {token_usage['total']} tokens, ${cost:.4f}")
-
-                    elif event_type == "system":
-                        # System messages (usually init info)
-                        system_msg = event.get("message", "")
-                        if system_msg:
-                            logs.append(f"[ClaudeCode] ℹ️ System: {str(system_msg)[:100]}")
-                            print(f"[ClaudeCode] ℹ️ System: {str(system_msg)[:100]}")
-
-                except json.JSONDecodeError:
-                    # Not valid JSON - might be plain text output
-                    logs.append(f"[ClaudeCode] ⚠️ Non-JSON line {line_num + 1}: {line[:50]}...")
-                    print(f"[ClaudeCode] ⚠️ Non-JSON line {line_num + 1}: {line[:50]}...")
-                    # Append to response if we haven't parsed any JSON yet
-                    if not raw_events:
-                        response_text += line + "\n"
-
-            # Attach tool results to tool calls for completeness
-            # Also create MCPToolResult objects for evaluators
+            # Attach tool results to tool calls and build MCPToolResult objects
             mcp_tool_results = []
             for tc in tool_calls:
                 tc_id = tc.get("id", "")
-                if tc_id in tool_results:
-                    tc["result"] = tool_results[tc_id]
-                    # Create MCPToolResult for evaluators
-                    result_data = tool_results[tc_id]
+                if tc_id in tool_results_map:
+                    tc["result"] = tool_results_map[tc_id]
+                    result_data = tool_results_map[tc_id]
                     mcp_result = MCPToolResult(
                         tool_call_id=tc_id,
                         content=result_data.get("content", ""),
@@ -1774,213 +1329,61 @@ class ClaudeCodeProvider(LLMProvider):
                     )
                     mcp_tool_results.append(mcp_result)
 
-            # Summary
-            logs.append(
-                f"[ClaudeCode] ✓ Parsed: {len(response_text)} chars response, "
-                f"{len(tool_calls)} tool calls, {len(mcp_tool_results)} tool results, "
-                f"{len(thinking_text)} chars thinking"
-            )
-            print(
-                f"[ClaudeCode] ✓ Parsed: {len(response_text)} chars response, "
-                f"{len(tool_calls)} tool calls, {len(mcp_tool_results)} tool results, "
-                f"{len(thinking_text)} chars thinking"
+            duration = time.time() - start_time
+            log(
+                f"[ClaudeSDK] Done: {len(response_text)} chars, "
+                f"{len(tool_calls)} tool calls, {len(mcp_tool_results)} results"
             )
 
-        except Exception as e:
-            logs.append(f"[ClaudeCode] ❌ Parse error: {e}")
-            print(f"[ClaudeCode] ❌ Parse error: {e}")
-            # Fallback to raw output
-            response_text = output
-            mcp_tool_results = []
-
-        duration = time.time() - start_time
-        return LLMResult(
-            response=response_text,
-            tool_calls=tool_calls,
-            tool_results=mcp_tool_results,
-            thinking=thinking_text if thinking_text else None,
-            token_usage=token_usage,
-            cost=cost,
-            duration=duration,
-            tti_ms=int(duration * 1000),
-            raw_response={"events": raw_events} if raw_events else {"stdout": output},
-            logs=logs,
-        )
-
-    def _parse_json_response(
-        self, output: str, start_time: float, logs: list[str] | None = None
-    ) -> LLMResult:
-        """Parse structured JSON output from Claude CLI."""
-        logs = logs or []
-        response_text = ""
-        thinking_text = ""
-        tool_calls = []
-        token_usage = None
-        cost = 0.0
-        raw_data = None
-
-        try:
-            # Claude CLI JSON output is a single JSON object or stream of JSON lines
-            # Try parsing as single JSON first
-            try:
-                data = json.loads(output)
-                raw_data = data
-            except json.JSONDecodeError:
-                # Try parsing as JSON lines (stream format)
-                lines = output.strip().split("\n")
-                data = None
-                for line in lines:
-                    if line.strip():
-                        try:
-                            data = json.loads(line)
-                        except json.JSONDecodeError:
-                            continue
-
-            if data:
-                # Extract response text
-                if isinstance(data, dict):
-                    # Handle different JSON output formats from Claude CLI
-                    if "result" in data:
-                        response_text = data.get("result", "")
-                    elif "response" in data:
-                        response_text = data.get("response", "")
-                    elif "content" in data:
-                        content = data.get("content", [])
-                        if isinstance(content, list):
-                            for block in content:
-                                if isinstance(block, dict):
-                                    if block.get("type") == "text":
-                                        response_text += block.get("text", "")
-                                    elif block.get("type") == "thinking":
-                                        thinking_text += block.get("thinking", "")
-                                    elif block.get("type") == "tool_use":
-                                        tool_calls.append(
-                                            {
-                                                "id": block.get("id", ""),
-                                                "name": block.get("name", ""),
-                                                "arguments": block.get("input", {}),
-                                            }
-                                        )
-                        elif isinstance(content, str):
-                            response_text = content
-                    elif "message" in data:
-                        response_text = data.get("message", "")
-                    elif "text" in data:
-                        response_text = data.get("text", "")
-
-                    # Extract tool calls if present
-                    if "tool_calls" in data:
-                        for tc in data.get("tool_calls", []):
-                            tool_calls.append(
-                                {
-                                    "id": tc.get("id", ""),
-                                    "name": tc.get("name", ""),
-                                    "arguments": tc.get("arguments", tc.get("input", {})),
-                                }
-                            )
-
-                    # Extract usage stats if available
-                    if "usage" in data:
-                        usage = data.get("usage", {})
-                        token_usage = {
-                            "prompt": usage.get("input_tokens", 0),
-                            "completion": usage.get("output_tokens", 0),
-                            "total": usage.get("input_tokens", 0) + usage.get("output_tokens", 0),
-                        }
-
-                    # Extract cost if available
-                    if "cost" in data:
-                        cost = data.get("cost", 0.0)
-                    elif "total_cost" in data:
-                        cost = data.get("total_cost", 0.0)
-
-                    # Extract thinking if available
-                    if "thinking" in data and not thinking_text:
-                        thinking_text = data.get("thinking", "")
-
-            # Fallback if no structured data found
-            if not response_text and not tool_calls:
-                response_text = output
-
-            logs.append(
-                f"[ClaudeCode] Parsed: {len(response_text)} chars, {len(tool_calls)} tool calls"
+            return LLMResult(
+                response=response_text,
+                tool_calls=tool_calls,
+                tool_results=mcp_tool_results,
+                thinking=thinking_text if thinking_text else None,
+                token_usage=token_usage,
+                cost=cost,
+                duration=duration,
+                tti_ms=int(duration * 1000),
+                raw_response={"events": raw_events} if raw_events else None,
+                logs=logs,
             )
-            print(f"[ClaudeCode] Parsed: {len(response_text)} chars, {len(tool_calls)} tool calls")
-            if tool_calls:
-                logs.append("[ClaudeCode] Tool calls:")
-                print("[ClaudeCode] Tool calls:")
-                for i, tc in enumerate(tool_calls):
-                    tool_log = f"[ClaudeCode]   {i + 1}. {tc.get('name', 'unknown')}({json.dumps(tc.get('arguments', {}), indent=2)[:200]})"
-                    logs.append(tool_log)
-                    print(tool_log)
-            if response_text:
-                response_preview = (
-                    response_text[:300] + "..." if len(response_text) > 300 else response_text
-                )
-                logs.append(f"[ClaudeCode] Response text: {response_preview}")
-                print(f"[ClaudeCode] Response text: {response_preview}")
-            if thinking_text:
-                logs.append(f"[ClaudeCode] Thinking: {len(thinking_text)} chars")
-                print(f"[ClaudeCode] Thinking: {len(thinking_text)} chars")
-            if token_usage:
-                logs.append(f"[ClaudeCode] Tokens: {token_usage.get('total', 0)}")
-                print(f"[ClaudeCode] Tokens: {token_usage.get('total', 0)}")
 
-        except Exception as e:
-            logs.append(f"[ClaudeCode] JSON parse error: {e}")
-            print(f"[ClaudeCode] JSON parse error: {e}")
-            response_text = output
-
-        duration = time.time() - start_time
-        return LLMResult(
-            response=response_text,
-            tool_calls=tool_calls,
-            thinking=thinking_text if thinking_text else None,
-            token_usage=token_usage,
-            cost=cost,
-            duration=duration,
-            tti_ms=int(duration * 1000),
-            raw_response=raw_data or {"stdout": output},
-            logs=logs,
-        )
-
-    def _parse_text_response(
-        self, output: str, start_time: float, logs: list[str] | None = None
-    ) -> LLMResult:
-        """Parse plain text output from Claude CLI."""
-        logs = logs or []
-        # Parse tool calls from text output (legacy format)
-        tool_calls = []
-        tool_call_pattern = r"TOOL_CALL:\s*(\{[^}]+\}|\{[^}]*\{[^}]*\}[^}]*\})"
-        matches = re.findall(tool_call_pattern, output)
-
-        for match in matches:
-            try:
-                call_data = json.loads(match)
-                if "name" in call_data:
-                    tool_calls.append(
-                        {
-                            "name": call_data["name"],
-                            "arguments": call_data.get("arguments", {}),
-                        }
-                    )
-            except json.JSONDecodeError:
-                continue
-
-        duration = time.time() - start_time
-        return LLMResult(
-            response=output,
-            tool_calls=tool_calls,
-            token_usage=None,
-            cost=0.0,
-            duration=duration,
-            raw_response={"stdout": output},
-            logs=logs,
-        )
+        except CLINotFoundError:
+            log("[ClaudeSDK] Claude CLI not found — install @anthropic-ai/claude-code")
+            return LLMResult(
+                response="Error: Claude CLI not found. Install with: npm install -g @anthropic-ai/claude-code",
+                tool_calls=[],
+                duration=time.time() - start_time,
+                logs=logs,
+            )
+        except ProcessError as e:
+            log(f"[ClaudeSDK] Process error: {e}")
+            return LLMResult(
+                response=f"Error: Claude CLI process failed: {e}",
+                tool_calls=[],
+                duration=time.time() - start_time,
+                logs=logs,
+            )
+        except CLIConnectionError as e:
+            log(f"[ClaudeSDK] Connection error: {e}")
+            return LLMResult(
+                response=f"Error: Claude CLI connection failed: {e}",
+                tool_calls=[],
+                duration=time.time() - start_time,
+                logs=logs,
+            )
+        except (KeyError, ValueError, TypeError, json.JSONDecodeError) as e:
+            log(f"[ClaudeSDK] Unexpected error: {type(e).__name__}: {e}")
+            return LLMResult(
+                response=f"Error: {type(e).__name__}: {e}",
+                tool_calls=[],
+                duration=time.time() - start_time,
+                logs=logs,
+            )
 
     async def close(self):
-        """Close connections."""
-        await self.tool_discovery.close()
+        """No-op — SDK manages its own cleanup."""
+        pass
 
 
 class GeminiProvider(LLMProvider):
@@ -2382,7 +1785,7 @@ def create_llm_provider(provider: str, model: str, **kwargs) -> LLMProvider:
     Create an LLM provider instance.
 
     Args:
-        provider: Provider name (ollama, openai, local, anthropic, claude-cli, codex-cli)
+        provider: Provider name (ollama, openai, local, anthropic, claude-sdk, claude-cli, claude-code, codex-cli)
         model: Model name/path
         **kwargs: Additional provider-specific arguments
 
@@ -2396,9 +1799,9 @@ def create_llm_provider(provider: str, model: str, **kwargs) -> LLMProvider:
         "anthropic": AnthropicProvider,
         "gemini": GeminiProvider,
         "google": GeminiProvider,  # Alias
-        "claude-sdk": ClaudeSDKProvider,
-        "claude-cli": ClaudeCodeProvider,
-        "claude-code": ClaudeCodeProvider,  # Alias for claude-cli
+        "claude-sdk": ClaudeSDKProvider,  # Claude Agent SDK (uses Claude CLI)
+        "claude-cli": ClaudeSDKProvider,  # Alias → claude-sdk
+        "claude-code": ClaudeSDKProvider,  # Alias → claude-sdk
         "codex-cli": CodexCLIProvider,
         "codex": CodexCLIProvider,  # Alias
     }

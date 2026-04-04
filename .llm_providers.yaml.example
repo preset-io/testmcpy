@@ -6,7 +6,7 @@
 #   - anthropic: Anthropic Claude models (direct API)
 #   - openai: OpenAI GPT models (API)
 #   - claude-sdk: Claude Agent SDK (native MCP support)
-#   - claude-cli: Claude Code CLI (subprocess)
+#     Aliases: "claude-cli" and "claude-code" also map to claude-sdk
 #
 # API Key Sources (priority order):
 #   1. Provider-specific api_key in this file
@@ -56,17 +56,7 @@ profiles:
       default: false
       api_key: ${ANTHROPIC_API_KEY}
 
-    # Claude Code CLI (subprocess)
-    - name: Claude CLI (Sonnet)
-      provider: claude-cli
-      model: claude-sonnet-4-20250514
-      timeout: 120
-      default: false
-    - name: Claude CLI (Opus)
-      provider: claude-cli
-      model: claude-opus-4-20250514
-      timeout: 180
-      default: false
+    # Note: claude-cli and claude-code are accepted aliases for claude-sdk
 
     # OpenAI
     - name: GPT-4o
