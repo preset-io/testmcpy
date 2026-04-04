@@ -1543,10 +1543,14 @@ class AssistantProvider(LLMProvider):
         api_secret: str | None = None,
         api_url: str | None = None,
         model_override: str | None = None,
+        conversations_path: str = "/api/v1/copilot/conversations",
+        completions_path: str = "/api/v1/copilot/completions",
         **kwargs,
     ):
         self.model = model
         self.model_override = model_override
+        self.conversations_path = conversations_path
+        self.completions_path = completions_path
 
         # Resolve config: kwargs > env vars > MCP profile auth
         config = get_config()
@@ -1646,7 +1650,7 @@ class AssistantProvider(LLMProvider):
             raise RuntimeError(f"JWT auth connection failed: {e}") from e
 
         # --- Create conversation ---
-        conv_url = f"{self.base_url}/api/v1/copilot/conversations"
+        conv_url = f"{self.base_url}{self.conversations_path}"
         _assistant_logger.info("[Assistant] Creating conversation at: %s", conv_url)
         try:
             resp = await self._client.post(
@@ -1686,7 +1690,7 @@ class AssistantProvider(LLMProvider):
     ) -> LLMResult:
         """Send prompt to assistant completions endpoint and stream SSE response.
 
-        The copilot endpoint handles tool calling internally (server-side),
+        The assistant endpoint handles tool calling internally (server-side),
         so we do not send tool schemas. Instead we parse SSE events for
         tool_call / tool_result events emitted by the assistant backend.
         """
@@ -1713,7 +1717,7 @@ class AssistantProvider(LLMProvider):
         if self.model_override or (self.model and self.model != "default"):
             payload["model_override"] = self.model_override or self.model
 
-        completions_url = f"{self.base_url}/api/v1/copilot/completions"
+        completions_url = f"{self.base_url}{self.completions_path}"
         headers = {**self._build_headers(), "Accept": "text/event-stream"}
 
         log(f"[Assistant] POST {completions_url} (conversation={self._conversation_id})")
@@ -2287,7 +2291,6 @@ def create_llm_provider(provider: str, model: str, **kwargs) -> LLMProvider:
         "claude-code": ClaudeSDKProvider,  # Alias → claude-sdk
         "assistant": AssistantProvider,  # AI assistant conversation endpoint
         "chatbot": AssistantProvider,  # Alias → assistant
-        "copilot": AssistantProvider,  # Legacy alias → assistant
         "codex-cli": CodexCLIProvider,
         "codex": CodexCLIProvider,  # Alias
     }

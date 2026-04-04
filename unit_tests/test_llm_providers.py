@@ -36,9 +36,9 @@ class TestProviderFactory:
         provider = create_llm_provider("openai", "gpt-4o", api_key="test")
         assert isinstance(provider, OpenAIProvider)
 
-    def test_create_copilot_provider(self):
+    def test_create_assistant_provider(self):
         provider = create_llm_provider(
-            "copilot", "default", workspace_hash="test", domain="test.com"
+            "assistant", "default", workspace_hash="test", domain="test.com"
         )
         assert isinstance(provider, AssistantProvider)
 
