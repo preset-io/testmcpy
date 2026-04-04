@@ -651,6 +651,26 @@ class MCPClient:
                     print(f"Warning: Failed to parse tool: {e}", file=sys.stderr)
                     continue
 
+            # Detect search_tools/call_tool gateway pattern (FastMCP 3.x)
+            # If server only exposes gateway tools, expand by calling search_tools
+            tool_names = {t.name for t in tools}
+            has_gateway = "search_tools" in tool_names and "call_tool" in tool_names
+            if has_gateway and len(tools) <= 6:
+                try:
+                    expanded = await self._expand_gateway_tools(timeout)
+                    if expanded:
+                        # Keep gateway tools + always-visible tools, add discovered ones
+                        existing_names = {t.name for t in tools}
+                        for t in expanded:
+                            if t.name not in existing_names:
+                                tools.append(t)
+                        print(
+                            f"  [MCP] Expanded {len(expanded)} tools via search_tools gateway "
+                            f"(total: {len(tools)})"
+                        )
+                except (asyncio.TimeoutError, MCPError) as e:
+                    print(f"  [MCP] Gateway expansion failed (non-fatal): {e}")
+
             self._tools_cache = tools
             return tools
 
@@ -660,6 +680,63 @@ class MCPClient:
             raise  # Re-raise our errors
         except Exception as e:
             raise MCPError(f"Failed to list tools: {e}")
+
+    async def _expand_gateway_tools(self, timeout: float = 30.0) -> list["MCPTool"]:
+        """Expand tools via the search_tools gateway (FastMCP 3.x pattern).
+
+        When a server exposes search_tools + call_tool as a gateway, call
+        search_tools with a broad query to discover all available tools.
+        """
+        if not self.client:
+            return []
+
+        discovered: list[MCPTool] = []
+
+        # Call search_tools with empty/broad query to get all tools
+        try:
+            result = await asyncio.wait_for(
+                self.client.call_tool("search_tools", {"query": ""}),
+                timeout=timeout,
+            )
+
+            # Parse the result — search_tools returns tool definitions
+            content = ""
+            if hasattr(result, "content"):
+                if isinstance(result.content, list):
+                    parts = []
+                    for item in result.content:
+                        if hasattr(item, "text"):
+                            parts.append(item.text)
+                        else:
+                            parts.append(str(item))
+                    content = "\n".join(parts)
+                elif isinstance(result.content, str):
+                    content = result.content
+                else:
+                    content = str(result.content)
+            elif isinstance(result, str):
+                content = result
+
+            # Try to parse as JSON (search_tools may return JSON tool definitions)
+            if content:
+                import json as _json
+
+                try:
+                    data = _json.loads(content)
+                    if isinstance(data, list):
+                        for item in data:
+                            if isinstance(item, dict) and "name" in item:
+                                discovered.append(MCPTool.from_dict(item))
+                    elif isinstance(data, dict) and "tools" in data:
+                        for item in data["tools"]:
+                            if isinstance(item, dict) and "name" in item:
+                                discovered.append(MCPTool.from_dict(item))
+                except (_json.JSONDecodeError, ValueError):
+                    pass  # Not JSON, that's fine
+        except (asyncio.TimeoutError, TypeError, ValueError) as e:
+            print(f"  [MCP] search_tools query failed: {e}")
+
+        return discovered
 
     async def call_tool(
         self, tool_call: MCPToolCall, timeout: float = DEFAULT_TIMEOUT
@@ -685,10 +762,41 @@ class MCPClient:
             )
 
         try:
-            # Execute with timeout
-            result = await asyncio.wait_for(
-                self.client.call_tool(tool_call.name, tool_call.arguments), timeout=timeout
+            # Check if tool exists directly or needs gateway routing
+            direct_tool_names = set()
+            if self._tools_cache:
+                direct_tool_names = {
+                    t.name for t in self._tools_cache if t.name not in ("search_tools", "call_tool")
+                }
+
+            # Route through call_tool gateway if:
+            # 1. The tool isn't directly available
+            # 2. The call_tool gateway exists
+            gateway_names = set()
+            if self._tools_cache:
+                gateway_names = {t.name for t in self._tools_cache}
+            use_gateway = (
+                "call_tool" in gateway_names
+                and tool_call.name not in gateway_names
+                and tool_call.name not in direct_tool_names
             )
+
+            if use_gateway:
+                # Route through call_tool(name=<tool>, arguments=<args>)
+                gateway_args = {
+                    "name": tool_call.name,
+                    "arguments": tool_call.arguments or {},
+                }
+                result = await asyncio.wait_for(
+                    self.client.call_tool("call_tool", gateway_args),
+                    timeout=timeout,
+                )
+            else:
+                # Execute directly
+                result = await asyncio.wait_for(
+                    self.client.call_tool(tool_call.name, tool_call.arguments),
+                    timeout=timeout,
+                )
 
             return MCPToolResult(
                 tool_call_id=tool_call.id or "unknown",
