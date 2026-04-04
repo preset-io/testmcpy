@@ -43,12 +43,15 @@ check_untyped_defs = true
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["unit_tests", "integration_tests"]
 python_files = ["test_*.py"]
 addopts = [
     "-v",
     "--strict-markers",
     "--tb=short",
+]
+markers = [
+    "e2e: End-to-end UI tests (requires playwright)",
 ]
 
 [tool.coverage.run]
@@ -144,6 +147,10 @@ sdk = [
 ]
 tui = [
     "textual>=0.85.0",
+]
+e2e = [
+    "playwright>=1.40.0",
+    "pytest-playwright>=0.4.0",
 ]
 all = [
     "fastapi>=0.104.0,<1.0.0",
