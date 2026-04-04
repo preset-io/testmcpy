@@ -612,6 +612,33 @@ async def list_mcp_prompts(profiles: list[str] = Query(default=None)):
     return all_prompts
 
 
+def _serialize_tool_content(content):
+    """Serialize MCP tool result content to JSON-safe format."""
+    if content is None:
+        return None
+    if isinstance(content, (str, int, float, bool)):
+        return content
+    if isinstance(content, dict):
+        return content
+    # Handle lists — could be plain JSON or MCP TextContent objects
+    if isinstance(content, list):
+        # Check if items need serialization (MCP content objects)
+        if content and hasattr(content[0], "text"):
+            parts = []
+            for item in content:
+                if hasattr(item, "text"):
+                    parts.append(item.text)
+                elif hasattr(item, "data"):
+                    parts.append(str(item.data))
+                else:
+                    parts.append(str(item))
+            return "\n".join(parts) if parts else ""
+        return content  # Plain JSON list
+    if hasattr(content, "text"):
+        return content.text
+    return str(content)
+
+
 # Chat endpoint
 
 
@@ -869,7 +896,7 @@ async def chat_stream(request: ChatRequest):
     def _build_continuation_prompt(tool_calls_list, tool_results_list) -> str:
         """Build a continuation prompt from tool call/result pairs."""
         parts: list[str] = []
-        for tc, tr in zip(tool_calls_list, tool_results_list):
+        for tc, tr in zip(tool_calls_list, tool_results_list, strict=False):
             name = strip_mcp_prefix(tc["name"])
             args_str = json.dumps(tc.get("arguments", {}), indent=2)
             if tr["is_error"]:
@@ -891,32 +918,6 @@ async def chat_stream(request: ChatRequest):
             + "\n\nAnalyze these results. If you need more information, call additional tools. "
             "Otherwise, provide your final answer to the user's original question."
         )
-
-    def _serialize_tool_content(content):
-        """Serialize MCP tool result content to JSON-safe format."""
-        if content is None:
-            return None
-        if isinstance(content, (str, int, float, bool)):
-            return content
-        if isinstance(content, dict):
-            return content
-        # Handle lists — could be plain JSON or MCP TextContent objects
-        if isinstance(content, list):
-            # Check if items need serialization (MCP content objects)
-            if content and hasattr(content[0], "text"):
-                parts = []
-                for item in content:
-                    if hasattr(item, "text"):
-                        parts.append(item.text)
-                    elif hasattr(item, "data"):
-                        parts.append(str(item.data))
-                    else:
-                        parts.append(str(item))
-                return "\n".join(parts) if parts else ""
-            return content  # Plain JSON list
-        if hasattr(content, "text"):
-            return content.text
-        return str(content)
 
     async def generate():
         start_time = time.time()
@@ -1044,6 +1045,8 @@ async def chat_stream(request: ChatRequest):
                     ThinkingBlock,
                     ToolUseBlock,
                     UserMessage,
+                )
+                from claude_agent_sdk import (
                     query as sdk_query,
                 )
                 from claude_agent_sdk.types import ToolResultBlock
@@ -1131,6 +1134,7 @@ async def chat_stream(request: ChatRequest):
                                     yield send_event(
                                         "tool_call",
                                         {
+                                            "id": block.id,
                                             "name": block.name,
                                             "arguments": block.input,
                                             "turn": sdk_turn,
@@ -1152,6 +1156,7 @@ async def chat_stream(request: ChatRequest):
                                         yield send_event(
                                             "tool_result",
                                             {
+                                                "id": block.tool_use_id,
                                                 "name": tool_name,
                                                 "result": content if not is_error else None,
                                                 "error": str(content) if is_error else None,
@@ -1334,9 +1339,11 @@ async def chat_stream(request: ChatRequest):
                     turn_tool_results = []
                     for tool_call in result.tool_calls:
                         actual_tool_name = strip_mcp_prefix(tool_call["name"])
+                        tc_id = tool_call.get("id", f"tc_{turn}_{actual_tool_name}")
                         yield send_event(
                             "tool_call",
                             {
+                                "id": tc_id,
                                 "name": tool_call["name"],
                                 "arguments": tool_call.get("arguments", {}),
                                 "turn": turn,
@@ -1350,6 +1357,7 @@ async def chat_stream(request: ChatRequest):
                         tool_info = tool_to_client.get(actual_tool_name)
                         if not tool_info:
                             tr_data = {
+                                "id": tc_id,
                                 "name": tool_call["name"],
                                 "result": None,
                                 "error": f"Tool '{tool_call['name']}' not found in any MCP profile",
@@ -1369,6 +1377,7 @@ async def chat_stream(request: ChatRequest):
                         )
                         tool_result = await client_for_tool.call_tool(mcp_tool_call)
                         tr_data = {
+                            "id": tc_id,
                             "name": tool_call["name"],
                             "result": _serialize_tool_content(tool_result.content)
                             if not tool_result.is_error
@@ -1414,19 +1423,13 @@ async def chat_stream(request: ChatRequest):
             yield send_event("error", f"Connection error: {error_msg}")
         except ValueError as e:
             yield send_event("error", str(e))
-        except Exception as e:
+        except (RuntimeError, AttributeError, KeyError, TypeError, ImportError) as e:
             # Log full error server-side, send sanitized message to client
             import traceback
 
             print(f"Chat stream error: {type(e).__name__}: {e}")
             traceback.print_exc()
-            error_msg = str(e)
-            if is_connection_error(error_msg):
-                for cache_key in accessed_servers:
-                    await clear_cached_client(cache_key)
-                yield send_event("error", f"Connection error: {error_msg}")
-            else:
-                yield send_event("error", f"Internal error: {type(e).__name__}")
+            yield send_event("error", f"Internal error: {type(e).__name__}")
 
     return StreamingResponse(
         generate(),

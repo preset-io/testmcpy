@@ -20,7 +20,6 @@ import pytest
 
 from testmcpy.storage import TestResult, TestStorage, TestVersion
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -36,7 +35,6 @@ def storage(tmp_path):
 @pytest.fixture
 def storage_with_results(storage):
     """Storage pre-populated with several test results."""
-    now = datetime.now(timezone.utc).isoformat()
     # Save some results with different models and pass/fail states
     storage.save_result(
         test_path="tests/basic.yaml",

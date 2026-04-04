@@ -2,10 +2,7 @@
 API routes for the Test Execution Agent.
 """
 
-import asyncio
 import json
-import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 

@@ -349,7 +349,7 @@ function ChatInterface({ selectedProfiles = [], selectedLlmProfile, llmProfiles 
             }
           } else if (type === 'tool_call') {
             const turn = data.turn || currentTurn || 1
-            accToolCalls = [...accToolCalls, { name: data.name, arguments: data.arguments, result: null, error: null, is_error: false, turn }]
+            accToolCalls = [...accToolCalls, { id: data.id, name: data.name, arguments: data.arguments, result: null, error: null, is_error: false, turn }]
             setMessages(prev => {
               const updated = [...prev]
               updated[assistantIdx] = { ...updated[assistantIdx], tool_calls: accToolCalls }
@@ -358,11 +358,13 @@ function ChatInterface({ selectedProfiles = [], selectedLlmProfile, llmProfiles 
             setStreamingStatus(`Turn ${turn} — Executing: ${data.name}...`)
           } else if (type === 'tool_result') {
             const turn = data.turn || currentTurn || 1
-            // Update the matching tool call with its result (match by name + turn + no result yet)
+            // Update the matching tool call with its result (match by unique tool ID)
             accToolCalls = accToolCalls.map(tc =>
-              tc.name === data.name && tc.result === null && tc.turn === turn
+              tc.id && data.id && tc.id === data.id
                 ? { ...tc, result: data.result, error: data.error, is_error: data.is_error }
-                : tc
+                : (!tc.id && tc.name === data.name && tc.result === null && tc.turn === turn)
+                  ? { ...tc, result: data.result, error: data.error, is_error: data.is_error }
+                  : tc
             )
             setMessages(prev => {
               const updated = [...prev]
