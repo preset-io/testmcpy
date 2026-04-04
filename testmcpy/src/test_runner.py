@@ -285,7 +285,13 @@ class TestRunner:
     ):
         """Call LLM with intelligent rate limiting and retry logic."""
         # Skip rate limiting for CLI providers (they use subscription, not API)
-        is_cli_provider = self.provider in ("claude-cli", "claude-code", "codex-cli", "codex")
+        is_cli_provider = self.provider in (
+            "claude-sdk",
+            "claude-cli",
+            "claude-code",
+            "codex-cli",
+            "codex",
+        )
 
         if is_cli_provider:
             # For CLI providers, just make the call directly
@@ -467,7 +473,7 @@ class TestRunner:
             # Determine timeout - CLI providers need more time
             # Use at least 120s for claude-cli and codex-cli
             effective_timeout = test_case.timeout
-            if self.provider in ("claude-cli", "claude-code", "codex-cli", "codex"):
+            if self.provider in ("claude-sdk", "claude-cli", "claude-code", "codex-cli", "codex"):
                 effective_timeout = max(test_case.timeout, 120.0)
                 if self.verbose and effective_timeout > test_case.timeout:
                     self._log(f"  Using extended timeout {effective_timeout}s for CLI provider")
@@ -722,7 +728,13 @@ class TestRunner:
 
                 # Determine timeout - CLI providers need more time
                 effective_timeout = step.timeout
-                if self.provider in ("claude-cli", "claude-code", "codex-cli", "codex"):
+                if self.provider in (
+                    "claude-sdk",
+                    "claude-cli",
+                    "claude-code",
+                    "codex-cli",
+                    "codex",
+                ):
                     effective_timeout = max(step.timeout, 120.0)
 
                 # Call LLM with conversation history
@@ -1054,7 +1066,13 @@ class TestRunner:
                 # Add minimum delay between tests to prevent rate limiting bursts
                 # Skip delay for CLI providers (they use subscription, not API rate limits)
                 if i < len(test_cases) - 1:  # Don't wait after the last test
-                    if self.provider in ("claude-cli", "claude-code", "codex-cli", "codex"):
+                    if self.provider in (
+                        "claude-sdk",
+                        "claude-cli",
+                        "claude-code",
+                        "codex-cli",
+                        "codex",
+                    ):
                         min_delay = 1  # Minimal delay for CLI providers
                     else:
                         min_delay = 15  # 15 seconds for API providers

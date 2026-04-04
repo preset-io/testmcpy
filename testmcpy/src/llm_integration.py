@@ -1289,7 +1289,9 @@ class ClaudeSDKProvider(LLMProvider):
                 CLIConnectionError,
                 CLINotFoundError,
                 ProcessError,
+                RateLimitEvent,
                 ResultMessage,
+                SystemMessage,
                 TextBlock,
                 ThinkingBlock,
                 ToolUseBlock,
@@ -1315,12 +1317,53 @@ class ClaudeSDKProvider(LLMProvider):
             }
             clean_env["ANTHROPIC_API_KEY"] = ""  # Force subscription usage, not API credits
 
+            # Disable Claude Code's built-in tools (Bash, Read, Edit, Grep, etc.)
+            # so the LLM only uses the MCP server's tools (call_tool, search_tools, etc.).
+            # This prevents the LLM from calling ToolSearch or other internal tools
+            # instead of the MCP gateway tools.
+            _builtin_tools_to_block = [
+                "Bash",
+                "Read",
+                "Edit",
+                "Write",
+                "Grep",
+                "Glob",
+                "ToolSearch",
+                "Skill",
+                "TodoWrite",
+                "Agent",
+                "WebFetch",
+                "WebSearch",
+                "NotebookEdit",
+                "EnterWorktree",
+                "ExitWorktree",
+            ]
+
+            # System prompt to focus the LLM on MCP tools exclusively
+            system_prompt = (
+                "You are a test executor. Your ONLY job is to call the MCP tools provided "
+                "to fulfill the user's request, then report the results.\n\n"
+                "IMPORTANT RULES:\n"
+                "1. Use ONLY the MCP server tools (call_tool, search_tools, health_check, "
+                "get_instance_info). Do NOT use any Claude Code built-in tools.\n"
+                "2. The MCP server uses a gateway pattern: real tools like list_dashboards, "
+                "get_chart_info, etc. are accessed via call_tool(name='tool_name', arguments={...}).\n"
+                "3. For simple tools like health_check and get_instance_info, call them directly.\n"
+                "4. Complete the FULL agentic loop: search/discover tools if needed, call the tool, "
+                "then summarize the results in your final response.\n"
+                "5. Always include the actual data from tool results in your response.\n"
+                "6. Be concise and factual — include key data points from the tool output."
+            )
+
             options = ClaudeAgentOptions(
                 model=self.model,
                 permission_mode="bypassPermissions",
                 mcp_servers=mcp_servers,
                 max_turns=25,
                 env=clean_env,
+                disallowed_tools=_builtin_tools_to_block,
+                system_prompt=system_prompt,
+                debug_stderr=None,  # Suppress CLI debug output
             )
 
             # Execute query with timeout
@@ -1337,15 +1380,36 @@ class ClaudeSDKProvider(LLMProvider):
             async def execute_query():
                 nonlocal response_text, thinking_text, token_usage, cost
                 message_count = 0
+                # Track all text blocks per AssistantMessage so we can
+                # identify the FINAL text response (after all tool calls)
+                all_text_segments: list[str] = []
+                current_turn_text = ""
                 try:
                     async for message in query(prompt=prompt, options=options):
                         message_count += 1
-                        raw_events.append({"type": type(message).__name__})
+                        msg_type = type(message).__name__
+                        raw_events.append({"type": msg_type})
+                        log(f"[ClaudeSDK] Message #{message_count}: {msg_type}")
+
+                        if isinstance(message, SystemMessage):
+                            # System messages from SDK — skip
+                            continue
+
+                        if isinstance(message, RateLimitEvent):
+                            # Rate limit info from subscription — log but continue
+                            info = message.rate_limit_info
+                            log(
+                                f"[ClaudeSDK] Rate limit: status={info.status}, "
+                                f"utilization={info.utilization}"
+                            )
+                            continue
 
                         if isinstance(message, AssistantMessage):
+                            # Start a new turn's text accumulator
+                            current_turn_text = ""
                             for block in message.content:
                                 if isinstance(block, TextBlock):
-                                    response_text += block.text
+                                    current_turn_text += block.text
                                     preview = block.text[:80].replace("\n", " ")
                                     log(f"[ClaudeSDK] Text: {preview}...")
                                 elif isinstance(block, ThinkingBlock):
@@ -1362,6 +1426,10 @@ class ClaudeSDKProvider(LLMProvider):
                                     if len(args_str) > 200:
                                         args_str = args_str[:200] + "..."
                                     log(f"[ClaudeSDK] Tool Call: {block.name} | Args: {args_str}")
+
+                            # Save this turn's text
+                            if current_turn_text:
+                                all_text_segments.append(current_turn_text)
 
                         elif isinstance(message, UserMessage):
                             # Tool results come back as UserMessage content
@@ -1426,8 +1494,20 @@ class ClaudeSDKProvider(LLMProvider):
                     # SDK may throw on unknown message types (e.g. rate_limit_event).
                     # If we already collected any response or tool calls, treat as complete.
                     log(f"[ClaudeSDK] SDK error during iteration: {e}")
-                    if not response_text and not tool_calls:
+                    if not all_text_segments and not tool_calls:
                         raise
+
+                # Use the FINAL text segment as the response. In a multi-turn
+                # agentic loop (search → call → synthesize), intermediate text
+                # is often "I'll check..." while the last segment contains the
+                # actual answer with tool results incorporated.
+                if all_text_segments:
+                    response_text = all_text_segments[-1]
+                    if len(all_text_segments) > 1:
+                        log(
+                            f"[ClaudeSDK] {len(all_text_segments)} text segments; "
+                            f"using final segment ({len(response_text)} chars)"
+                        )
 
                 log(f"[ClaudeSDK] Completed: {message_count} messages, {len(response_text)} chars")
 
