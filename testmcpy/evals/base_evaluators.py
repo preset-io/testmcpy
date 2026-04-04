@@ -1041,7 +1041,12 @@ class SQLQueryValid(BaseEvaluator):
 
 
 class ResponseIncludes(BaseEvaluator):
-    """Check if the response includes specific content (alias for FinalAnswerContains)."""
+    """Check if the response includes specific content.
+
+    Searches both the LLM response text AND tool result content,
+    since the expected content may appear in tool output rather than
+    the LLM's synthesis (especially with agentic SDK providers).
+    """
 
     def __init__(
         self,
@@ -1069,8 +1074,27 @@ class ResponseIncludes(BaseEvaluator):
     def description(self) -> str:
         return f"Checks if response includes: {', '.join(self.expected_content[:3])}{'...' if len(self.expected_content) > 3 else ''}"
 
-    def evaluate(self, context: dict[str, Any]) -> EvalResult:
+    def _build_searchable_text(self, context: dict[str, Any]) -> str:
+        """Build searchable text from response + tool results."""
         response = context.get("response", "")
+        # Also include tool results content
+        for tr in context.get("tool_results", []):
+            if isinstance(tr, dict):
+                rc = tr.get("content", tr.get("result", ""))
+            elif hasattr(tr, "content"):
+                rc = tr.content
+            else:
+                rc = str(tr)
+            if rc:
+                if isinstance(rc, list):
+                    for item in rc:
+                        response += " " + (item.text if hasattr(item, "text") else str(item))
+                else:
+                    response += " " + str(rc)
+        return response
+
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
+        response = self._build_searchable_text(context)
 
         if not self.case_sensitive:
             response = response.lower()
