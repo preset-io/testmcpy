@@ -71,6 +71,8 @@ class TestSuite:
     questions: list[Question] = field(default_factory=list)
     description: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    provider: str | None = None
+    provider_config: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "TestSuite":
@@ -84,6 +86,8 @@ class TestSuite:
             questions=questions,
             description=data.get("description"),
             metadata=data.get("metadata", {}),
+            provider=data.get("provider"),
+            provider_config=data.get("provider_config", {}),
         )
 
     @classmethod

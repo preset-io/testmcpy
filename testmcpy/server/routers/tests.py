@@ -848,6 +848,15 @@ async def run_tests(request: TestRunRequest):
         else:
             test_cases.append(TestCase.from_dict(data))
 
+        # Check for suite-level provider override
+        suite_provider = data.get("provider")
+        suite_provider_config = data.get("provider_config", {})
+        suite_model = data.get("model")
+
+        # Suite-level provider/model takes precedence over request params
+        effective_provider = suite_provider or provider
+        effective_model = suite_model or model
+
         # Filter to specific test if test_name is provided
         if request.test_name:
             test_cases = [tc for tc in test_cases if tc.name == request.test_name]
@@ -864,12 +873,13 @@ async def run_tests(request: TestRunRequest):
 
         # Run tests
         runner = TestRunner(
-            model=model,
-            provider=provider,
+            model=effective_model,
+            provider=effective_provider,
             mcp_url=config.get_mcp_url(),
             mcp_client=mcp_client,
             verbose=True,
             hide_tool_output=False,
+            provider_config=suite_provider_config,
         )
 
         results = await runner.run_tests(test_cases)
@@ -894,8 +904,8 @@ async def run_tests(request: TestRunRequest):
                     duration=r.duration,
                     cost=r.cost,
                     tokens_used=r.token_usage.get("total", 0) if r.token_usage else 0,
-                    model=model,
-                    provider=provider,
+                    model=effective_model,
+                    provider=effective_provider,
                     error=r.error,
                     evaluations=[
                         e.to_dict() if hasattr(e, "to_dict") else e for e in (r.evaluations or [])
@@ -955,13 +965,22 @@ async def run_specific_test(test_name: str, request: TestRunRequest | None = Non
         else:
             test_cases.append(TestCase.from_dict(data))
 
+        # Check for suite-level provider override
+        suite_provider = data.get("provider")
+        suite_provider_config = data.get("provider_config", {})
+        suite_model = data.get("model")
+
+        effective_provider = suite_provider or provider
+        effective_model = suite_model or model
+
         # Run tests
         runner = TestRunner(
-            model=model,
-            provider=provider,
+            model=effective_model,
+            provider=effective_provider,
             mcp_url=config.get_mcp_url(),
             verbose=True,
             hide_tool_output=False,
+            provider_config=suite_provider_config,
         )
 
         results = await runner.run_tests(test_cases)
@@ -1020,16 +1039,25 @@ async def run_specific_test_case(
                 detail=f"Test case index {case_index} not found. Valid indices: 0-{len(test_case_data) - 1}",
             )
 
+        # Check for suite-level provider override
+        suite_provider = data.get("provider")
+        suite_provider_config = data.get("provider_config", {})
+        suite_model = data.get("model")
+
+        effective_provider = suite_provider or provider
+        effective_model = suite_model or model
+
         # Get the specific test case
         test_case = TestCase.from_dict(test_case_data[case_index])
 
         # Run test
         runner = TestRunner(
-            model=model,
-            provider=provider,
+            model=effective_model,
+            provider=effective_provider,
             mcp_url=config.get_mcp_url(),
             verbose=True,
             hide_tool_output=False,
+            provider_config=suite_provider_config,
         )
 
         results = await runner.run_tests([test_case])
@@ -1115,14 +1143,23 @@ async def run_tool_tests(
             else:
                 test_cases.append(TestCase.from_dict(data))
 
+            # Check for suite-level provider override
+            suite_provider = data.get("provider")
+            suite_provider_config = data.get("provider_config", {})
+            suite_model = data.get("model")
+
+            file_provider = suite_provider or provider
+            file_model = suite_model or model
+
             # Run tests with MCP client
             runner = TestRunner(
-                model=model,
-                provider=provider,
+                model=file_model,
+                provider=file_provider,
                 mcp_url=config.get_mcp_url(),
                 mcp_client=mcp_client,
                 verbose=True,
                 hide_tool_output=False,
+                provider_config=suite_provider_config,
             )
 
             await runner.initialize()

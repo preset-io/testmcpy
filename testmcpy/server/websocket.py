@@ -246,6 +246,14 @@ async def handle_test_websocket(websocket: WebSocket):
                     else:
                         test_cases.append(TestCase.from_dict(file_data))
 
+                    # Check for suite-level provider override
+                    suite_provider = file_data.get("provider")
+                    suite_provider_config = file_data.get("provider_config", {})
+                    suite_model = file_data.get("model")
+
+                    effective_provider = suite_provider or provider
+                    effective_model = suite_model or model
+
                     # Filter to specific test if requested
                     if test_name:
                         test_cases = [tc for tc in test_cases if tc.name == test_name]
@@ -257,7 +265,9 @@ async def handle_test_websocket(websocket: WebSocket):
                             continue
 
                     await send_log(f"📋 Found {len(test_cases)} test(s) to run")
-                    await send_log(f"🤖 Provider: {provider}, Model: {model}")
+                    await send_log(f"🤖 Provider: {effective_provider}, Model: {effective_model}")
+                    if suite_provider:
+                        await send_log(f"📝 Suite-level provider override: {suite_provider}")
 
                     # Get MCP client - use profile or default
                     mcp_client = None
@@ -289,13 +299,14 @@ async def handle_test_websocket(websocket: WebSocket):
 
                     # Create runner with streaming log callback
                     runner = TestRunner(
-                        model=model,
-                        provider=provider,
+                        model=effective_model,
+                        provider=effective_provider,
                         mcp_url=config.get_mcp_url(),
                         mcp_client=mcp_client,
                         verbose=True,
                         hide_tool_output=False,
                         log_callback=send_log,
+                        provider_config=suite_provider_config,
                     )
 
                     await send_log("⚙️ Initializing test runner...")
