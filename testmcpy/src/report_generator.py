@@ -336,11 +336,16 @@ class ReportGenerator:
         return "\n".join(sections)
 
     def save(self, path: str) -> Path:
-        """Save report to file (markdown or JSON based on extension)."""
+        """Save report to file (markdown, JSON, or HTML based on extension)."""
         output_path = Path(path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        if output_path.suffix == ".json":
+        if output_path.suffix == ".html":
+            from testmcpy.src.html_report import HTMLReportGenerator
+
+            html_gen = HTMLReportGenerator(self.report)
+            output_path.write_text(html_gen.generate())
+        elif output_path.suffix == ".json":
             output_path.write_text(json.dumps(self.to_dict(), indent=2))
         else:
             output_path.write_text(self.generate_markdown())

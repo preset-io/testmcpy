@@ -205,7 +205,7 @@ def run(
         False, "--hide-tool-output", help="Hide detailed tool call output in verbose mode"
     ),
     report: Optional[Path] = typer.Option(
-        None, "--report", help="Generate markdown eval report to this file path"
+        None, "--report", help="Generate eval report (.md, .json, or .html) to this file path"
     ),
     report_title: Optional[str] = typer.Option(
         None, "--report-title", help="Title for the eval report"
@@ -1139,3 +1139,175 @@ def coverage(
         else:
             output.write_text(analyzer.generate_report())
         console.print(f"\n[green]Coverage report saved to {output}[/green]")
+
+
+@app.command()
+def compare(
+    test_path: Path = typer.Argument(..., help="Path to test file or directory"),
+    models: str = typer.Option(
+        ...,
+        "--models",
+        help="Comma-separated list of provider:model pairs (e.g. 'anthropic:claude-sonnet-4-20250514,openai:gpt-4o')",
+    ),
+    mcp_url: Optional[str] = typer.Option(
+        None, "--mcp-url", help="MCP service URL (overrides profile)"
+    ),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", help="MCP service profile from .mcp_services.yaml"
+    ),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output file for results"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
+):
+    """
+    Compare multiple LLM models against the same test suite.
+
+    Runs all test cases against each model and produces a comparison matrix
+    showing pass/fail, score, cost, tokens, and duration per model.
+
+    Example:
+        testmcpy compare tests/ --models "anthropic:claude-sonnet-4-20250514,openai:gpt-4o"
+    """
+    from testmcpy.src.comparison_runner import ComparisonRunner, ModelConfig
+
+    # Parse model specs
+    model_specs = [s.strip() for s in models.split(",") if s.strip()]
+    if len(model_specs) < 2:
+        console.print(
+            "[red]Error: --models requires at least 2 comma-separated provider:model pairs[/red]"
+        )
+        raise typer.Exit(code=1)
+
+    try:
+        model_configs = [ModelConfig.from_string(spec) for spec in model_specs]
+    except ValueError as e:
+        console.print(f"[red]Error parsing --models: {e}[/red]")
+        raise typer.Exit(code=1)
+
+    # Load config with profile if specified
+    if profile:
+        from testmcpy.config import Config
+
+        cfg = Config(profile=profile)
+        effective_mcp_url = mcp_url or cfg.get_mcp_url()
+    else:
+        effective_mcp_url = mcp_url or DEFAULT_MCP_URL
+
+    console.print(
+        Panel.fit(
+            "[bold cyan]MCP Testing Framework - Model Comparison[/bold cyan]\n"
+            f"Comparing {len(model_configs)} models",
+            border_style="cyan",
+        )
+    )
+
+    for mc in model_configs:
+        console.print(f"  [dim]• {mc.name}[/dim]")
+
+    async def run_comparison():
+        from testmcpy.server.helpers.mcp_config import load_mcp_yaml
+        from testmcpy.server.state import get_or_create_mcp_client
+        from testmcpy.src.test_runner import TestCase
+
+        # Get authenticated MCP client
+        mcp_client = None
+        effective_profile = profile
+        if not effective_profile:
+            mcp_config = load_mcp_yaml()
+            effective_profile = mcp_config.get("default")
+
+        if effective_profile:
+            try:
+                mcp_client = await get_or_create_mcp_client(effective_profile)
+            except Exception as e:
+                console.print(f"[yellow]Warning: Could not load MCP profile: {e}[/yellow]")
+
+        # Load test cases
+        test_cases = []
+        if test_path.is_file():
+            with open(test_path) as f:
+                if test_path.suffix == ".json":
+                    data = json.load(f)
+                else:
+                    data = yaml.safe_load(f)
+
+                if "tests" in data:
+                    for test_data in data["tests"]:
+                        test_cases.append(TestCase.from_dict(test_data))
+                else:
+                    test_cases.append(TestCase.from_dict(data))
+
+        elif test_path.is_dir():
+            for pattern in ["*.yaml", "*.yml", "*.json"]:
+                for file in test_path.rglob(pattern):
+                    if any(part.startswith(".") for part in file.relative_to(test_path).parts):
+                        continue
+                    with open(file) as f:
+                        if file.suffix == ".json":
+                            data = json.load(f)
+                        else:
+                            data = yaml.safe_load(f)
+                        if data is None:
+                            continue
+                        if "tests" in data:
+                            for test_data in data["tests"]:
+                                test_cases.append(TestCase.from_dict(test_data))
+                        elif "prompt" in data:
+                            test_cases.append(TestCase.from_dict(data))
+
+        if not test_cases:
+            console.print("[red]No test cases found.[/red]")
+            raise typer.Exit(code=1)
+
+        console.print(f"\n[bold]Found {len(test_cases)} test case(s)[/bold]")
+
+        # Run comparison
+        runner = ComparisonRunner(
+            models=model_configs,
+            mcp_url=effective_mcp_url,
+            mcp_client=mcp_client,
+            verbose=verbose,
+        )
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            for mc in model_configs:
+                progress.add_task(f"Running tests against {mc.name}...", total=None)
+
+            results = await runner.run(test_cases)
+
+        # Display comparison matrix
+        report_md = runner.generate_comparison_report(results)
+        console.print()
+        console.print(report_md)
+
+        # Summary per model
+        console.print("\n[bold]Per-Model Summary:[/bold]")
+        for cr in results:
+            status_color = "green" if cr.passed == cr.total_tests else "yellow"
+            console.print(
+                f"  [{status_color}]{cr.model.name}[/{status_color}]: "
+                f"{cr.passed}/{cr.total_tests} passed, "
+                f"avg score {cr.avg_score * 100:.0f}%, "
+                f"${cr.total_cost:.4f}, "
+                f"{cr.total_duration:.1f}s"
+            )
+
+        # Save output
+        if output:
+            if output.suffix == ".json":
+                import json as json_mod
+
+                output.parent.mkdir(parents=True, exist_ok=True)
+                output.write_text(json_mod.dumps(runner.to_dict(), indent=2))
+            elif output.suffix in (".md", ".markdown"):
+                output.parent.mkdir(parents=True, exist_ok=True)
+                output.write_text(report_md)
+            else:
+                output.parent.mkdir(parents=True, exist_ok=True)
+                output.write_text(report_md)
+            console.print(f"\n[green]Comparison report saved to {output}[/green]")
+
+    asyncio.run(run_comparison())
