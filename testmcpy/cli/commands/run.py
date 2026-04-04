@@ -204,6 +204,12 @@ def run(
     hide_tool_output: bool = typer.Option(
         False, "--hide-tool-output", help="Hide detailed tool call output in verbose mode"
     ),
+    report: Optional[Path] = typer.Option(
+        None, "--report", help="Generate markdown eval report to this file path"
+    ),
+    report_title: Optional[str] = typer.Option(
+        None, "--report-title", help="Title for the eval report"
+    ),
 ):
     """
     Run test cases against MCP service.
@@ -247,23 +253,23 @@ def run(
             except Exception as e:
                 console.print(f"[yellow]Warning: Could not load MCP profile: {e}[/yellow]")
 
-        runner = TestRunner(
-            model=model,
-            provider=provider.value,
-            mcp_url=effective_mcp_url,
-            mcp_client=mcp_client,
-            verbose=verbose,
-            hide_tool_output=hide_tool_output,
-        )
-
-        # Load test cases
+        # Load test cases and detect suite-level provider override
         test_cases = []
+        suite_provider = None
+        suite_provider_config = {}
+        suite_model = None
+
         if test_path.is_file():
             with open(test_path) as f:
                 if test_path.suffix == ".json":
                     data = json.load(f)
                 else:
                     data = yaml.safe_load(f)
+
+                # Check for suite-level provider override
+                suite_provider = data.get("provider")
+                suite_provider_config = data.get("provider_config", {})
+                suite_model = data.get("model")
 
                 if "tests" in data:
                     for test_data in data["tests"]:
@@ -293,6 +299,27 @@ def run(
                         elif "prompt" in data:
                             # Handle single test case files
                             test_cases.append(TestCase.from_dict(data))
+
+        # Apply suite-level provider override (suite YAML takes precedence over CLI args)
+        effective_provider = suite_provider or provider.value
+        effective_model = suite_model or model
+
+        if suite_provider and verbose:
+            console.print(f"[yellow]Suite-level provider override:[/yellow] {suite_provider}")
+            if suite_provider_config:
+                console.print(
+                    f"[yellow]Suite-level provider config:[/yellow] {suite_provider_config}"
+                )
+
+        runner = TestRunner(
+            model=effective_model,
+            provider=effective_provider,
+            mcp_url=effective_mcp_url,
+            mcp_client=mcp_client,
+            verbose=verbose,
+            hide_tool_output=hide_tool_output,
+            provider_config=suite_provider_config,
+        )
 
         console.print(f"\n[bold]Found {len(test_cases)} test case(s)[/bold]")
 
@@ -343,7 +370,7 @@ def run(
 
             # Rate limit delay between tests
             if i < len(test_cases):
-                if provider.value in (
+                if effective_provider in (
                     "claude-sdk",
                     "claude-cli",
                     "claude-code",
@@ -400,8 +427,8 @@ def run(
         # Save report if requested
         if output:
             report_data = {
-                "model": model,
-                "provider": provider.value,
+                "model": effective_model,
+                "provider": effective_provider,
                 "summary": {
                     "total": len(results),
                     "passed": total_passed,
@@ -416,6 +443,19 @@ def run(
                 output.write_text(yaml.dump(report_data))
 
             console.print(f"\n[green]Report saved to {output}[/green]")
+
+        # Generate markdown eval report if requested
+        if report:
+            from testmcpy.src.report_generator import ReportGenerator
+
+            suite_name = test_path.stem if test_path.is_file() else test_path.name
+            gen = ReportGenerator.from_test_results(
+                suite_name=suite_name,
+                results=results,
+                title=report_title or suite_name,
+            )
+            saved_path = gen.save(str(report))
+            console.print(f"\n[green]Eval report saved to {saved_path}[/green]")
 
     asyncio.run(run_tests())
 
