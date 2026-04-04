@@ -51,8 +51,7 @@ class PromptMutator:
     """Generate prompt variations to test robustness."""
 
     def __init__(self, seed: int | None = None):
-        if seed is not None:
-            random.seed(seed)
+        self._rng = random.Random(seed)
 
     def mutate(self, prompt: str, strategies: list[str] | None = None) -> list[dict]:
         """Generate mutations of a prompt.
@@ -84,11 +83,11 @@ class PromptMutator:
         words = prompt.split()
         if len(words) < 3:
             return prompt
-        idx = random.randint(1, len(words) - 1)
+        idx = self._rng.randint(1, len(words) - 1)
         word = words[idx]
         if len(word) > 3:
             # Swap two adjacent chars
-            i = random.randint(0, len(word) - 2)
+            i = self._rng.randint(0, len(word) - 2)
             word = word[:i] + word[i + 1] + word[i] + word[i + 2 :]
         words[idx] = word
         return " ".join(words)
@@ -118,7 +117,7 @@ class PromptMutator:
             "Could you please help me by ",
             "I'm looking for information about this: ",
         ]
-        return random.choice(prefixes) + prompt.lower()
+        return self._rng.choice(prefixes) + prompt.lower()
 
     def _mutate_minimal(self, prompt: str) -> str:
         """Reduce to minimal keywords."""

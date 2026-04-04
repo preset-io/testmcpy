@@ -68,19 +68,19 @@ runs:
       run: |
         # Create .mcp_services.yaml if MCP URL provided
         if [ -n "${{ inputs.mcp_url }}" ]; then
-          cat > .mcp_services.yaml << 'YAML'
+          cat > .mcp_services.yaml << YAML
         default: ci
         profiles:
           ci:
             name: CI Environment
             mcps:
-            - name: MCP Service
-              mcp_url: ${{ inputs.mcp_url }}
-              auth:
-                type: jwt
-                api_url: ${{ inputs.mcp_api_url }}
-                api_token: ${{ inputs.mcp_api_token }}
-                api_secret: ${{ inputs.mcp_api_secret }}
+              - name: MCP Service
+                mcp_url: ${{ inputs.mcp_url }}
+                auth:
+                  type: jwt
+                  api_url: ${{ inputs.mcp_api_url }}
+                  api_token: ${{ inputs.mcp_api_token }}
+                  api_secret: ${{ inputs.mcp_api_secret }}
         YAML
         fi
     - name: Run eval suite
@@ -89,18 +89,32 @@ runs:
         ANTHROPIC_API_KEY: ${{ inputs.anthropic_api_key }}
         OPENAI_API_KEY: ${{ inputs.openai_api_key }}
       run: |
+        mkdir -p results
+        PROFILE_ARGS=""
+        if [ -n "${{ inputs.profile }}" ]; then
+          PROFILE_ARGS="--profile ${{ inputs.profile }}"
+        fi
         testmcpy run ${{ inputs.test_path }} \
           --model ${{ inputs.model }} \
           --provider ${{ inputs.provider }} \
-          ${PROFILE_FLAG} \
+          ${PROFILE_ARGS} \
           --report results/report.${{ inputs.report_format }} \
           --json results/results.json
-    - name: Check pass threshold
+    - name: Check pass threshold and set outputs
       shell: bash
       run: |
-        # Parse results and check against threshold
-        PASS_RATE=$(python3 -c "import json; d=json.load(open('results/results.json')); print(int(d.get('summary',{}).get('pass_rate',0)))")
+        RESULTS=$(python3 -c "
+        import json
+        d = json.load(open('results/results.json'))
+        s = d.get('summary', {})
+        print(f\"{int(s.get('pass_rate', 0))} {s.get('total_tests', 0)} {s.get('passed', 0)} {s.get('failed', 0)}\")
+        ")
+        read PASS_RATE TOTAL PASSED FAILED <<< "$RESULTS"
         echo "pass_rate=$PASS_RATE" >> $GITHUB_OUTPUT
+        echo "total_tests=$TOTAL" >> $GITHUB_OUTPUT
+        echo "passed=$PASSED" >> $GITHUB_OUTPUT
+        echo "failed=$FAILED" >> $GITHUB_OUTPUT
+        echo "report_path=results/report.${{ inputs.report_format }}" >> $GITHUB_OUTPUT
         if [ "$PASS_RATE" -lt "${{ inputs.pass_threshold }}" ]; then
           echo "::error::Pass rate ${PASS_RATE}% is below threshold ${{ inputs.pass_threshold }}%"
           exit 1

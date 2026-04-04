@@ -874,15 +874,22 @@ class TestRunner:
             semaphore = asyncio.Semaphore(workers)
             individual_results: list[dict[str, Any]] = []
 
+            # Clone test case without evaluators for per-request runs
+            # Aggregate evaluators (success_rate_above, latency_percentile) need
+            # the full load_test_results context, so run them only once at the end
+            from dataclasses import replace
+
+            per_request_case = replace(test_case, evaluators=[], load_test=None)
+
             async def _run_single(request_idx: int) -> dict[str, Any]:
                 async with semaphore:
                     req_start = time.time()
                     try:
-                        result = await self.run_test(test_case)
+                        result = await self.run_test(per_request_case)
                         duration = time.time() - req_start
                         return {
                             "request_idx": request_idx,
-                            "success": result.passed,
+                            "success": not result.error,
                             "duration": duration,
                             "response": result.response,
                             "error": result.error,
