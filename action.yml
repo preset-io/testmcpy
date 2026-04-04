@@ -1,0 +1,112 @@
+name: 'testmcpy Eval Runner'
+description: 'Run MCP eval suites with testmcpy and report results'
+inputs:
+  test_path:
+    description: 'Path to test files or directory'
+    required: true
+    default: 'tests/'
+  model:
+    description: 'LLM model to use'
+    required: false
+    default: 'claude-sonnet-4-20250514'
+  provider:
+    description: 'LLM provider'
+    required: false
+    default: 'anthropic'
+  mcp_url:
+    description: 'MCP service URL'
+    required: false
+  profile:
+    description: 'MCP profile ID'
+    required: false
+  pass_threshold:
+    description: 'Minimum pass rate to succeed (0-100)'
+    required: false
+    default: '80'
+  report_format:
+    description: 'Report format: md, html, json'
+    required: false
+    default: 'md'
+  anthropic_api_key:
+    description: 'Anthropic API key'
+    required: false
+  openai_api_key:
+    description: 'OpenAI API key'
+    required: false
+  mcp_api_token:
+    description: 'MCP JWT API token'
+    required: false
+  mcp_api_secret:
+    description: 'MCP JWT API secret'
+    required: false
+  mcp_api_url:
+    description: 'MCP JWT auth URL'
+    required: false
+outputs:
+  pass_rate:
+    description: 'Overall pass rate percentage'
+  total_tests:
+    description: 'Total number of tests run'
+  passed:
+    description: 'Number of tests passed'
+  failed:
+    description: 'Number of tests failed'
+  report_path:
+    description: 'Path to generated report'
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    - name: Install testmcpy
+      shell: bash
+      run: pip install testmcpy
+    - name: Configure MCP
+      shell: bash
+      run: |
+        # Create .mcp_services.yaml if MCP URL provided
+        if [ -n "${{ inputs.mcp_url }}" ]; then
+          cat > .mcp_services.yaml << 'YAML'
+        default: ci
+        profiles:
+          ci:
+            name: CI Environment
+            mcps:
+            - name: MCP Service
+              mcp_url: ${{ inputs.mcp_url }}
+              auth:
+                type: jwt
+                api_url: ${{ inputs.mcp_api_url }}
+                api_token: ${{ inputs.mcp_api_token }}
+                api_secret: ${{ inputs.mcp_api_secret }}
+        YAML
+        fi
+    - name: Run eval suite
+      shell: bash
+      env:
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic_api_key }}
+        OPENAI_API_KEY: ${{ inputs.openai_api_key }}
+      run: |
+        testmcpy run ${{ inputs.test_path }} \
+          --model ${{ inputs.model }} \
+          --provider ${{ inputs.provider }} \
+          ${PROFILE_FLAG} \
+          --report results/report.${{ inputs.report_format }} \
+          --json results/results.json
+    - name: Check pass threshold
+      shell: bash
+      run: |
+        # Parse results and check against threshold
+        PASS_RATE=$(python3 -c "import json; d=json.load(open('results/results.json')); print(int(d.get('summary',{}).get('pass_rate',0)))")
+        echo "pass_rate=$PASS_RATE" >> $GITHUB_OUTPUT
+        if [ "$PASS_RATE" -lt "${{ inputs.pass_threshold }}" ]; then
+          echo "::error::Pass rate ${PASS_RATE}% is below threshold ${{ inputs.pass_threshold }}%"
+          exit 1
+        fi
+    - name: Upload report
+      uses: actions/upload-artifact@v4
+      with:
+        name: eval-report
+        path: results/

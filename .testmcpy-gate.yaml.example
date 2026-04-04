@@ -1,0 +1,7 @@
+# CI Gate Configuration
+min_pass_rate: 80
+max_failures: 10
+required_tests:
+  - test_0_1_health_check_basic
+  - test_0_2_instance_info
+block_on_regression: true
