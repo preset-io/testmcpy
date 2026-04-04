@@ -9,6 +9,7 @@ import os
 import re
 import subprocess
 import time
+import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
@@ -1386,6 +1387,361 @@ class ClaudeSDKProvider(LLMProvider):
         pass
 
 
+_copilot_logger = logging.getLogger(__name__ + ".CopilotProvider")
+
+
+class CopilotProvider(LLMProvider):
+    """LLM provider that sends prompts to the Preset copilot HTTP endpoint.
+
+    Uses the same auth flow as MCP JWT auth to obtain a JWT token, then
+    creates a copilot conversation and streams SSE completions via httpx.
+
+    Config is resolved from kwargs, then env vars, then the default MCP
+    profile auth settings (in that order).
+    """
+
+    # Default environments map to manager API URLs
+    _ENV_API_URLS: dict[str, str] = {
+        "staging": "https://manage.app.staging.preset.zone/api/v1/auth/",
+        "production": "https://manage.app.preset.io/api/v1/auth/",
+        "local": "http://manager.local.preset.zone/api/v1/auth/",
+    }
+
+    def __init__(
+        self,
+        model: str = "default",
+        workspace_hash: str | None = None,
+        domain: str | None = None,
+        environment: str | None = None,
+        api_token: str | None = None,
+        api_secret: str | None = None,
+        api_url: str | None = None,
+        model_override: str | None = None,
+        **kwargs,
+    ):
+        self.model = model
+        self.model_override = model_override
+
+        # Resolve config: kwargs > env vars > MCP profile auth
+        config = get_config()
+        default_mcp = config.get_default_mcp_server()
+        auth_cfg = {}
+        if default_mcp and default_mcp.auth:
+            auth_cfg = default_mcp.auth.to_dict()
+
+        self.workspace_hash = (
+            workspace_hash
+            or os.environ.get("COPILOT_WORKSPACE_HASH")
+            or os.environ.get("PRESET_WORKSPACE_HASH", "")
+        )
+        self.domain = (
+            domain or os.environ.get("COPILOT_DOMAIN") or os.environ.get("PRESET_DOMAIN", "")
+        )
+        self.environment = (
+            environment
+            or os.environ.get("COPILOT_ENVIRONMENT")
+            or os.environ.get("PRESET_ENVIRONMENT", "staging")
+        )
+        self.api_token = (
+            api_token
+            or os.environ.get("COPILOT_API_TOKEN")
+            or os.environ.get("PRESET_API_TOKEN")
+            or auth_cfg.get("api_token", "")
+        )
+        self.api_secret = (
+            api_secret
+            or os.environ.get("COPILOT_API_SECRET")
+            or os.environ.get("PRESET_API_SECRET")
+            or auth_cfg.get("api_secret", "")
+        )
+        self.api_url = (
+            api_url
+            or os.environ.get("COPILOT_API_URL")
+            or os.environ.get("PRESET_API_URL")
+            or auth_cfg.get("api_url", "")
+            or self._ENV_API_URLS.get(self.environment, "")
+        )
+
+        # Derive base workspace URL if domain is set
+        if self.workspace_hash and self.domain:
+            self.base_url = f"https://{self.workspace_hash}.{self.domain}"
+        elif self.workspace_hash and self.environment:
+            # Derive domain from environment
+            env_domains = {
+                "staging": "app.staging.preset.zone",
+                "production": "app.preset.io",
+                "local": "local.preset.zone",
+            }
+            d = env_domains.get(self.environment, "app.staging.preset.zone")
+            self.base_url = f"https://{self.workspace_hash}.{d}"
+        else:
+            self.base_url = ""
+
+        self._jwt_token: str | None = None
+        self._csrf_token: str = str(uuid.uuid4())
+        self._conversation_id: str | None = None
+        self._client: httpx.AsyncClient | None = None
+
+    async def initialize(self):
+        """Fetch JWT token and create a copilot conversation."""
+        if not self.base_url:
+            raise ValueError(
+                "CopilotProvider requires workspace_hash + domain (or environment). "
+                "Set COPILOT_WORKSPACE_HASH and COPILOT_DOMAIN env vars, or pass them as kwargs."
+            )
+        if not self.api_token or not self.api_secret:
+            raise ValueError(
+                "CopilotProvider requires api_token and api_secret for JWT auth. "
+                "Set COPILOT_API_TOKEN / COPILOT_API_SECRET env vars, or configure MCP profile auth."
+            )
+
+        self._client = httpx.AsyncClient(timeout=60.0)
+
+        # --- Fetch JWT ---
+        _copilot_logger.info("[Copilot] Fetching JWT from: %s", self.api_url)
+        try:
+            resp = await self._client.post(
+                self.api_url,
+                headers={"Content-Type": "application/json", "Accept": "application/json"},
+                json={"name": self.api_token, "secret": self.api_secret},
+                timeout=30.0,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            self._jwt_token = data.get("payload", {}).get("access_token", "")
+            if not self._jwt_token:
+                raise ValueError(f"No access_token in auth response: {data}")
+            _copilot_logger.info("[Copilot] JWT obtained (length: %d)", len(self._jwt_token))
+        except httpx.HTTPStatusError as e:
+            raise RuntimeError(
+                f"JWT auth failed: HTTP {e.response.status_code} - {e.response.text}"
+            ) from e
+        except httpx.ConnectError as e:
+            raise RuntimeError(f"JWT auth connection failed: {e}") from e
+
+        # --- Create conversation ---
+        conv_url = f"{self.base_url}/api/v1/copilot/conversations"
+        _copilot_logger.info("[Copilot] Creating conversation at: %s", conv_url)
+        try:
+            resp = await self._client.post(
+                conv_url,
+                headers=self._build_headers(),
+                json={"conversation_starter": []},
+                timeout=30.0,
+            )
+            resp.raise_for_status()
+            conv_data = resp.json()
+            self._conversation_id = conv_data.get("id")
+            if not self._conversation_id:
+                raise ValueError(f"No conversation ID in response: {conv_data}")
+            _copilot_logger.info("[Copilot] Conversation created: %s", self._conversation_id)
+        except httpx.HTTPStatusError as e:
+            raise RuntimeError(
+                f"Conversation creation failed: HTTP {e.response.status_code} - {e.response.text}"
+            ) from e
+
+    def _build_headers(self) -> dict[str, str]:
+        """Build auth headers with JWT, CSRF cookie, and referer."""
+        return {
+            "Authorization": f"Bearer {self._jwt_token}",
+            "Cookie": f"__s__={self._jwt_token}; csrf_access_token={self._csrf_token}",
+            "X-CSRFToken": self._csrf_token,
+            "Content-Type": "application/json",
+            "Referer": f"{self.base_url}/",
+        }
+
+    async def generate_with_tools(
+        self,
+        prompt: str,
+        tools: list[dict[str, Any]] | None = None,
+        timeout: float = 120.0,
+        messages: list[dict[str, Any]] | None = None,
+        **kwargs,
+    ) -> LLMResult:
+        """Send prompt to copilot completions endpoint and stream SSE response.
+
+        The copilot endpoint handles tool calling internally (server-side),
+        so we do not send tool schemas. Instead we parse SSE events for
+        tool_call / tool_result events emitted by the copilot backend.
+        """
+        start_time = time.time()
+        logs: list[str] = []
+
+        def log(msg: str):
+            _copilot_logger.info(msg)
+            logs.append(msg)
+
+        if not self._client or not self._jwt_token or not self._conversation_id:
+            return LLMResult(
+                response="Error: CopilotProvider not initialized. Call initialize() first.",
+                tool_calls=[],
+                duration=time.time() - start_time,
+                logs=logs,
+            )
+
+        # Build completions payload
+        payload: dict[str, Any] = {
+            "conversation_id": self._conversation_id,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        if self.model_override or (self.model and self.model != "default"):
+            payload["model_override"] = self.model_override or self.model
+
+        completions_url = f"{self.base_url}/api/v1/copilot/completions"
+        headers = {**self._build_headers(), "Accept": "text/event-stream"}
+
+        log(f"[Copilot] POST {completions_url} (conversation={self._conversation_id})")
+
+        response_text = ""
+        tool_calls: list[dict[str, Any]] = []
+        tool_results: list[dict[str, Any]] = []
+        token_usage: dict[str, int] | None = None
+        got_final = False
+        got_error = False
+        error_message = ""
+        tti_ms: int | None = None
+        token_event_count = 0
+
+        try:
+            async with self._client.stream(
+                "POST",
+                completions_url,
+                headers=headers,
+                json=payload,
+                timeout=timeout,
+            ) as resp:
+                if resp.status_code != 200:
+                    body = await resp.aread()
+                    raise RuntimeError(
+                        f"Copilot API error: HTTP {resp.status_code} - {body.decode('utf-8', errors='replace')}"
+                    )
+
+                current_event: str | None = None
+
+                async for raw_line in resp.aiter_lines():
+                    line = raw_line.strip()
+                    if not line:
+                        current_event = None
+                        continue
+
+                    if line.startswith("event:"):
+                        current_event = line[6:].strip()
+                        continue
+
+                    if not line.startswith("data:"):
+                        continue
+
+                    json_str = line[5:].strip()
+                    if not json_str:
+                        continue
+
+                    # Track time to first token
+                    if current_event == "token" and tti_ms is None:
+                        tti_ms = int((time.time() - start_time) * 1000)
+
+                    try:
+                        data = json.loads(json_str)
+                    except json.JSONDecodeError:
+                        log(f"[Copilot] Failed to parse SSE data: {json_str[:100]}")
+                        continue
+
+                    if current_event == "token":
+                        chunk = data.get("chunk", "")
+                        response_text += chunk
+                        token_event_count += 1
+
+                    elif current_event == "tool_call":
+                        tc = {
+                            "id": data.get("tool_call_id", ""),
+                            "name": data.get("tool_name", ""),
+                            "arguments": data.get("input", {}),
+                        }
+                        tool_calls.append(tc)
+                        log(f"[Copilot] Tool call: {tc['name']} (id={tc['id']})")
+
+                    elif current_event == "tool_result":
+                        tr = {
+                            "tool_call_id": data.get("tool_call_id", ""),
+                            "result": data.get("result"),
+                            "duration_ms": data.get("duration_ms"),
+                        }
+                        tool_results.append(tr)
+                        log(
+                            f"[Copilot] Tool result: id={tr['tool_call_id']}, duration={tr['duration_ms']}ms"
+                        )
+
+                    elif current_event == "usage":
+                        token_usage = {
+                            "prompt": data.get("input_tokens", 0),
+                            "completion": data.get("output_tokens", 0),
+                            "total": data.get("total_tokens", 0),
+                        }
+                        log(f"[Copilot] Usage: {token_usage}")
+
+                    elif current_event == "final":
+                        got_final = True
+                        # The final event may contain the full answer
+                        final_answer = data.get("answer", "") or data.get("message", "")
+                        if final_answer and not response_text:
+                            response_text = final_answer
+                        log(f"[Copilot] Final event received ({len(response_text)} chars)")
+
+                    elif current_event == "error":
+                        got_error = True
+                        error_message = data.get("error", "") or data.get(
+                            "message", "unknown error"
+                        )
+                        log(f"[Copilot] Error event: {error_message}")
+
+        except httpx.TimeoutException:
+            duration = time.time() - start_time
+            log(f"[Copilot] TIMEOUT after {duration:.1f}s")
+            return LLMResult(
+                response=f"Error: Copilot request timed out after {timeout}s",
+                tool_calls=tool_calls,
+                duration=duration,
+                logs=logs,
+            )
+        except (httpx.HTTPStatusError, httpx.ConnectError, RuntimeError) as e:
+            duration = time.time() - start_time
+            log(f"[Copilot] Request failed: {e}")
+            return LLMResult(
+                response=f"Error: {e}",
+                tool_calls=tool_calls,
+                duration=duration,
+                logs=logs,
+            )
+
+        duration = time.time() - start_time
+
+        if got_error and not response_text:
+            response_text = f"Error: {error_message}"
+
+        log(
+            f"[Copilot] Done: {len(response_text)} chars, "
+            f"{len(tool_calls)} tool calls, {token_event_count} tokens, "
+            f"final={'yes' if got_final else 'no'}, error={'yes' if got_error else 'no'}, "
+            f"{duration:.2f}s"
+        )
+
+        return LLMResult(
+            response=response_text,
+            tool_calls=tool_calls,
+            tool_results=tool_results,
+            token_usage=token_usage,
+            cost=0.0,  # Copilot usage is bundled with workspace subscription
+            duration=duration,
+            tti_ms=tti_ms,
+            logs=logs,
+        )
+
+    async def close(self):
+        """Close the httpx client."""
+        if self._client:
+            await self._client.aclose()
+            self._client = None
+
+
 class GeminiProvider(LLMProvider):
     """Google Gemini API provider with tool calling support."""
 
@@ -1785,7 +2141,7 @@ def create_llm_provider(provider: str, model: str, **kwargs) -> LLMProvider:
     Create an LLM provider instance.
 
     Args:
-        provider: Provider name (ollama, openai, local, anthropic, claude-sdk, claude-cli, claude-code, codex-cli)
+        provider: Provider name (ollama, openai, local, anthropic, claude-sdk, claude-cli, claude-code, copilot, chatbot, codex-cli)
         model: Model name/path
         **kwargs: Additional provider-specific arguments
 
@@ -1802,6 +2158,8 @@ def create_llm_provider(provider: str, model: str, **kwargs) -> LLMProvider:
         "claude-sdk": ClaudeSDKProvider,  # Claude Agent SDK (uses Claude CLI)
         "claude-cli": ClaudeSDKProvider,  # Alias → claude-sdk
         "claude-code": ClaudeSDKProvider,  # Alias → claude-sdk
+        "copilot": CopilotProvider,  # Preset copilot endpoint
+        "chatbot": CopilotProvider,  # Alias → copilot
         "codex-cli": CodexCLIProvider,
         "codex": CodexCLIProvider,  # Alias
     }
