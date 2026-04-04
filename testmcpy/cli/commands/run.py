@@ -1039,3 +1039,103 @@ def _print_smoke_test_table(report):
 
     console.print()
     console.print(table)
+
+
+@app.command()
+def coverage(
+    test_dir: Path = typer.Argument(..., help="Path to test directory to scan"),
+    mcp_url: Optional[str] = typer.Option(
+        None, "--mcp-url", help="MCP service URL to check live tool list"
+    ),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", help="MCP service profile from .mcp_services.yaml"
+    ),
+    output: Optional[Path] = typer.Option(
+        None, "--output", "-o", help="Output file for coverage report"
+    ),
+    format: OutputFormat = typer.Option(OutputFormat.table, "--format", "-f", help="Output format"),
+):
+    """
+    Analyze test coverage of MCP tools.
+
+    Scans YAML test files and reports which tools are covered, identifies gaps,
+    and categorizes tests by type (happy path, error, edge case, security).
+    """
+    from testmcpy.src.coverage_analyzer import CoverageAnalyzer
+
+    analyzer = CoverageAnalyzer()
+
+    # Scan test files
+    test_path = Path(test_dir)
+    if not test_path.is_dir():
+        console.print(f"[red]Error: {test_dir} is not a directory[/red]")
+        raise typer.Exit(code=1)
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+    ) as progress:
+        task = progress.add_task("Scanning test files...", total=None)
+        analyzer.scan_test_files(str(test_path))
+        progress.update(task, completed=True)
+
+    console.print(f"[green]Scanned {len(analyzer.test_files)} test file(s)[/green]")
+
+    # Optionally fetch live MCP tool list
+    effective_mcp_url = None
+    if profile:
+        from testmcpy.config import Config
+
+        cfg = Config(profile=profile)
+        effective_mcp_url = mcp_url or cfg.get_mcp_url()
+    elif mcp_url:
+        effective_mcp_url = mcp_url
+    elif DEFAULT_MCP_URL:
+        effective_mcp_url = DEFAULT_MCP_URL
+
+    if effective_mcp_url:
+
+        async def fetch_tools():
+            from testmcpy.research.test_ollama_tools import MCPServiceTester
+
+            tester = MCPServiceTester(effective_mcp_url)
+            try:
+                connected = await tester.test_connection()
+                if connected:
+                    tools = await tester.list_tools()
+                    if tools:
+                        analyzer.scan_mcp_tools([{"name": t.name} for t in tools])
+                        console.print(
+                            f"[green]Found {len(tools)} MCP tools from {effective_mcp_url}[/green]"
+                        )
+                else:
+                    console.print(f"[yellow]Could not connect to {effective_mcp_url}[/yellow]")
+            finally:
+                await tester.close()
+
+        asyncio.run(fetch_tools())
+
+    # Output results
+    if format == OutputFormat.table:
+        report_text = analyzer.generate_report()
+        console.print()
+        console.print(report_text)
+    elif format == OutputFormat.json:
+        data = analyzer.to_dict()
+        console.print(Syntax(json.dumps(data, indent=2), "json"))
+    elif format == OutputFormat.yaml:
+        data = analyzer.to_dict()
+        console.print(Syntax(yaml.dump(data, default_flow_style=False), "yaml"))
+
+    # Save to file if requested
+    if output:
+        if format == OutputFormat.json:
+            data = analyzer.to_dict()
+            output.write_text(json.dumps(data, indent=2))
+        elif format == OutputFormat.yaml:
+            data = analyzer.to_dict()
+            output.write_text(yaml.dump(data, default_flow_style=False))
+        else:
+            output.write_text(analyzer.generate_report())
+        console.print(f"\n[green]Coverage report saved to {output}[/green]")
