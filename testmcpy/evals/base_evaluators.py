@@ -1581,6 +1581,234 @@ class CompositeEvaluator(BaseEvaluator):
         )
 
 
+class ResponseNotIncludes(BaseEvaluator):
+    """Check that the response does NOT include any of the given strings."""
+
+    def __init__(
+        self,
+        content: str | list[str],
+        case_sensitive: bool = False,
+    ):
+        """
+        Fail if response contains any of the forbidden strings.
+
+        Args:
+            content: String or list of strings that must NOT appear in response
+            case_sensitive: Whether to match case-sensitively (default: False)
+        """
+        self.forbidden_content = content if isinstance(content, list) else [content]
+        self.case_sensitive = case_sensitive
+
+    @property
+    def name(self) -> str:
+        return "response_not_includes"
+
+    @property
+    def description(self) -> str:
+        return f"Checks response does NOT include: {', '.join(self.forbidden_content[:3])}{'...' if len(self.forbidden_content) > 3 else ''}"
+
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
+        response = context.get("response", "")
+        if not self.case_sensitive:
+            response = response.lower()
+
+        found = []
+        for content in self.forbidden_content:
+            check = content if self.case_sensitive else content.lower()
+            if check in response:
+                found.append(content)
+
+        if found:
+            return EvalResult(
+                passed=False,
+                score=0.0,
+                reason=f"Response contains forbidden content: {found}",
+                details={"found_forbidden": found},
+            )
+        return EvalResult(
+            passed=True,
+            score=1.0,
+            reason="Response does not contain any forbidden content",
+            details={"checked": self.forbidden_content},
+        )
+
+
+class ResponseMatchesPattern(BaseEvaluator):
+    """Check that the response matches a regex pattern."""
+
+    def __init__(self, pattern: str, should_match: bool = True):
+        """
+        Regex match on response text.
+
+        Args:
+            pattern: Regular expression pattern to search for
+            should_match: If True, pattern must be found. If False, pattern must NOT be found.
+        """
+        self.pattern = pattern
+        self.should_match = should_match
+
+    @property
+    def name(self) -> str:
+        return "response_matches_pattern"
+
+    @property
+    def description(self) -> str:
+        verb = "matches" if self.should_match else "does not match"
+        return f"Checks response {verb} pattern: {self.pattern[:50]}"
+
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
+        response = context.get("response", "")
+        match = re.search(self.pattern, response)
+
+        if self.should_match:
+            if match:
+                return EvalResult(
+                    passed=True,
+                    score=1.0,
+                    reason=f"Pattern found: '{match.group()}'",
+                    details={"pattern": self.pattern, "match": match.group()},
+                )
+            return EvalResult(
+                passed=False,
+                score=0.0,
+                reason=f"Pattern not found in response: {self.pattern}",
+                details={"pattern": self.pattern},
+            )
+        else:
+            if match:
+                return EvalResult(
+                    passed=False,
+                    score=0.0,
+                    reason=f"Forbidden pattern found: '{match.group()}'",
+                    details={"pattern": self.pattern, "match": match.group()},
+                )
+            return EvalResult(
+                passed=True,
+                score=1.0,
+                reason="Forbidden pattern not found in response",
+                details={"pattern": self.pattern},
+            )
+
+
+class UrlIsValid(BaseEvaluator):
+    """Check that URLs in the response are absolute and well-formed."""
+
+    def __init__(self, require_https: bool = False):
+        """
+        Validate URLs found in the response.
+
+        Args:
+            require_https: If True, all URLs must use https scheme
+        """
+        self.require_https = require_https
+
+    @property
+    def name(self) -> str:
+        return "url_is_valid"
+
+    @property
+    def description(self) -> str:
+        return "Checks that URLs in response are absolute and well-formed"
+
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
+        response = context.get("response", "")
+        # Find URLs in response
+        url_pattern = r"https?://[^\s<>\"')\]}]+"
+        urls = re.findall(url_pattern, response)
+
+        if not urls:
+            return EvalResult(
+                passed=False,
+                score=0.0,
+                reason="No URLs found in response",
+                details={"urls_found": []},
+            )
+
+        invalid = []
+        for url in urls:
+            # Check for relative URLs (no scheme)
+            if not url.startswith(("http://", "https://")):
+                invalid.append({"url": url, "issue": "relative URL (no scheme)"})
+            elif self.require_https and not url.startswith("https://"):
+                invalid.append({"url": url, "issue": "not HTTPS"})
+            elif "//" in url.split("://", 1)[-1]:
+                invalid.append({"url": url, "issue": "double slash in path"})
+
+        if invalid:
+            return EvalResult(
+                passed=False,
+                score=1.0 - len(invalid) / len(urls),
+                reason=f"{len(invalid)}/{len(urls)} URLs are invalid",
+                details={"invalid_urls": invalid, "all_urls": urls},
+            )
+        return EvalResult(
+            passed=True,
+            score=1.0,
+            reason=f"All {len(urls)} URLs are valid and absolute",
+            details={"urls": urls},
+        )
+
+
+class NoLeakedData(BaseEvaluator):
+    """Check that the response does not contain leaked sensitive data."""
+
+    # Default patterns that indicate data leakage
+    DEFAULT_PATTERNS = [
+        r"postgresql://[^\s]+",  # Connection strings
+        r"mysql://[^\s]+",
+        r"mongodb://[^\s]+",
+        r"redis://[^\s]+",
+        r"sqlite:///[^\s]+",
+        r"(?:api[_-]?key|apikey|secret[_-]?key|access[_-]?token)\s*[:=]\s*['\"][^\s'\"]{10,}",
+        r"Traceback \(most recent call last\)",  # Python stack traces
+        r"File \"[^\"]+\", line \d+",  # Python file references
+        r"at\s+[\w.]+\([\w.]+:\d+\)",  # Java/JS stack traces
+        r"/(?:home|var|etc|usr)/[\w/]+\.(?:py|js|conf|cfg|ini|yaml|yml)",  # Server file paths
+    ]
+
+    def __init__(self, extra_patterns: list[str] | None = None):
+        """
+        Scan response for leaked sensitive data.
+
+        Args:
+            extra_patterns: Additional regex patterns to check (beyond defaults)
+        """
+        self.patterns = self.DEFAULT_PATTERNS.copy()
+        if extra_patterns:
+            self.patterns.extend(extra_patterns)
+
+    @property
+    def name(self) -> str:
+        return "no_leaked_data"
+
+    @property
+    def description(self) -> str:
+        return "Checks that response does not contain connection strings, API keys, stack traces, or server paths"
+
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
+        response = context.get("response", "")
+        leaks = []
+
+        for pattern in self.patterns:
+            matches = re.findall(pattern, response, re.IGNORECASE)
+            if matches:
+                leaks.append({"pattern": pattern, "matches": matches[:3]})
+
+        if leaks:
+            return EvalResult(
+                passed=False,
+                score=0.0,
+                reason=f"Found {len(leaks)} type(s) of leaked data in response",
+                details={"leaks": leaks},
+            )
+        return EvalResult(
+            passed=True,
+            score=1.0,
+            reason="No sensitive data leaked in response",
+            details={"patterns_checked": len(self.patterns)},
+        )
+
+
 # Factory function for creating evaluators
 
 
@@ -1627,6 +1855,11 @@ def create_evaluator(name: str, **kwargs) -> BaseEvaluator:
         "was_chart_created": WasChartCreated,
         "was_superset_chart_created": WasChartCreated,  # Backward compatibility alias
         "sql_query_valid": SQLQueryValid,
+        # Security & validation evaluators
+        "response_not_includes": ResponseNotIncludes,
+        "response_matches_pattern": ResponseMatchesPattern,
+        "url_is_valid": UrlIsValid,
+        "no_leaked_data": NoLeakedData,
         # Auth evaluators
         "auth_successful": AuthSuccessfulEvaluator,
         "token_valid": TokenValidEvaluator,
