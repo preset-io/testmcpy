@@ -124,6 +124,31 @@ class WasMCPToolCalled(BaseEvaluator):
                         details={"tool_call": call},
                     )
 
+                # Check if call_tool/search_tools gateway pattern was used
+                # e.g., call_tool(name="health_check", arguments={})
+                if _match_tool_name(actual_name, "call_tool") or _match_tool_name(
+                    actual_name, "search_tools"
+                ):
+                    args = call.get("arguments", {})
+                    # call_tool passes tool name as 'name' or 'tool_name' arg
+                    inner_name = args.get("name", args.get("tool_name", ""))
+                    if isinstance(inner_name, str) and _match_tool_name(inner_name, self.tool_name):
+                        return EvalResult(
+                            passed=True,
+                            score=1.0,
+                            reason=f"Tool '{self.tool_name}' called via gateway '{actual_name}'",
+                            details={"tool_call": call, "gateway": actual_name},
+                        )
+                    # search_tools passes query that may contain tool name
+                    query = args.get("query", "")
+                    if isinstance(query, str) and self.tool_name in query:
+                        return EvalResult(
+                            passed=True,
+                            score=0.8,
+                            reason=f"Tool '{self.tool_name}' searched via '{actual_name}'",
+                            details={"tool_call": call, "gateway": actual_name},
+                        )
+
             return EvalResult(
                 passed=False,
                 score=0.0,
@@ -515,6 +540,25 @@ class ToolCalledWithParameters(BaseEvaluator):
         matching_calls = [
             call for call in tool_calls if _match_tool_name(call.get("name", ""), self.tool_name)
         ]
+
+        # Also check gateway pattern: call_tool(name="tool_name", arguments={...})
+        if not matching_calls:
+            for call in tool_calls:
+                actual_name = call.get("name", "")
+                if _match_tool_name(actual_name, "call_tool"):
+                    args = call.get("arguments", {})
+                    inner_name = args.get("name", args.get("tool_name", ""))
+                    if isinstance(inner_name, str) and _match_tool_name(inner_name, self.tool_name):
+                        # Reconstruct as if the inner tool was called directly
+                        inner_args = args.get("arguments", {})
+                        if isinstance(inner_args, str):
+                            import json as _json
+
+                            try:
+                                inner_args = _json.loads(inner_args)
+                            except (ValueError, TypeError):
+                                inner_args = {}
+                        matching_calls.append({"name": inner_name, "arguments": inner_args})
 
         if not matching_calls:
             return EvalResult(
