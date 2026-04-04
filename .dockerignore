@@ -1,0 +1,13 @@
+.git
+.github
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+node_modules
+.env
+.local
+tests/.results
+tests/.smoke_reports
+tests/.generation_logs
+venv
