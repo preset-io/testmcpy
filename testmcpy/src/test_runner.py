@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from ..evals.base_evaluators import BaseEvaluator, create_evaluator
+from ..evals.evaluator_packs import resolve_evaluators
 from .llm_integration import LLMProvider, create_llm_provider
 from .mcp_client import MCPClient, MCPToolCall
 
@@ -74,9 +75,10 @@ class TestStep:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "TestStep":
         """Create TestStep from dictionary."""
+        evaluators = resolve_evaluators(data.get("evaluators", []))
         return cls(
             prompt=data["prompt"],
-            evaluators=data.get("evaluators", []),
+            evaluators=evaluators,
             name=data.get("name"),
             timeout=data.get("timeout", 30.0),
         )
@@ -132,10 +134,12 @@ class TestCase:
             steps = [TestStep.from_dict(s) for s in data["steps"]]
             # For multi-turn, use first step's prompt as default
             prompt = data.get("prompt", steps[0].prompt if steps else "")
-            evaluators = data.get("evaluators", steps[0].evaluators if steps else [])
+            evaluators = resolve_evaluators(
+                data.get("evaluators", steps[0].evaluators if steps else [])
+            )
         else:
             prompt = data["prompt"]
-            evaluators = data.get("evaluators", [])
+            evaluators = resolve_evaluators(data.get("evaluators", []))
 
         return cls(
             name=data["name"],
