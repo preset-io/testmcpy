@@ -699,6 +699,10 @@ class MCPClient:
             "list dashboard chart dataset sql query schema health info",
             "create generate update delete add save open execute",
             "preview explore link export filter sort",
+            "big number pie table pivot mixed handlebars",
+            "get data column metric resource database",
+            "list_charts generate_dashboard get_chart_data",
+            "list_databases get_database_info generate_chart",
         ]
         all_content = []
 
@@ -750,6 +754,46 @@ class MCPClient:
             if t.name not in seen:
                 seen.add(t.name)
                 unique.append(t)
+
+        # Second pass: search for discovered tool names to find neighbors
+        if unique:
+            second_pass_queries = []
+            for i in range(0, len(unique), 3):
+                batch = " ".join(t.name for t in unique[i : i + 3])
+                second_pass_queries.append(batch)
+
+            for q in second_pass_queries[:5]:  # Limit to 5 extra queries
+                try:
+                    result = await asyncio.wait_for(
+                        self.client.call_tool("search_tools", {"query": q}),
+                        timeout=timeout,
+                    )
+                    content = ""
+                    if hasattr(result, "content") and isinstance(result.content, list):
+                        for item in result.content:
+                            if hasattr(item, "text"):
+                                content += item.text
+                    if content:
+                        import json as _json2
+
+                        try:
+                            data = _json2.loads(content)
+                            if isinstance(data, list):
+                                for item in data:
+                                    if (
+                                        isinstance(item, dict)
+                                        and "name" in item
+                                        and item["name"] not in seen
+                                    ):
+                                        tool = MCPTool.from_dict(item)
+                                        tool.gateway = True
+                                        unique.append(tool)
+                                        seen.add(tool.name)
+                        except (_json2.JSONDecodeError, ValueError):
+                            pass
+                except (asyncio.TimeoutError, TypeError, ValueError):
+                    continue
+
         return unique
 
     async def call_tool(
