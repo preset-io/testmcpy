@@ -56,19 +56,19 @@ function ThemeSwitcher({ collapsed }) {
   }
 
   return (
-    <div className="flex items-center gap-1 p-1 rounded-lg bg-background-subtle border border-border">
+    <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-background-subtle border border-border">
       {options.map(({ value, icon: Icon, label }) => (
         <button
           key={value}
           onClick={() => setTheme(value)}
-          className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all duration-200 ${
+          className={`flex-1 flex items-center justify-center gap-1 px-1.5 py-1.5 rounded-md text-[11px] font-medium transition-all duration-200 ${
             theme === value
               ? 'bg-primary text-white shadow-sm'
               : 'text-text-secondary hover:text-text-primary hover:bg-surface-hover'
           }`}
           title={label}
         >
-          <Icon size={12} />
+          <Icon size={11} />
           <span>{label}</span>
         </button>
       ))}
@@ -346,7 +346,7 @@ function AppContent() {
         {/* Sidebar */}
         <aside
           className={`${
-            sidebarOpen ? 'w-52' : 'w-16'
+            sidebarOpen ? 'w-56' : 'w-16'
           } sidebar-bg border-r border-border transition-all duration-300 flex flex-col shadow-medium relative`}
         >
           {/* Header */}

@@ -7,40 +7,40 @@
    ═══════════════════════════════════════════════════════════ */
 
 :root {
-  /* Light theme (default) */
-  --color-background: 248, 249, 252;
-  --color-background-subtle: 240, 242, 247;
-  --color-surface: 255, 255, 255;
-  --color-surface-hover: 243, 244, 248;
-  --color-surface-elevated: 255, 255, 255;
-  --color-border: 226, 229, 237;
-  --color-border-subtle: 208, 213, 224;
+  /* Light theme (default) — space-separated RGB channels for Tailwind alpha support */
+  --color-background: 248 249 252;
+  --color-background-subtle: 240 242 247;
+  --color-surface: 255 255 255;
+  --color-surface-hover: 243 244 248;
+  --color-surface-elevated: 255 255 255;
+  --color-border: 226 229 237;
+  --color-border-subtle: 208 213 224;
 
-  --color-primary: 59, 130, 246;
-  --color-primary-hover: 37, 99, 235;
-  --color-primary-light: 96, 165, 250;
-  --color-primary-dark: 29, 78, 216;
+  --color-primary: 59 130 246;
+  --color-primary-hover: 37 99 235;
+  --color-primary-light: 96 165 250;
+  --color-primary-dark: 29 78 216;
 
-  --color-success: 16, 185, 129;
-  --color-success-light: 52, 211, 153;
-  --color-success-dark: 5, 150, 105;
+  --color-success: 16 185 129;
+  --color-success-light: 52 211 153;
+  --color-success-dark: 5 150 105;
 
-  --color-error: 239, 68, 68;
-  --color-error-light: 248, 113, 113;
-  --color-error-dark: 220, 38, 38;
+  --color-error: 239 68 68;
+  --color-error-light: 248 113 113;
+  --color-error-dark: 220 38 38;
 
-  --color-warning: 245, 158, 11;
-  --color-warning-light: 251, 191, 36;
-  --color-warning-dark: 217, 119, 6;
+  --color-warning: 245 158 11;
+  --color-warning-light: 251 191 36;
+  --color-warning-dark: 217 119 6;
 
-  --color-info: 59, 130, 246;
-  --color-info-light: 96, 165, 250;
-  --color-info-dark: 37, 99, 235;
+  --color-info: 59 130 246;
+  --color-info-light: 96 165 250;
+  --color-info-dark: 37 99 235;
 
-  --color-text-primary: 17, 24, 39;
-  --color-text-secondary: 107, 114, 128;
-  --color-text-tertiary: 156, 163, 175;
-  --color-text-disabled: 209, 213, 219;
+  --color-text-primary: 17 24 39;
+  --color-text-secondary: 107 114 128;
+  --color-text-tertiary: 156 163 175;
+  --color-text-disabled: 209 213 219;
 
   --shadow-soft: 0 1px 3px 0 rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.06);
   --shadow-medium: 0 4px 12px -1px rgba(0, 0, 0, 0.08), 0 2px 6px -2px rgba(0, 0, 0, 0.05);
@@ -60,39 +60,39 @@
 }
 
 .dark {
-  --color-background: 10, 10, 15;
-  --color-background-subtle: 15, 15, 23;
-  --color-surface: 20, 20, 31;
-  --color-surface-hover: 28, 28, 42;
-  --color-surface-elevated: 24, 24, 42;
-  --color-border: 42, 42, 61;
-  --color-border-subtle: 31, 31, 48;
+  --color-background: 10 10 15;
+  --color-background-subtle: 15 15 23;
+  --color-surface: 20 20 31;
+  --color-surface-hover: 28 28 42;
+  --color-surface-elevated: 24 24 42;
+  --color-border: 42 42 61;
+  --color-border-subtle: 31 31 48;
 
-  --color-primary: 59, 130, 246;
-  --color-primary-hover: 37, 99, 235;
-  --color-primary-light: 96, 165, 250;
-  --color-primary-dark: 29, 78, 216;
+  --color-primary: 59 130 246;
+  --color-primary-hover: 37 99 235;
+  --color-primary-light: 96 165 250;
+  --color-primary-dark: 29 78 216;
 
-  --color-success: 16, 185, 129;
-  --color-success-light: 52, 211, 153;
-  --color-success-dark: 5, 150, 105;
+  --color-success: 16 185 129;
+  --color-success-light: 52 211 153;
+  --color-success-dark: 5 150 105;
 
-  --color-error: 239, 68, 68;
-  --color-error-light: 248, 113, 113;
-  --color-error-dark: 220, 38, 38;
+  --color-error: 239 68 68;
+  --color-error-light: 248 113 113;
+  --color-error-dark: 220 38 38;
 
-  --color-warning: 245, 158, 11;
-  --color-warning-light: 251, 191, 36;
-  --color-warning-dark: 217, 119, 6;
+  --color-warning: 245 158 11;
+  --color-warning-light: 251 191 36;
+  --color-warning-dark: 217 119 6;
 
-  --color-info: 59, 130, 246;
-  --color-info-light: 96, 165, 250;
-  --color-info-dark: 37, 99, 235;
+  --color-info: 59 130 246;
+  --color-info-light: 96 165 250;
+  --color-info-dark: 37 99 235;
 
-  --color-text-primary: 240, 240, 245;
-  --color-text-secondary: 160, 160, 184;
-  --color-text-tertiary: 107, 107, 128;
-  --color-text-disabled: 74, 74, 92;
+  --color-text-primary: 240 240 245;
+  --color-text-secondary: 160 160 184;
+  --color-text-tertiary: 107 107 128;
+  --color-text-disabled: 74 74 92;
 
   --shadow-soft: 0 2px 8px 0 rgba(0, 0, 0, 0.4);
   --shadow-medium: 0 4px 16px 0 rgba(0, 0, 0, 0.5);
