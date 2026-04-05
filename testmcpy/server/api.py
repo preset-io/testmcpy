@@ -495,6 +495,7 @@ async def list_mcp_tools(profiles: list[str] = Query(default=None)):
                                     "input_schema": tool.input_schema,
                                     "output_schema": tool.output_schema,
                                     "mcp_source": mcp_name,
+                                    "gateway": getattr(tool, "gateway", False),
                                 }
                             )
                 else:
@@ -511,6 +512,7 @@ async def list_mcp_tools(profiles: list[str] = Query(default=None)):
                                     "input_schema": tool.input_schema,
                                     "output_schema": tool.output_schema,
                                     "mcp_source": mcp_name,
+                                    "gateway": getattr(tool, "gateway", False),
                                 }
                             )
 

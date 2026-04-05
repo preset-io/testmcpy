@@ -784,9 +784,16 @@ function MCPExplorer({ selectedProfiles = [] }) {
                         {/* Header */}
                         <div className="flex items-start justify-between mb-3">
                           <div className="flex-1 min-w-0">
-                            <h3 className="font-bold text-text-primary text-sm truncate group-hover:text-primary transition-colors" title={tool.name}>
-                              {tool.name}
-                            </h3>
+                            <div className="flex items-center gap-1.5">
+                              <h3 className="font-bold text-text-primary text-sm truncate group-hover:text-primary transition-colors" title={tool.name}>
+                                {tool.name}
+                              </h3>
+                              {tool.gateway && (
+                                <span className="px-1 py-0.5 text-[9px] bg-amber-500/20 text-amber-400 rounded font-medium flex-shrink-0" title="Discovered via search_tools gateway — not directly exposed by MCP server">
+                                  GATEWAY
+                                </span>
+                              )}
+                            </div>
                           </div>
                           <div className="flex items-center gap-1 ml-2">
                             <button

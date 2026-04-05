@@ -131,6 +131,7 @@ class MCPTool:
     description: str
     input_schema: dict[str, Any]
     output_schema: dict[str, Any] | None = None
+    gateway: bool = False  # True if discovered via search_tools gateway
 
     @classmethod
     def from_mcp_tool(cls, tool: MCPToolDef) -> "MCPTool":
@@ -692,32 +693,36 @@ class MCPClient:
 
         discovered: list[MCPTool] = []
 
-        # Call search_tools with empty/broad query to get all tools
-        try:
-            result = await asyncio.wait_for(
-                self.client.call_tool("search_tools", {"query": ""}),
-                timeout=timeout,
-            )
+        # Call search_tools with broad queries to discover all tools
+        # Empty query may return nothing, so use category-based searches
+        broad_queries = [
+            "list dashboard chart dataset sql query schema health info",
+            "create generate update delete add save open execute",
+            "preview explore link export filter sort",
+        ]
+        all_content = []
 
-            # Parse the result — search_tools returns tool definitions
-            content = ""
-            if hasattr(result, "content"):
-                if isinstance(result.content, list):
-                    parts = []
-                    for item in result.content:
-                        if hasattr(item, "text"):
-                            parts.append(item.text)
-                        else:
-                            parts.append(str(item))
-                    content = "\n".join(parts)
-                elif isinstance(result.content, str):
-                    content = result.content
-                else:
-                    content = str(result.content)
-            elif isinstance(result, str):
-                content = result
+        for q in broad_queries:
+            try:
+                result = await asyncio.wait_for(
+                    self.client.call_tool("search_tools", {"query": q}),
+                    timeout=timeout,
+                )
+                content = ""
+                if hasattr(result, "content"):
+                    if isinstance(result.content, list):
+                        for item in result.content:
+                            if hasattr(item, "text"):
+                                content += item.text
+                    elif isinstance(result.content, str):
+                        content = result.content
+                if content:
+                    all_content.append(content)
+            except (asyncio.TimeoutError, TypeError, ValueError):
+                continue
 
-            # Try to parse as JSON (search_tools may return JSON tool definitions)
+        # Parse all discovered tool definitions
+        for content in all_content:
             if content:
                 import json as _json
 
@@ -726,17 +731,26 @@ class MCPClient:
                     if isinstance(data, list):
                         for item in data:
                             if isinstance(item, dict) and "name" in item:
-                                discovered.append(MCPTool.from_dict(item))
+                                tool = MCPTool.from_dict(item)
+                                tool.gateway = True  # Mark as discovered via gateway
+                                discovered.append(tool)
                     elif isinstance(data, dict) and "tools" in data:
                         for item in data["tools"]:
                             if isinstance(item, dict) and "name" in item:
-                                discovered.append(MCPTool.from_dict(item))
+                                tool = MCPTool.from_dict(item)
+                                tool.gateway = True
+                                discovered.append(tool)
                 except (_json.JSONDecodeError, ValueError):
-                    pass  # Not JSON, that's fine
-        except (asyncio.TimeoutError, TypeError, ValueError) as e:
-            print(f"  [MCP] search_tools query failed: {e}")
+                    pass
 
-        return discovered
+        # Deduplicate by name
+        seen = set()
+        unique = []
+        for t in discovered:
+            if t.name not in seen:
+                seen.add(t.name)
+                unique.append(t)
+        return unique
 
     async def call_tool(
         self, tool_call: MCPToolCall, timeout: float = DEFAULT_TIMEOUT
