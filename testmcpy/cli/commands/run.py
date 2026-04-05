@@ -424,6 +424,33 @@ def run(
 
         console.print(f"\n[bold]Summary:[/bold] {' | '.join(summary_parts)}")
 
+        # Always auto-save results to tests/.results/ so the UI can see them
+        try:
+            from testmcpy.server.routers.results import save_test_run_to_file
+
+            test_file_rel = (
+                str(test_path.relative_to(Path.cwd()))
+                if test_path.is_relative_to(Path.cwd())
+                else str(test_path)
+            )
+            save_data = {
+                "test_file": test_file_rel,
+                "test_file_path": str(test_path),
+                "provider": effective_provider,
+                "model": effective_model,
+                "mcp_profile": profile or "default",
+                "results": [r.to_dict() for r in results],
+                "summary": {
+                    "total": len(results),
+                    "passed": total_passed,
+                    "failed": len(results) - total_passed,
+                },
+            }
+            save_result = save_test_run_to_file(save_data)
+            console.print(f"[dim]Results saved: {save_result.get('run_id', '?')}[/dim]")
+        except (ImportError, OSError) as e:
+            console.print(f"[dim]Note: Could not auto-save results for UI: {e}[/dim]")
+
         # Save report if requested
         if output:
             report_data = {
