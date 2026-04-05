@@ -572,6 +572,20 @@ class ToolCalledWithParameters(BaseEvaluator):
         for call in matching_calls:
             arguments = call.get("arguments", {})
 
+            # Unwrap common LLM patterns:
+            # 1. {"request": {"param": "value"}} → {"param": "value"}
+            if (
+                "request" in arguments
+                and isinstance(arguments["request"], dict)
+                and len(arguments) == 1
+            ):
+                arguments = arguments["request"]
+            # 2. Flatten nested request alongside other params
+            elif "request" in arguments and isinstance(arguments["request"], dict):
+                flat = dict(arguments)
+                flat.update(flat.pop("request"))
+                arguments = flat
+
             # Check if all required parameters match
             matches = []
             mismatches = []
@@ -581,6 +595,28 @@ class ToolCalledWithParameters(BaseEvaluator):
 
                 if actual_value == expected_value:
                     matches.append(param_name)
+                elif self.partial_match:
+                    # For partial match: also check if the expected VALUE appears
+                    # under a different param name (LLM may use dashboard_id vs identifier)
+                    value_found = False
+                    for _arg_name, arg_val in arguments.items():
+                        if arg_val == expected_value:
+                            matches.append(param_name)
+                            value_found = True
+                            break
+                        # Also check string coercion (e.g., 1 vs "1")
+                        if str(arg_val) == str(expected_value):
+                            matches.append(param_name)
+                            value_found = True
+                            break
+                    if not value_found:
+                        mismatches.append(
+                            {
+                                "parameter": param_name,
+                                "expected": expected_value,
+                                "actual": actual_value,
+                            }
+                        )
                 else:
                     mismatches.append(
                         {
