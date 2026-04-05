@@ -350,10 +350,10 @@ function AppContent() {
           } sidebar-bg border-r border-border transition-all duration-300 flex flex-col shadow-medium relative`}
         >
           {/* Header */}
-          <div className="p-3 flex items-center justify-between border-b border-border">
+          <div className={`border-b border-border ${sidebarOpen ? 'p-3 flex items-center justify-between' : 'p-2 flex flex-col items-center gap-2'}`}>
             {sidebarOpen ? (
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
                   <svg width="18" height="18" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg">
                     <rect x="5" y="9" width="5" height="14" rx="1.5" fill="none" stroke="currentColor" strokeWidth="2" className="text-primary" />
                     <rect x="7" y="16" width="3" height="7" fill="currentColor" className="text-primary" opacity="0.3" />
@@ -369,7 +369,7 @@ function AppContent() {
                 </div>
               </div>
             ) : (
-              <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto">
+              <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
                 <svg width="16" height="16" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg">
                   <rect x="5" y="9" width="5" height="14" rx="1.5" fill="none" stroke="currentColor" strokeWidth="2" className="text-primary" />
                   <rect x="7" y="16" width="3" height="7" fill="currentColor" className="text-primary" opacity="0.3" />
