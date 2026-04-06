@@ -1982,6 +1982,506 @@ class LatencyPercentile(BaseEvaluator):
         )
 
 
+# MCP-aware deterministic evaluators
+
+
+class MCPToolResultMatches(BaseEvaluator):
+    """Call MCP tool directly and verify it matches what the LLM received."""
+
+    def __init__(self, tool_name: str, arguments: dict[str, Any] | None = None):
+        self.tool_name = tool_name
+        self.arguments = arguments or {}
+
+    @property
+    def name(self) -> str:
+        return f"mcp_tool_result_matches:{self.tool_name}"
+
+    @property
+    def description(self) -> str:
+        return f"Calls MCP tool '{self.tool_name}' directly and compares result to what the LLM received"
+
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
+        mcp_client = context.get("mcp_client")
+        if not mcp_client:
+            return EvalResult(passed=False, score=0.0, reason="No MCP client in context")
+
+        return self._run_async(self._async_evaluate(context))
+
+    def _run_async(self, coro):
+        """Run async code from sync evaluate()."""
+        import asyncio
+
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                import concurrent.futures
+
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    return pool.submit(asyncio.run, coro).result(timeout=30)
+            else:
+                return loop.run_until_complete(coro)
+        except RuntimeError:
+            return asyncio.run(coro)
+
+    async def _async_evaluate(self, context: dict[str, Any]) -> EvalResult:
+        import json
+
+        from testmcpy.src.mcp_client import MCPToolCall as _MCPToolCall
+
+        mcp_client = context["mcp_client"]
+
+        # Call MCP directly to get ground truth
+        ground_truth = await mcp_client.call_tool(
+            _MCPToolCall(name=self.tool_name, arguments=self.arguments)
+        )
+
+        if ground_truth.is_error:
+            return EvalResult(
+                passed=False,
+                score=0.0,
+                reason=f"MCP ground truth call failed: {ground_truth.error_message}",
+                details={"error": ground_truth.error_message},
+            )
+
+        # Extract ground truth content as string
+        gt_text = self._extract_text(ground_truth.content)
+
+        # Find what the LLM got for this tool
+        llm_result_text = self._find_llm_result(context)
+
+        if not llm_result_text:
+            return EvalResult(
+                passed=False,
+                score=0.5,
+                reason=f"LLM called {self.tool_name} but no result found to compare",
+                details={"ground_truth": gt_text[:500]},
+            )
+
+        # Compare: parse both as JSON and compare key fields
+        try:
+            gt_data = json.loads(gt_text) if isinstance(gt_text, str) else gt_text
+            llm_data = (
+                json.loads(llm_result_text) if isinstance(llm_result_text, str) else llm_result_text
+            )
+
+            # For dicts, check key overlap
+            if isinstance(gt_data, dict) and isinstance(llm_data, dict):
+                gt_keys = set(gt_data.keys())
+                llm_keys = set(llm_data.keys())
+                common = gt_keys & llm_keys
+                score = len(common) / len(gt_keys) if gt_keys else 1.0
+
+                mismatches = []
+                for key in common:
+                    if str(gt_data[key]) != str(llm_data[key]):
+                        mismatches.append(key)
+
+                if not mismatches:
+                    return EvalResult(
+                        passed=True,
+                        score=1.0,
+                        reason=f"MCP ground truth matches LLM result ({len(common)} fields verified)",
+                        details={"verified_fields": list(common)},
+                    )
+                else:
+                    return EvalResult(
+                        passed=False,
+                        score=score,
+                        reason=f"{len(mismatches)} field(s) differ from ground truth",
+                        details={
+                            "mismatched_fields": mismatches,
+                            "ground_truth_sample": {k: gt_data[k] for k in mismatches[:3]},
+                        },
+                    )
+            else:
+                # String comparison
+                match = gt_text.strip() == llm_result_text.strip()
+                return EvalResult(
+                    passed=match,
+                    score=1.0 if match else 0.5,
+                    reason="Ground truth matches" if match else "Results differ",
+                    details={
+                        "ground_truth_length": len(gt_text),
+                        "llm_result_length": len(llm_result_text),
+                    },
+                )
+        except (json.JSONDecodeError, ValueError):
+            # Fallback: substring match
+            match = gt_text[:200] in llm_result_text or llm_result_text[:200] in gt_text
+            return EvalResult(
+                passed=match,
+                score=0.8 if match else 0.3,
+                reason="Content overlap detected"
+                if match
+                else "Content does not match ground truth",
+            )
+
+    def _find_llm_result(self, context: dict[str, Any]) -> str:
+        """Find the LLM's result for this tool from context."""
+        # Check tool_results
+        for tr in context.get("tool_results", []):
+            if isinstance(tr, dict):
+                tr_content = tr.get("content", tr.get("result", ""))
+            elif hasattr(tr, "content"):
+                tr_content = tr.content
+            else:
+                continue
+
+            tr_text = self._extract_text(tr_content)
+            if tr_text and self.tool_name in str(context.get("tool_calls", [])):
+                return tr_text
+
+        # Try to find in tool_calls results
+        for tc in context.get("tool_calls", []):
+            tc_name = tc.get("name", "")
+            if _match_tool_name(tc_name, self.tool_name) or (
+                _match_tool_name(tc_name, "call_tool")
+                and tc.get("arguments", {}).get(
+                    "name", tc.get("arguments", {}).get("tool_name", "")
+                )
+                == self.tool_name
+            ):
+                tc_result = tc.get("result", {})
+                if isinstance(tc_result, dict):
+                    return self._extract_text(tc_result.get("content", ""))
+
+        return ""
+
+    def _extract_text(self, content: Any) -> str:
+        """Extract text from various content types."""
+        if content is None:
+            return ""
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts = []
+            for item in content:
+                if hasattr(item, "text"):
+                    parts.append(item.text)
+                else:
+                    parts.append(str(item))
+            return "\n".join(parts)
+        if hasattr(content, "text"):
+            return content.text
+        return str(content)
+
+
+class MCPVerifyResponseData(BaseEvaluator):
+    """Call MCP to get ground truth, verify LLM response contains correct values."""
+
+    def __init__(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any] | None = None,
+        check_fields: list[str] | None = None,
+    ):
+        self.tool_name = tool_name
+        self.arguments = arguments or {}
+        self.check_fields = check_fields  # If None, check all top-level fields
+
+    @property
+    def name(self) -> str:
+        return f"mcp_verify_response_data:{self.tool_name}"
+
+    @property
+    def description(self) -> str:
+        return f"Calls MCP tool '{self.tool_name}' for ground truth and checks LLM response contains correct values"
+
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
+        mcp_client = context.get("mcp_client")
+        if not mcp_client:
+            return EvalResult(passed=False, score=0.0, reason="No MCP client in context")
+
+        return self._run_async(self._async_evaluate(context))
+
+    def _run_async(self, coro):
+        """Run async code from sync evaluate()."""
+        import asyncio
+
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                import concurrent.futures
+
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    return pool.submit(asyncio.run, coro).result(timeout=30)
+            else:
+                return loop.run_until_complete(coro)
+        except RuntimeError:
+            return asyncio.run(coro)
+
+    async def _async_evaluate(self, context: dict[str, Any]) -> EvalResult:
+        import json
+
+        from testmcpy.src.mcp_client import MCPToolCall as _MCPToolCall
+
+        mcp_client = context["mcp_client"]
+
+        # Call MCP tool to get ground truth
+        ground_truth = await mcp_client.call_tool(
+            _MCPToolCall(name=self.tool_name, arguments=self.arguments)
+        )
+
+        if ground_truth.is_error:
+            return EvalResult(
+                passed=False,
+                score=0.0,
+                reason=f"MCP ground truth call failed: {ground_truth.error_message}",
+                details={"error": ground_truth.error_message},
+            )
+
+        # Parse JSON response
+        gt_text = self._extract_text(ground_truth.content)
+        try:
+            gt_data = json.loads(gt_text) if isinstance(gt_text, str) else gt_text
+        except (json.JSONDecodeError, ValueError):
+            gt_data = gt_text
+
+        # Determine which fields to check
+        if isinstance(gt_data, dict):
+            fields_to_check = self.check_fields or list(gt_data.keys())
+        else:
+            # Not a dict, check if the whole value appears in response
+            response = context.get("response", "")
+            gt_str = str(gt_data).strip()
+            found = gt_str in response
+            return EvalResult(
+                passed=found,
+                score=1.0 if found else 0.0,
+                reason="Ground truth value found in response"
+                if found
+                else "Ground truth value not found in response",
+                details={"ground_truth": gt_str[:500]},
+            )
+
+        # For each field value, check if it appears in the LLM response
+        response = context.get("response", "")
+        found_fields = []
+        missing_fields = []
+
+        for field_name in fields_to_check:
+            if field_name not in gt_data:
+                continue
+            value = gt_data[field_name]
+            value_str = str(value)
+
+            # Check if this value appears in the response (case-insensitive for strings)
+            if isinstance(value, str):
+                if value.lower() in response.lower():
+                    found_fields.append(field_name)
+                else:
+                    missing_fields.append(field_name)
+            elif isinstance(value, (int, float)):
+                if value_str in response:
+                    found_fields.append(field_name)
+                else:
+                    missing_fields.append(field_name)
+            elif isinstance(value, bool):
+                if value_str.lower() in response.lower():
+                    found_fields.append(field_name)
+                else:
+                    missing_fields.append(field_name)
+            else:
+                # For complex types, check str representation
+                if value_str in response:
+                    found_fields.append(field_name)
+                else:
+                    missing_fields.append(field_name)
+
+        total = len(found_fields) + len(missing_fields)
+        score = len(found_fields) / total if total else 1.0
+        passed = score >= 0.8  # At least 80% of fields must be present
+
+        if passed:
+            return EvalResult(
+                passed=True,
+                score=score,
+                reason=f"LLM response contains {len(found_fields)}/{total} ground truth values",
+                details={"found_fields": found_fields, "missing_fields": missing_fields},
+            )
+        else:
+            return EvalResult(
+                passed=False,
+                score=score,
+                reason=f"LLM response missing {len(missing_fields)}/{total} ground truth values",
+                details={
+                    "found_fields": found_fields,
+                    "missing_fields": missing_fields,
+                    "missing_values": {
+                        f: str(gt_data[f])[:100] for f in missing_fields if f in gt_data
+                    },
+                },
+            )
+
+    def _extract_text(self, content: Any) -> str:
+        """Extract text from various content types."""
+        if content is None:
+            return ""
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts = []
+            for item in content:
+                if hasattr(item, "text"):
+                    parts.append(item.text)
+                else:
+                    parts.append(str(item))
+            return "\n".join(parts)
+        if hasattr(content, "text"):
+            return content.text
+        return str(content)
+
+
+class MCPVerifySideEffect(BaseEvaluator):
+    """Verify a write operation's side effect by calling MCP to check the resource."""
+
+    def __init__(
+        self,
+        verify_tool: str,
+        arguments: dict[str, Any] | None = None,
+        extract_from: str = "tool_result",
+        extract_pattern: str | None = None,
+        expect_exists: bool = True,
+    ):
+        self.verify_tool = verify_tool
+        self.arguments = arguments or {}
+        self.extract_from = extract_from
+        self.extract_pattern = extract_pattern
+        self.expect_exists = expect_exists
+
+    @property
+    def name(self) -> str:
+        return f"mcp_verify_side_effect:{self.verify_tool}"
+
+    @property
+    def description(self) -> str:
+        existence = "exists" if self.expect_exists else "does not exist"
+        return f"Calls MCP tool '{self.verify_tool}' to verify resource {existence}"
+
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
+        mcp_client = context.get("mcp_client")
+        if not mcp_client:
+            return EvalResult(passed=False, score=0.0, reason="No MCP client in context")
+
+        return self._run_async(self._async_evaluate(context))
+
+    def _run_async(self, coro):
+        """Run async code from sync evaluate()."""
+        import asyncio
+
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                import concurrent.futures
+
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    return pool.submit(asyncio.run, coro).result(timeout=30)
+            else:
+                return loop.run_until_complete(coro)
+        except RuntimeError:
+            return asyncio.run(coro)
+
+    async def _async_evaluate(self, context: dict[str, Any]) -> EvalResult:
+        from testmcpy.src.mcp_client import MCPToolCall as _MCPToolCall
+
+        mcp_client = context["mcp_client"]
+
+        # Extract resource ID from LLM response/tool_result if needed
+        arguments = dict(self.arguments)
+        if self.extract_pattern:
+            extracted_id = self._extract_id(context)
+            if extracted_id:
+                # Replace placeholder in arguments
+                for key, value in arguments.items():
+                    if isinstance(value, str) and "{extracted_id}" in value:
+                        arguments[key] = value.replace("{extracted_id}", extracted_id)
+
+        # Call MCP verify tool
+        verify_result = await mcp_client.call_tool(
+            _MCPToolCall(name=self.verify_tool, arguments=arguments)
+        )
+
+        resource_found = not verify_result.is_error
+        result_text = self._extract_text(verify_result.content) if resource_found else ""
+
+        if self.expect_exists:
+            if resource_found and result_text:
+                return EvalResult(
+                    passed=True,
+                    score=1.0,
+                    reason=f"Resource verified via {self.verify_tool}",
+                    details={"verify_result": result_text[:500]},
+                )
+            else:
+                error_msg = (
+                    verify_result.error_message if verify_result.is_error else "Empty result"
+                )
+                return EvalResult(
+                    passed=False,
+                    score=0.0,
+                    reason=f"Resource not found via {self.verify_tool}: {error_msg}",
+                    details={"error": error_msg},
+                )
+        else:
+            # expect_exists=False: resource should NOT be found
+            if verify_result.is_error or not result_text:
+                return EvalResult(
+                    passed=True,
+                    score=1.0,
+                    reason=f"Resource correctly not found via {self.verify_tool}",
+                )
+            else:
+                return EvalResult(
+                    passed=False,
+                    score=0.0,
+                    reason=f"Resource still exists (expected deletion) via {self.verify_tool}",
+                    details={"verify_result": result_text[:500]},
+                )
+
+    def _extract_id(self, context: dict[str, Any]) -> str | None:
+        """Extract resource ID from context using extract_pattern."""
+        # Determine source text
+        if self.extract_from == "tool_result":
+            source_parts = []
+            for tr in context.get("tool_results", []):
+                if isinstance(tr, dict):
+                    source_parts.append(str(tr.get("content", tr.get("result", ""))))
+                elif hasattr(tr, "content"):
+                    source_parts.append(self._extract_text(tr.content))
+            source = "\n".join(source_parts)
+        elif self.extract_from == "response":
+            source = context.get("response", "")
+        else:
+            source = context.get("response", "")
+
+        if not source or not self.extract_pattern:
+            return None
+
+        match = re.search(self.extract_pattern, source)
+        if match:
+            # Return first capture group or full match
+            return match.group(1) if match.groups() else match.group(0)
+        return None
+
+    def _extract_text(self, content: Any) -> str:
+        """Extract text from various content types."""
+        if content is None:
+            return ""
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts = []
+            for item in content:
+                if hasattr(item, "text"):
+                    parts.append(item.text)
+                else:
+                    parts.append(str(item))
+            return "\n".join(parts)
+        if hasattr(content, "text"):
+            return content.text
+        return str(content)
+
+
 # Factory function for creating evaluators
 
 
@@ -2041,6 +2541,10 @@ def create_evaluator(name: str, **kwargs) -> BaseEvaluator:
         # Load/burst test aggregate evaluators
         "success_rate_above": SuccessRateAbove,
         "latency_percentile": LatencyPercentile,
+        # MCP-aware deterministic evaluators
+        "mcp_tool_result_matches": MCPToolResultMatches,
+        "mcp_verify_response_data": MCPVerifyResponseData,
+        "mcp_verify_side_effect": MCPVerifySideEffect,
     }
 
     if name not in evaluators:

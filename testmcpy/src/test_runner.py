@@ -523,6 +523,7 @@ class TestRunner:
                 "response": llm_result.response,
                 "tool_calls": llm_result.tool_calls,
                 "tool_results": tool_results,
+                "mcp_client": test_mcp_client,
                 "metadata": {
                     "duration_seconds": time.time() - start_time,
                     "model": self.model,
@@ -778,6 +779,7 @@ class TestRunner:
                         "response": llm_result.response,
                         "tool_calls": llm_result.tool_calls,
                         "tool_results": tool_results,
+                        "mcp_client": self.mcp_client,
                         "conversation_history": conversation_history,
                         "step_index": step_idx,
                     }
@@ -962,6 +964,7 @@ class TestRunner:
                 "response": f"Load test: {successes}/{requests} succeeded",
                 "tool_calls": [],
                 "tool_results": [],
+                "mcp_client": self.mcp_client,
                 "load_test_results": individual_results,
                 "metadata": {
                     "duration_seconds": total_duration,
