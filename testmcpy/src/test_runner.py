@@ -546,7 +546,7 @@ class TestRunner:
 
             for eval_config in test_case.evaluators:
                 evaluator = self._create_evaluator(eval_config)
-                eval_result = evaluator.evaluate(context)
+                eval_result = await evaluator.aevaluate(context)
 
                 evaluations.append(
                     {
@@ -789,7 +789,7 @@ class TestRunner:
                         eval_args = eval_config.get("args", {})
                         try:
                             evaluator = create_evaluator(eval_name, **eval_args)
-                            eval_result = evaluator.evaluate(context)
+                            eval_result = await evaluator.aevaluate(context)
                             step_evaluations.append(
                                 {
                                     "evaluator": eval_name,
@@ -985,7 +985,7 @@ class TestRunner:
 
             for eval_config in test_case.evaluators:
                 evaluator = self._create_evaluator(eval_config)
-                eval_result = evaluator.evaluate(context)
+                eval_result = await evaluator.aevaluate(context)
 
                 evaluations.append(
                     {

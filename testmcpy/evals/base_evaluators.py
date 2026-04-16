@@ -70,11 +70,21 @@ class BaseEvaluator(ABC):
                 - tool_calls: List of tool calls made
                 - tool_results: Results from tool executions
                 - metadata: Additional metadata
+                - mcp_client: Optional MCPClient for deterministic verification
 
         Returns:
             EvalResult with pass/fail and details
         """
         pass
+
+    async def aevaluate(self, context: dict[str, Any]) -> EvalResult:
+        """Async variant — override for evaluators that need MCP/network access.
+
+        Default delegates to sync evaluate(). Evaluators that need async
+        operations (e.g., MCP calls) should override this and the test runner
+        will use it when running inside an async context.
+        """
+        return self.evaluate(context)
 
     @property
     @abstractmethod
@@ -2001,27 +2011,18 @@ class MCPToolResultMatches(BaseEvaluator):
         return f"Calls MCP tool '{self.tool_name}' directly and compares result to what the LLM received"
 
     def evaluate(self, context: dict[str, Any]) -> EvalResult:
+        """Sync fallback — returns skip since MCP evaluation requires async."""
+        return EvalResult(
+            passed=False,
+            score=0.0,
+            reason="MCP-aware evaluator requires async context (use aevaluate)",
+        )
+
+    async def aevaluate(self, context: dict[str, Any]) -> EvalResult:
         mcp_client = context.get("mcp_client")
         if not mcp_client:
             return EvalResult(passed=False, score=0.0, reason="No MCP client in context")
-
-        return self._run_async(self._async_evaluate(context))
-
-    def _run_async(self, coro):
-        """Run async code from sync evaluate()."""
-        import asyncio
-
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                import concurrent.futures
-
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    return pool.submit(asyncio.run, coro).result(timeout=30)
-            else:
-                return loop.run_until_complete(coro)
-        except RuntimeError:
-            return asyncio.run(coro)
+        return await self._async_evaluate(context)
 
     async def _async_evaluate(self, context: dict[str, Any]) -> EvalResult:
         import json
@@ -2030,10 +2031,23 @@ class MCPToolResultMatches(BaseEvaluator):
 
         mcp_client = context["mcp_client"]
 
-        # Call MCP directly to get ground truth
+        # Call MCP directly to get ground truth.
+        # FastMCP gateway tools often require arguments wrapped in {"request": {...}}
+        # Try unwrapped first, then wrapped as fallback on validation error.
         ground_truth = await mcp_client.call_tool(
             _MCPToolCall(name=self.tool_name, arguments=self.arguments)
         )
+
+        # Check for validation errors in content (not is_error) and retry wrapped
+        gt_text = self._extract_text(ground_truth.content)
+        if ("validation error" in gt_text.lower() or ground_truth.is_error) and (
+            "request" not in self.arguments
+        ):
+            wrapped = {"request": self.arguments} if self.arguments else {"request": {}}
+            retry = await mcp_client.call_tool(_MCPToolCall(name=self.tool_name, arguments=wrapped))
+            if not retry.is_error:
+                gt_text = self._extract_text(retry.content)
+                ground_truth = retry
 
         if ground_truth.is_error:
             return EvalResult(
@@ -2042,9 +2056,6 @@ class MCPToolResultMatches(BaseEvaluator):
                 reason=f"MCP ground truth call failed: {ground_truth.error_message}",
                 details={"error": ground_truth.error_message},
             )
-
-        # Extract ground truth content as string
-        gt_text = self._extract_text(ground_truth.content)
 
         # Find what the LLM got for this tool
         llm_result_text = self._find_llm_result(context)
@@ -2188,27 +2199,18 @@ class MCPVerifyResponseData(BaseEvaluator):
         return f"Calls MCP tool '{self.tool_name}' for ground truth and checks LLM response contains correct values"
 
     def evaluate(self, context: dict[str, Any]) -> EvalResult:
+        """Sync fallback — returns skip since MCP evaluation requires async."""
+        return EvalResult(
+            passed=False,
+            score=0.0,
+            reason="MCP-aware evaluator requires async context (use aevaluate)",
+        )
+
+    async def aevaluate(self, context: dict[str, Any]) -> EvalResult:
         mcp_client = context.get("mcp_client")
         if not mcp_client:
             return EvalResult(passed=False, score=0.0, reason="No MCP client in context")
-
-        return self._run_async(self._async_evaluate(context))
-
-    def _run_async(self, coro):
-        """Run async code from sync evaluate()."""
-        import asyncio
-
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                import concurrent.futures
-
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    return pool.submit(asyncio.run, coro).result(timeout=30)
-            else:
-                return loop.run_until_complete(coro)
-        except RuntimeError:
-            return asyncio.run(coro)
+        return await self._async_evaluate(context)
 
     async def _async_evaluate(self, context: dict[str, Any]) -> EvalResult:
         import json
@@ -2217,10 +2219,21 @@ class MCPVerifyResponseData(BaseEvaluator):
 
         mcp_client = context["mcp_client"]
 
-        # Call MCP tool to get ground truth
+        # Call MCP tool to get ground truth.
+        # FastMCP gateway tools often require arguments wrapped in {"request": {...}}
+        # Try unwrapped first, then wrapped as fallback on validation error.
         ground_truth = await mcp_client.call_tool(
             _MCPToolCall(name=self.tool_name, arguments=self.arguments)
         )
+        gt_text = self._extract_text(ground_truth.content)
+        if ("validation error" in gt_text.lower() or ground_truth.is_error) and (
+            "request" not in self.arguments
+        ):
+            wrapped = {"request": self.arguments} if self.arguments else {"request": {}}
+            retry = await mcp_client.call_tool(_MCPToolCall(name=self.tool_name, arguments=wrapped))
+            if not retry.is_error:
+                gt_text = self._extract_text(retry.content)
+                ground_truth = retry
 
         if ground_truth.is_error:
             return EvalResult(
@@ -2229,9 +2242,6 @@ class MCPVerifyResponseData(BaseEvaluator):
                 reason=f"MCP ground truth call failed: {ground_truth.error_message}",
                 details={"error": ground_truth.error_message},
             )
-
-        # Parse JSON response
-        gt_text = self._extract_text(ground_truth.content)
         try:
             gt_data = json.loads(gt_text) if isinstance(gt_text, str) else gt_text
         except (json.JSONDecodeError, ValueError):
@@ -2359,27 +2369,18 @@ class MCPVerifySideEffect(BaseEvaluator):
         return f"Calls MCP tool '{self.verify_tool}' to verify resource {existence}"
 
     def evaluate(self, context: dict[str, Any]) -> EvalResult:
+        """Sync fallback — returns skip since MCP evaluation requires async."""
+        return EvalResult(
+            passed=False,
+            score=0.0,
+            reason="MCP-aware evaluator requires async context (use aevaluate)",
+        )
+
+    async def aevaluate(self, context: dict[str, Any]) -> EvalResult:
         mcp_client = context.get("mcp_client")
         if not mcp_client:
             return EvalResult(passed=False, score=0.0, reason="No MCP client in context")
-
-        return self._run_async(self._async_evaluate(context))
-
-    def _run_async(self, coro):
-        """Run async code from sync evaluate()."""
-        import asyncio
-
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                import concurrent.futures
-
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    return pool.submit(asyncio.run, coro).result(timeout=30)
-            else:
-                return loop.run_until_complete(coro)
-        except RuntimeError:
-            return asyncio.run(coro)
+        return await self._async_evaluate(context)
 
     async def _async_evaluate(self, context: dict[str, Any]) -> EvalResult:
         from testmcpy.src.mcp_client import MCPToolCall as _MCPToolCall
