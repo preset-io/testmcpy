@@ -806,7 +806,8 @@ class TestRunManagement:
             ).fetchone()
         assert row["error"] == "timeout"
         assert row["answer"] is None
-        assert row["tool_uses"] is None
+        # SQLAlchemy JSON columns store Python None as JSON 'null' in SQLite
+        assert row["tool_uses"] is None or row["tool_uses"] == "null"
 
     def test_get_run(self, storage_with_run):
         run = storage_with_run.get_run("run-001")
