@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { BrowserRouter as Router, Routes, Route, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import {
   Package,
@@ -78,6 +78,7 @@ function ThemeSwitcher({ collapsed }) {
 
 function AppContent() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [config, setConfig] = useState({})
   const [selectedProfiles, setSelectedProfiles] = useState([])
   const [profiles, setProfiles] = useState([])
@@ -88,6 +89,23 @@ function AppContent() {
   const [appVersion, setAppVersion] = useState('v0.0.0')
   const navigate = useNavigate()
   const location = useLocation()
+
+  // Close mobile drawer on route change
+  useEffect(() => {
+    setMobileMenuOpen(false)
+  }, [location.pathname])
+
+  // Close mobile drawer on resize to desktop
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)')
+    const handler = () => {
+      if (mq.matches) {
+        setMobileMenuOpen(false)
+      }
+    }
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
 
   useEffect(() => {
     checkApiHealth()
@@ -322,6 +340,9 @@ function AppContent() {
     { path: '/config', label: 'Config', icon: Settings },
   ]
 
+  // On mobile, sidebar always shows labels (acts as expanded drawer)
+  const showLabels = sidebarOpen || mobileMenuOpen
+
   if (!apiReady) {
     return (
       <div className="flex h-screen bg-background text-text-primary items-center justify-center">
@@ -343,15 +364,29 @@ function AppContent() {
 
   return (
     <div className="flex h-screen bg-background text-text-primary">
-        {/* Sidebar */}
+        {/* Mobile backdrop overlay */}
+        {mobileMenuOpen && (
+          <div
+            className="fixed inset-0 bg-black/40 z-30 md:hidden"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+        )}
+
+        {/* Sidebar — fixed drawer on mobile, static on desktop */}
         <aside
-          className={`${
-            sidebarOpen ? 'w-56' : 'w-16'
-          } sidebar-bg border-r border-border transition-all duration-300 flex flex-col shadow-medium relative`}
+          className={`
+            fixed inset-y-0 left-0 z-40 w-64
+            md:relative md:z-auto
+            ${sidebarOpen ? 'md:w-56' : 'md:w-16'}
+            transform transition-all duration-300 ease-in-out
+            ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
+            md:translate-x-0
+            sidebar-bg border-r border-border flex flex-col shadow-medium
+          `}
         >
           {/* Header */}
-          <div className={`border-b border-border ${sidebarOpen ? 'p-3 flex items-center justify-between' : 'p-2 flex flex-col items-center gap-2'}`}>
-            {sidebarOpen ? (
+          <div className={`border-b border-border ${showLabels ? 'p-3 flex items-center justify-between' : 'p-2 flex flex-col items-center gap-2'}`}>
+            {showLabels ? (
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
                   <svg width="18" height="18" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg">
@@ -378,16 +413,24 @@ function AppContent() {
                 </svg>
               </div>
             )}
+            {/* Desktop: collapse/expand toggle. Mobile: close drawer */}
             <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
+              onClick={() => {
+                // On mobile, close the drawer
+                if (window.innerWidth < 768) {
+                  setMobileMenuOpen(false)
+                } else {
+                  setSidebarOpen(!sidebarOpen)
+                }
+              }}
               className="p-1.5 hover:bg-surface-hover rounded-lg transition-all duration-200 text-text-tertiary hover:text-text-primary"
             >
-              {sidebarOpen ? <X size={16} /> : <Menu size={18} />}
+              {showLabels ? <X size={16} /> : <Menu size={18} />}
             </button>
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 px-2 py-3 space-y-0.5">
+          <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
             {navItems.map((item) => {
               const Icon = item.icon
               return (
@@ -403,7 +446,7 @@ function AppContent() {
                   }
                 >
                   <Icon size={18} className="flex-shrink-0" />
-                  {sidebarOpen && <span className="text-sm font-medium">{item.label}</span>}
+                  {showLabels && <span className="text-sm font-medium">{item.label}</span>}
                 </NavLink>
               )
             })}
@@ -429,7 +472,7 @@ function AppContent() {
                     <CheckCircle2 size={9} className="absolute -bottom-1 -right-1 text-success" />
                   )}
                 </div>
-                {sidebarOpen && (
+                {showLabels && (
                   <div className="flex-1 min-w-0 text-left">
                     <div className="flex items-center gap-1.5">
                       <span className="text-xs font-semibold text-text-primary truncate">
@@ -446,7 +489,7 @@ function AppContent() {
                     </div>
                   </div>
                 )}
-                {sidebarOpen && <ChevronRight size={13} className="text-text-tertiary flex-shrink-0" />}
+                {showLabels && <ChevronRight size={13} className="text-text-tertiary flex-shrink-0" />}
               </div>
             </button>
 
@@ -461,7 +504,7 @@ function AppContent() {
             >
               <div className="flex items-center gap-2 px-2.5 py-2">
                 <Cpu size={15} className={location.pathname === '/llm-profiles' ? 'text-primary' : 'text-info-light'} />
-                {sidebarOpen && (
+                {showLabels && (
                   <div className="flex-1 min-w-0 text-left">
                     <div className="flex items-center gap-1.5">
                       <span className="text-xs font-semibold text-text-primary truncate">
@@ -482,15 +525,15 @@ function AppContent() {
                     </div>
                   </div>
                 )}
-                {sidebarOpen && <ChevronRight size={13} className="text-text-tertiary flex-shrink-0" />}
+                {showLabels && <ChevronRight size={13} className="text-text-tertiary flex-shrink-0" />}
               </div>
             </button>
           </div>
 
           {/* Footer with theme switcher */}
           <div className="px-2 py-2.5 border-t border-border space-y-2">
-            <ThemeSwitcher collapsed={!sidebarOpen} />
-            {sidebarOpen && (
+            <ThemeSwitcher collapsed={!showLabels} />
+            {showLabels && (
               <div className="text-[10px] text-text-tertiary flex items-center justify-between px-1">
                 <span className="font-medium">testmcpy</span>
                 <span className="text-text-disabled">{appVersion}</span>
@@ -499,28 +542,52 @@ function AppContent() {
           </div>
         </aside>
 
-        {/* Main Content */}
-        <main className="flex-1 overflow-auto">
-          <Routes>
-            <Route path="/" element={<MCPExplorer selectedProfiles={selectedProfiles} />} />
-            <Route path="/chat" element={<ChatInterface selectedProfiles={selectedProfiles} selectedLlmProfile={selectedLlmProfile} llmProfiles={llmProfiles} />} />
-            <Route path="/tests" element={<TestManager selectedProfiles={selectedProfiles} selectedLlmProfile={selectedLlmProfile} llmProfiles={llmProfiles} />} />
-            <Route path="/reports" element={<Reports />} />
-            <Route path="/generation-history" element={<GenerationHistory />} />
-            <Route path="/auth-debugger" element={<AuthDebugger />} />
-            <Route path="/config" element={<Configuration />} />
-            <Route path="/mcp-profiles" element={
-              <MCPProfiles
-                selectedProfiles={selectedProfiles}
-                onSelectProfiles={(newProfiles) => {
-                  setSelectedProfiles(newProfiles)
-                  localStorage.setItem('selectedMCPProfiles', JSON.stringify(newProfiles))
-                }}
-              />
-            } />
-            <Route path="/llm-profiles" element={<LLMProfiles selectedProfile={selectedLlmProfile} onSelectProfile={handleLlmProfileChange} onProfilesChange={loadLlmProfiles} />} />
-          </Routes>
-        </main>
+        {/* Main content area with mobile header */}
+        <div className="flex-1 flex flex-col min-w-0">
+          {/* Mobile top bar — only visible below md */}
+          <div className="md:hidden flex items-center justify-between px-4 py-2.5 border-b border-border bg-surface-elevated">
+            <button
+              onClick={() => setMobileMenuOpen(true)}
+              className="p-1.5 hover:bg-surface-hover rounded-lg transition-all duration-200 text-text-secondary hover:text-text-primary"
+            >
+              <Menu size={20} />
+            </button>
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-md bg-primary/10 border border-primary/20 flex items-center justify-center">
+                <svg width="14" height="14" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="5" y="9" width="5" height="14" rx="1.5" fill="none" stroke="currentColor" strokeWidth="2" className="text-primary" />
+                  <circle cx="20" cy="14" r="6" fill="none" stroke="currentColor" strokeWidth="2" className="text-success" />
+                  <path d="M 17 14 L 19 16 L 23 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-success" />
+                </svg>
+              </div>
+              <span className="text-sm font-bold text-text-primary">testmcpy</span>
+            </div>
+            <ThemeSwitcher collapsed={true} />
+          </div>
+
+          {/* Main Content */}
+          <main className="flex-1 overflow-auto">
+            <Routes>
+              <Route path="/" element={<MCPExplorer selectedProfiles={selectedProfiles} />} />
+              <Route path="/chat" element={<ChatInterface selectedProfiles={selectedProfiles} selectedLlmProfile={selectedLlmProfile} llmProfiles={llmProfiles} />} />
+              <Route path="/tests" element={<TestManager selectedProfiles={selectedProfiles} selectedLlmProfile={selectedLlmProfile} llmProfiles={llmProfiles} />} />
+              <Route path="/reports" element={<Reports />} />
+              <Route path="/generation-history" element={<GenerationHistory />} />
+              <Route path="/auth-debugger" element={<AuthDebugger />} />
+              <Route path="/config" element={<Configuration />} />
+              <Route path="/mcp-profiles" element={
+                <MCPProfiles
+                  selectedProfiles={selectedProfiles}
+                  onSelectProfiles={(newProfiles) => {
+                    setSelectedProfiles(newProfiles)
+                    localStorage.setItem('selectedMCPProfiles', JSON.stringify(newProfiles))
+                  }}
+                />
+              } />
+              <Route path="/llm-profiles" element={<LLMProfiles selectedProfile={selectedLlmProfile} onSelectProfile={handleLlmProfileChange} onProfilesChange={loadLlmProfiles} />} />
+            </Routes>
+          </main>
+        </div>
 
       </div>
   )
