@@ -210,10 +210,10 @@ function TestGenerationModal({ tool, onClose, onSuccess }) {
   const currentProfile = llmProfiles.find(p => p.profile_id === selectedProfile)
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-surface border border-border rounded-xl shadow-strong max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-0 md:p-4">
+      <div className="bg-surface border border-border rounded-none md:rounded-xl shadow-strong md:max-w-3xl w-full h-full md:h-auto max-h-full md:max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="p-6 border-b border-border flex items-center justify-between">
+        <div className="p-4 md:p-6 border-b border-border flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
               <Sparkles size={20} className="text-primary" />
@@ -235,7 +235,7 @@ function TestGenerationModal({ tool, onClose, onSuccess }) {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-auto p-6">
+        <div className="flex-1 overflow-auto p-4 md:p-6">
           {step === 'configure' && (
             <div className="space-y-6">
               {/* LLM Configuration */}
@@ -243,7 +243,7 @@ function TestGenerationModal({ tool, onClose, onSuccess }) {
                 <label className="block text-sm font-semibold text-text-primary mb-3">
                   LLM Provider
                 </label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs text-text-secondary mb-1.5">Profile</label>
                     <select
@@ -504,7 +504,7 @@ function TestGenerationModal({ tool, onClose, onSuccess }) {
         </div>
 
         {/* Footer */}
-        <div className="p-6 border-t border-border flex items-center justify-end gap-3">
+        <div className="p-4 md:p-6 border-t border-border flex items-center justify-end gap-3">
           {step === 'configure' && (
             <>
               <button onClick={handleClose} className="btn btn-secondary">

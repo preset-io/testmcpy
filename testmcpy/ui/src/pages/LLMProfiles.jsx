@@ -35,8 +35,8 @@ function Toast({ message, type = 'success', onClose }) {
 // Confirmation dialog component
 function ConfirmDialog({ title, message, onConfirm, onCancel }) {
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-surface-elevated border border-border rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-0 md:p-4">
+      <div className="bg-surface-elevated border border-border rounded-none md:rounded-lg p-6 md:max-w-md w-full h-full md:h-auto max-h-full md:max-h-[90vh] mx-0 md:mx-4 shadow-xl">
         <h3 className="text-lg font-bold mb-2">{title}</h3>
         <p className="text-text-secondary mb-6">{message}</p>
         <div className="flex justify-end gap-3">
@@ -99,8 +99,8 @@ function ProfileEditorModal({ profile, onSave, onCancel }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-surface-elevated border border-border rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-0 md:p-4">
+      <div className="bg-surface-elevated border border-border rounded-none md:rounded-lg p-6 md:max-w-md w-full h-full md:h-auto max-h-full md:max-h-[90vh] mx-0 md:mx-4 shadow-xl">
         <h3 className="text-lg font-bold mb-4">
           {isNew ? 'New LLM Profile' : 'Edit LLM Profile'}
         </h3>
@@ -230,8 +230,8 @@ function ProviderEditorModal({ provider, availableModels, onSave, onCancel }) {
   const selectedModel = availableModels?.find(m => m.id === formData.model)
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto p-4">
-      <div className="bg-surface-elevated border border-border rounded-lg p-6 max-w-2xl w-full my-8 shadow-xl">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto p-0 md:p-4">
+      <div className="bg-surface-elevated border border-border rounded-none md:rounded-lg p-6 md:max-w-2xl w-full h-full md:h-auto max-h-full md:max-h-[90vh] my-0 md:my-8 shadow-xl overflow-y-auto">
         <h3 className="text-lg font-bold mb-4">
           {provider ? 'Edit Provider' : 'Add Provider'}
         </h3>
@@ -844,7 +844,7 @@ function LLMProfiles({ selectedProfile, onSelectProfile, onProfilesChange, hideH
         <div className="p-4 border-b border-border bg-surface-elevated">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold">LLM Profiles</h1>
+              <h1 className="text-xl md:text-2xl font-bold">LLM Profiles</h1>
               <p className="text-text-secondary mt-1 text-base">
                 Configure LLM providers for testing and chat
               </p>

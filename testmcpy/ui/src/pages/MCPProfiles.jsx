@@ -35,8 +35,8 @@ function Toast({ message, type = 'success', onClose }) {
 // Confirmation dialog component
 function ConfirmDialog({ title, message, onConfirm, onCancel }) {
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-surface-elevated border border-border rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-0 md:p-4">
+      <div className="bg-surface-elevated border border-border rounded-none md:rounded-lg p-6 md:max-w-md w-full h-full md:h-auto max-h-full md:max-h-[90vh] mx-0 md:mx-4 shadow-xl">
         <h3 className="text-lg font-bold mb-2">{title}</h3>
         <p className="text-text-secondary mb-6">{message}</p>
         <div className="flex justify-end gap-3">
@@ -90,8 +90,8 @@ function ProfileEditorModal({ profile, onSave, onCancel }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-surface-elevated border border-border rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-0 md:p-4">
+      <div className="bg-surface-elevated border border-border rounded-none md:rounded-lg p-6 md:max-w-md w-full h-full md:h-auto max-h-full md:max-h-[90vh] mx-0 md:mx-4 shadow-xl">
         <h3 className="text-lg font-bold mb-4">
           {profile ? 'Edit Profile' : 'New Profile'}
         </h3>
@@ -212,8 +212,8 @@ function MCPEditorModal({ mcp, onSave, onCancel }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto p-4">
-      <div className="bg-surface-elevated border border-border rounded-lg p-6 max-w-2xl w-full my-8 shadow-xl">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto p-0 md:p-4">
+      <div className="bg-surface-elevated border border-border rounded-none md:rounded-lg p-6 md:max-w-2xl w-full h-full md:h-auto max-h-full md:max-h-[90vh] my-0 md:my-8 shadow-xl overflow-y-auto">
         <h3 className="text-lg font-bold mb-4">
           {mcp ? 'Edit MCP Server' : 'Add MCP Server'}
         </h3>
@@ -387,7 +387,7 @@ function MCPEditorModal({ mcp, onSave, onCancel }) {
             )}
 
             {/* Advanced Settings */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Timeout (seconds)</label>
                 <input
@@ -853,7 +853,7 @@ function MCPProfiles({ selectedProfiles = [], onSelectProfiles, hideHeader = fal
         <div className="p-4 border-b border-border bg-surface-elevated">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold">MCP Profiles</h1>
+              <h1 className="text-xl md:text-2xl font-bold">MCP Profiles</h1>
               <p className="text-text-secondary mt-1 text-base">
                 Manage and configure MCP service profiles
               </p>

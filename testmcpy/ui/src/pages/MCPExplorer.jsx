@@ -544,10 +544,10 @@ function MCPExplorer({ selectedProfiles = [] }) {
   return (
     <div className="h-full flex flex-col">
       <div className="p-4 border-b border-border bg-surface-elevated">
-        <div className="flex items-start justify-between mb-3">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-3">
           <div>
-            <h1 className="text-2xl font-bold">Explorer</h1>
-            <p className="text-text-secondary mt-1 text-base">
+            <h1 className="text-xl md:text-2xl font-bold">Explorer</h1>
+            <p className="text-text-secondary mt-1 text-sm md:text-base">
               Browse tools, resources, and prompts from your MCP service
               {batchMode && selectedTools.size > 0 && (
                 <span className="ml-2 text-xs bg-primary/10 text-primary px-2 py-0.5 rounded border border-primary/20">
@@ -556,7 +556,7 @@ function MCPExplorer({ selectedProfiles = [] }) {
               )}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={() => runSmokeTest()}
               className="btn btn-primary text-sm flex items-center gap-2"
@@ -566,12 +566,12 @@ function MCPExplorer({ selectedProfiles = [] }) {
               {runningSmokeTest ? (
                 <>
                   <LoadingSpinner size={16} />
-                  <span>Running...</span>
+                  <span className="hidden sm:inline">Running...</span>
                 </>
               ) : (
                 <>
                   <TestTube2 size={16} />
-                  <span>Smoke Test</span>
+                  <span className="hidden sm:inline">Smoke Test</span>
                 </>
               )}
             </button>
@@ -584,7 +584,7 @@ function MCPExplorer({ selectedProfiles = [] }) {
               title="View smoke test history"
             >
               <History size={16} />
-              <span>History</span>
+              <span className="hidden sm:inline">History</span>
             </button>
             <button
               onClick={() => {
@@ -597,7 +597,7 @@ function MCPExplorer({ selectedProfiles = [] }) {
               title="Toggle batch selection mode"
             >
               {batchMode ? <CheckSquare size={16} /> : <Square size={16} />}
-              <span>{batchMode ? 'Exit Batch Mode' : 'Batch Mode'}</span>
+              <span className="hidden sm:inline">{batchMode ? 'Exit Batch Mode' : 'Batch Mode'}</span>
             </button>
             <button
               onClick={() => setShowShortcuts(true)}
@@ -605,7 +605,7 @@ function MCPExplorer({ selectedProfiles = [] }) {
               title="Show keyboard shortcuts (press ?)"
             >
               <HelpCircle size={16} />
-              <span>Shortcuts</span>
+              <span className="hidden sm:inline">Shortcuts</span>
             </button>
           </div>
         </div>
@@ -1371,8 +1371,8 @@ function MCPExplorer({ selectedProfiles = [] }) {
 
       {/* Expanded Tool Modal (Grid View) */}
       {expandedToolModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setExpandedToolModal(null)}>
-          <div className="bg-surface border border-border rounded-xl shadow-strong max-w-3xl w-full max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-0 md:p-4" onClick={() => setExpandedToolModal(null)}>
+          <div className="bg-surface border border-border rounded-none md:rounded-xl shadow-strong md:max-w-3xl w-full h-full md:h-auto max-h-full md:max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
             {/* Header */}
             <div className="p-4 border-b border-border bg-surface-elevated flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -1704,8 +1704,8 @@ function MCPExplorer({ selectedProfiles = [] }) {
 
       {/* Keyboard Shortcuts Modal */}
       {showShortcuts && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowShortcuts(false)}>
-          <div className="bg-surface border border-border rounded-xl shadow-strong p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-0 md:p-4" onClick={() => setShowShortcuts(false)}>
+          <div className="bg-surface border border-border rounded-none md:rounded-xl shadow-strong p-6 md:max-w-md w-full h-full md:h-auto max-h-full md:max-h-[90vh] mx-0 md:mx-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold">Keyboard Shortcuts</h2>
               <button
@@ -1742,8 +1742,8 @@ function MCPExplorer({ selectedProfiles = [] }) {
 
       {/* Smoke Test Results Modal */}
       {showSmokeTestResults && smokeTestReport && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowSmokeTestResults(false)}>
-          <div className="bg-surface border border-border rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-0 md:p-4" onClick={() => setShowSmokeTestResults(false)}>
+          <div className="bg-surface border border-border rounded-none md:rounded-lg shadow-xl md:max-w-4xl w-full h-full md:h-auto max-h-full md:max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="p-4 border-b border-border flex items-center justify-between bg-surface-elevated flex-shrink-0">
               <div>
                 <h2 className="text-xl font-bold">Smoke Test Results</h2>
@@ -1786,18 +1786,18 @@ function MCPExplorer({ selectedProfiles = [] }) {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4 mt-4">
+                <div className="grid grid-cols-3 gap-2 md:gap-4 mt-4">
                   <div className="bg-surface/50 rounded p-3 border border-border">
                     <p className="text-xs text-text-tertiary uppercase">Total Tests</p>
-                    <p className="text-2xl font-bold">{smokeTestReport.total_tests}</p>
+                    <p className="text-xl md:text-2xl font-bold">{smokeTestReport.total_tests}</p>
                   </div>
                   <div className="bg-success/10 rounded p-3 border border-success/30">
                     <p className="text-xs text-success-light uppercase">Passed</p>
-                    <p className="text-2xl font-bold text-success-light">{smokeTestReport.passed}</p>
+                    <p className="text-xl md:text-2xl font-bold text-success-light">{smokeTestReport.passed}</p>
                   </div>
                   <div className="bg-error/10 rounded p-3 border border-error/30">
                     <p className="text-xs text-error-light uppercase">Failed</p>
-                    <p className="text-2xl font-bold text-error-light">{smokeTestReport.failed}</p>
+                    <p className="text-xl md:text-2xl font-bold text-error-light">{smokeTestReport.failed}</p>
                   </div>
                 </div>
               </div>
@@ -1913,8 +1913,8 @@ function MCPExplorer({ selectedProfiles = [] }) {
 
       {/* Smoke Test History Modal */}
       {showSmokeTestHistory && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowSmokeTestHistory(false)}>
-          <div className="bg-surface border border-border rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-0 md:p-4" onClick={() => setShowSmokeTestHistory(false)}>
+          <div className="bg-surface border border-border rounded-none md:rounded-lg shadow-xl md:max-w-2xl w-full h-full md:h-auto max-h-full md:max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="p-4 border-b border-border flex items-center justify-between bg-surface-elevated flex-shrink-0">
               <div>
                 <h2 className="text-xl font-bold">Smoke Test History</h2>

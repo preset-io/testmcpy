@@ -366,10 +366,10 @@ function ToolDebugModal({ tool, profile, onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-surface rounded-xl border border-border shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-0 md:p-4">
+      <div className="bg-surface rounded-none md:rounded-xl border border-border shadow-2xl md:max-w-4xl w-full h-full md:h-auto max-h-full md:max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-start justify-between p-6 border-b border-border">
+        <div className="flex items-start justify-between p-4 md:p-6 border-b border-border">
           <div className="flex-1 min-w-0">
             <h2 className="text-xl font-bold text-text-primary flex items-center gap-2">
               <Play className="text-primary" size={24} />
@@ -393,7 +393,7 @@ function ToolDebugModal({ tool, profile, onClose }) {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-auto p-6 space-y-6">
+        <div className="flex-1 overflow-auto p-4 md:p-6 space-y-4 md:space-y-6">
           {/* Parameter Form */}
           <div>
             <h3 className="text-sm font-semibold text-text-secondary mb-3">

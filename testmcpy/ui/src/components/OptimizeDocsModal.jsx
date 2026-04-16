@@ -129,10 +129,10 @@ function OptimizeDocsModal({ tool, onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-surface border border-border rounded-xl shadow-strong max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-0 md:p-4">
+      <div className="bg-surface border border-border rounded-none md:rounded-xl shadow-strong md:max-w-5xl w-full h-full md:h-auto max-h-full md:max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="p-6 border-b border-border flex items-center justify-between">
+        <div className="p-4 md:p-6 border-b border-border flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-purple-500/10 rounded-lg flex items-center justify-center">
               <Wand2 size={20} className="text-purple-500" />
@@ -154,7 +154,7 @@ function OptimizeDocsModal({ tool, onClose }) {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-auto p-6">
+        <div className="flex-1 overflow-auto p-4 md:p-6">
           {step === 'analyzing' && (
             <div className="flex flex-col items-center justify-center py-12">
               <Loader className="w-12 h-12 text-purple-500 animate-spin mb-4" />
@@ -248,7 +248,7 @@ function OptimizeDocsModal({ tool, onClose }) {
                   <TrendingUp size={16} className="text-success" />
                   Description Comparison
                 </h3>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Current Description */}
                   <div className="bg-surface-elevated border border-border rounded-lg overflow-hidden">
                     <div className="px-4 py-2 bg-surface border-b border-border flex items-center justify-between">
@@ -311,7 +311,7 @@ function OptimizeDocsModal({ tool, onClose }) {
                           {idx + 1}. {improvement.issue}
                         </h4>
                         <div className="space-y-3">
-                          <div className="grid grid-cols-2 gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div>
                               <div className="text-xs text-text-tertiary mb-1">Before:</div>
                               <div className="text-sm text-text-secondary bg-surface p-2 rounded border border-border">
@@ -358,7 +358,7 @@ function OptimizeDocsModal({ tool, onClose }) {
         </div>
 
         {/* Footer */}
-        <div className="p-6 border-t border-border flex items-center justify-end gap-3">
+        <div className="p-4 md:p-6 border-t border-border flex items-center justify-end gap-3">
           {step === 'success' && (
             <>
               <button
