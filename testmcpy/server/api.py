@@ -2,6 +2,7 @@
 FastAPI server for testmcpy web UI.
 """
 
+import asyncio
 import os
 import warnings
 
@@ -96,7 +97,16 @@ class ChatResponse(BaseModel):
 config = get_config()
 mcp_client: MCPClient | None = None  # Default MCP client (for backwards compat)
 mcp_clients: dict[str, MCPClient] = {}  # Cache of MCP clients by "{profile_id}:{mcp_name}"
+# Per-key locks to prevent concurrent OAuth flows for the same server.
+_client_init_locks: dict[str, asyncio.Lock] = {}
 active_websockets: list[WebSocket] = []
+
+
+def _get_init_lock(cache_key: str) -> asyncio.Lock:
+    """Get or create an asyncio.Lock for a given cache key."""
+    if cache_key not in _client_init_locks:
+        _client_init_locks[cache_key] = asyncio.Lock()
+    return _client_init_locks[cache_key]
 
 
 async def get_mcp_clients_for_profile(profile_id: str) -> list[tuple[str, MCPClient]]:
@@ -128,17 +138,24 @@ async def get_mcp_clients_for_profile(profile_id: str) -> list[tuple[str, MCPCli
             clients.append((mcp_server.name, mcp_clients[cache_key]))
             continue
 
-        # Create client with auth configuration
-        auth_dict = mcp_server.auth.to_dict() if mcp_server.auth else None
-        client = MCPClient(mcp_server.mcp_url, auth=auth_dict)
-        await client.initialize()
+        # Lock to prevent concurrent OAuth popups for the same server
+        async with _get_init_lock(cache_key):
+            # Re-check after acquiring lock
+            if cache_key in mcp_clients:
+                clients.append((mcp_server.name, mcp_clients[cache_key]))
+                continue
 
-        # Cache the client
-        mcp_clients[cache_key] = client
-        clients.append((mcp_server.name, client))
-        print(
-            f"MCP client initialized for profile '{profile_id}', MCP '{mcp_server.name}' at {mcp_server.mcp_url}"
-        )
+            # Create client with auth configuration
+            auth_dict = mcp_server.auth.to_dict() if mcp_server.auth else None
+            client = MCPClient(mcp_server.mcp_url, auth=auth_dict)
+            await client.initialize()
+
+            # Cache the client
+            mcp_clients[cache_key] = client
+            clients.append((mcp_server.name, client))
+            print(
+                f"MCP client initialized for profile '{profile_id}', MCP '{mcp_server.name}' at {mcp_server.mcp_url}"
+            )
 
     return clients
 
@@ -178,16 +195,24 @@ async def get_mcp_client_for_server(profile_id: str, mcp_name: str) -> MCPClient
     if cache_key in mcp_clients:
         return mcp_clients[cache_key]
 
-    # Create client with auth configuration
-    auth_dict = mcp_server.auth.to_dict() if mcp_server.auth else None
-    client = MCPClient(mcp_server.mcp_url, auth=auth_dict)
-    await client.initialize()
+    # Lock to prevent concurrent OAuth popups for the same server
+    async with _get_init_lock(cache_key):
+        # Re-check after acquiring lock
+        if cache_key in mcp_clients:
+            return mcp_clients[cache_key]
 
-    # Cache the client
-    mcp_clients[cache_key] = client
-    print(f"MCP client initialized for '{profile_id}:{mcp_server.name}' at {mcp_server.mcp_url}")
+        # Create client with auth configuration
+        auth_dict = mcp_server.auth.to_dict() if mcp_server.auth else None
+        client = MCPClient(mcp_server.mcp_url, auth=auth_dict)
+        await client.initialize()
 
-    return client
+        # Cache the client
+        mcp_clients[cache_key] = client
+        print(
+            f"MCP client initialized for '{profile_id}:{mcp_server.name}' at {mcp_server.mcp_url}"
+        )
+
+        return client
 
 
 async def clear_cached_client(cache_key: str) -> bool:

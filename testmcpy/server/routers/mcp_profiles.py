@@ -838,25 +838,25 @@ async def test_mcp_connection(profile_id: str, mcp_index: int):
             elif auth_type == "none":
                 auth_dict = {"type": "none"}
 
-            # Create temporary client with auth
+            # Create client with auth — on success we promote it into the
+            # global mcp_clients cache so the Explorer can reuse the
+            # authenticated session (avoids a second OAuth popup).
             test_client = MCPClient(mcp_config["mcp_url"], auth=auth_dict)
             await test_client.initialize()
 
             # Try to list tools as a connection test
             tools = await test_client.list_tools()
 
-            await test_client.close()
-
-            # Clear cached client for this MCP to force fresh JWT token on next request
+            # Promote into the global cache, replacing any stale client.
             mcp_clients = get_mcp_clients()
             cache_key = f"{profile_id}:{mcp_config['name']}"
             old_client = mcp_clients.pop(cache_key, None)
             if old_client:
                 try:
                     await old_client.close()
-                    print(f"Cleared cached client '{cache_key}' after successful test")
                 except Exception as e:
                     print(f"Warning: Failed to close old cached client '{cache_key}': {e}")
+            mcp_clients[cache_key] = test_client
 
             return {
                 "success": True,

@@ -14,10 +14,75 @@ from typing import Any
 
 import httpx
 from fastmcp import Client
+from fastmcp.client.auth.oauth import OAuth as _FastMCPOAuth
 from fastmcp.client.transports import StreamableHttpTransport
 from mcp.types import Tool as MCPToolDef
 
 from testmcpy.auth_debugger import AuthDebugger
+
+
+class PresetOAuth(_FastMCPOAuth):
+    """fastmcp OAuth provider patched for use against superset-shell MCP
+    servers (Preset production, staging, and local dev).
+
+    Two fixes over the upstream ``fastmcp.client.auth.oauth.OAuth``:
+
+    1. The RFC 8707 ``resource`` indicator is set to the **full** MCP URL
+       (e.g. ``https://workspace.us1a.app.preset.io/mcp``) instead of just
+       scheme+host. Upstream ``OAuth.__init__`` strips the path when
+       building ``server_url``; superset-shell's OAuth server validates
+       the resource path and rejects the shorter form with
+       ``invalid_request: Resource URL domain does not match this
+       server``. mcp-remote (the reference Node client) sends the full
+       URL, which is why Claude Desktop works. We match that by patching
+       ``self.context.server_url`` post-init — every other consumer of
+       ``context.server_url`` runs it through
+       ``get_authorization_base_url()`` which strips the path, so this
+       only affects the resource indicator.
+
+    2. When ``insecure=True``, ``redirect_handler`` uses
+       ``httpx.AsyncClient(verify=False)`` for the authorization-URL
+       pre-flight so ``https://localhost`` with a self-signed cert
+       doesn't fail before the browser opens.
+    """
+
+    # Default scopes to request — matches what the PRM advertises and what
+    # mcp-remote (the reference Node client) requests.
+    # Note: do NOT include "offline_access" — it causes Auth0 to return a
+    # refresh_token alongside the access_token, and superset-shell's token
+    # verifier chokes on it (JoseError: Token type mismatch).
+    DEFAULT_SCOPES = ["openid", "email", "profile"]
+
+    def __init__(self, mcp_url: str, insecure: bool = False, **kwargs: Any) -> None:
+        # Default to standard OIDC scopes if none provided.
+        if "scopes" not in kwargs:
+            kwargs["scopes"] = self.DEFAULT_SCOPES
+        super().__init__(mcp_url, **kwargs)
+        # Preserve the path when computing the RFC 8707 resource indicator.
+        self.context.server_url = mcp_url
+        self._insecure = insecure
+
+    async def redirect_handler(self, authorization_url: str) -> None:
+        import webbrowser
+
+        from fastmcp.client.auth.oauth import ClientNotFoundError, logger
+
+        verify = not self._insecure
+        async with httpx.AsyncClient(verify=verify) as client:
+            response = await client.get(authorization_url, follow_redirects=False)
+            if response.status_code == 400:
+                raise ClientNotFoundError(
+                    "OAuth client not found - cached credentials may be stale"
+                )
+            if response.status_code not in (200, 302, 303, 307, 308):
+                raise RuntimeError(f"Unexpected authorization response: {response.status_code}")
+
+        logger.info(f"OAuth authorization URL: {authorization_url}")
+        webbrowser.open(authorization_url)
+
+
+# Back-compat alias (was named InsecureOAuth in earlier iteration).
+InsecureOAuth = PresetOAuth
 
 
 def create_insecure_httpx_factory():
@@ -182,7 +247,9 @@ class MCPClient:
         self.auth_config = auth  # Store the auth config
         self.client = None
         self._tools_cache: list[MCPTool] | None = None
-        self.auth: BearerAuth | None = None  # Will be set in initialize()
+        # Can be a BearerAuth instance, the literal "oauth" (triggers fastmcp
+        # OAuth auto-discovery), or None for no auth.
+        self.auth: BearerAuth | str | None = None  # Will be set in initialize()
 
     async def _fetch_jwt_token(
         self,
@@ -452,7 +519,7 @@ class MCPClient:
             debugger.summarize()
             raise MCPError(f"OAuth token fetch error: {e}")
 
-    async def _setup_auth(self) -> BearerAuth | None:
+    async def _setup_auth(self) -> BearerAuth | str | None:
         """Set up authentication based on config or provided auth dict.
 
         This method supports multiple authentication types:
@@ -501,10 +568,13 @@ class MCPClient:
                 oauth_auto_discover = self.auth_config.get("oauth_auto_discover", False)
 
                 if oauth_auto_discover:
-                    # Use RFC 8414 auto-discovery - the fastmcp Client handles this
+                    # Use RFC 8414 auto-discovery. Returning the literal string
+                    # "oauth" tells fastmcp's Client/transport to instantiate its
+                    # OAuth provider (browser flow + callback server + token
+                    # cache). Returning None would mean "no auth" and trigger a
+                    # 401 from protected servers.
                     print("  [Auth] Using OAuth with auto-discovery", file=sys.stderr)
-                    # Return None - let the fastmcp Client handle OAuth discovery
-                    return None
+                    return "oauth"
 
                 client_id = self.auth_config.get("client_id")
                 client_secret = self.auth_config.get("client_secret")
@@ -560,17 +630,35 @@ class MCPClient:
                 # Check if we need to skip SSL verification
                 insecure = self.auth_config.get("insecure", False) if self.auth_config else False
 
+                # For OAuth auto-discovery, always use our PresetOAuth subclass
+                # (not fastmcp's upstream OAuth) so the RFC 8707 resource
+                # indicator includes the /mcp path. Otherwise superset-shell
+                # rejects the authorize request with "Resource URL domain does
+                # not match this server".
+                transport_auth: Any = self.auth
+                if transport_auth == "oauth":
+                    transport_auth = PresetOAuth(self.base_url, insecure=insecure)
+
                 if insecure:
                     print("  [MCP] SSL verification disabled (insecure mode)", file=sys.stderr)
-                    # Create transport with insecure httpx factory
                     transport = StreamableHttpTransport(
                         url=self.base_url,
-                        auth=self.auth,
+                        auth=transport_auth,
                         httpx_client_factory=create_insecure_httpx_factory(),
                     )
-                    self.client = Client(transport, auth=self.auth)
+                    # Don't pass auth again to Client — it would overwrite the
+                    # transport's auth we just configured.
+                    self.client = Client(transport)
                 else:
-                    self.client = Client(self.base_url, auth=self.auth)
+                    # Construct the transport explicitly so we can inject our
+                    # PresetOAuth instance (passing auth="oauth" as a string
+                    # would make fastmcp instantiate its unpatched upstream
+                    # OAuth class instead).
+                    transport = StreamableHttpTransport(
+                        url=self.base_url,
+                        auth=transport_auth,
+                    )
+                    self.client = Client(transport)
 
                 await asyncio.wait_for(self.client.__aenter__(), timeout=timeout)
             except asyncio.TimeoutError:

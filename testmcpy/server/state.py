@@ -2,6 +2,7 @@
 Global state and helper functions for the testmcpy API.
 """
 
+import asyncio
 import copy
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,10 @@ class TimeoutConfig:
 config = get_config()
 mcp_client: MCPClient | None = None  # Default MCP client (for backwards compat)
 mcp_clients: dict[str, MCPClient] = {}  # Cache of MCP clients by "{profile_id}:{mcp_name}"
+# Per-key locks to prevent concurrent OAuth flows for the same server.
+# Without this, multiple Explorer API calls arriving simultaneously each
+# trigger a separate browser popup before any one completes and caches.
+_client_init_locks: dict[str, asyncio.Lock] = {}
 active_websockets: list[WebSocket] = []
 auth_flow_recorder = AuthFlowRecorder()  # Global auth flow recorder instance
 
@@ -332,17 +337,29 @@ async def get_mcp_clients_for_profile(profile_id: str) -> list[tuple[str, MCPCli
             clients.append((mcp_server.name, mcp_clients[cache_key]))
             continue
 
-        # Create client with auth configuration
-        auth_dict = mcp_server.auth.to_dict()
-        client = MCPClient(mcp_server.mcp_url, auth=auth_dict)
-        await client.initialize()
+        # Acquire a per-key lock so concurrent requests don't each
+        # trigger a separate OAuth browser popup for the same server.
+        if cache_key not in _client_init_locks:
+            _client_init_locks[cache_key] = asyncio.Lock()
 
-        # Cache the client
-        mcp_clients[cache_key] = client
-        clients.append((mcp_server.name, client))
-        print(
-            f"MCP client initialized for profile '{profile_id}', MCP '{mcp_server.name}' at {mcp_server.mcp_url}"
-        )
+        async with _client_init_locks[cache_key]:
+            # Re-check after acquiring lock — another request may have
+            # finished initializing while we waited.
+            if cache_key in mcp_clients:
+                clients.append((mcp_server.name, mcp_clients[cache_key]))
+                continue
+
+            # Create client with auth configuration
+            auth_dict = mcp_server.auth.to_dict()
+            client = MCPClient(mcp_server.mcp_url, auth=auth_dict)
+            await client.initialize()
+
+            # Cache the client
+            mcp_clients[cache_key] = client
+            clients.append((mcp_server.name, client))
+            print(
+                f"MCP client initialized for profile '{profile_id}', MCP '{mcp_server.name}' at {mcp_server.mcp_url}"
+            )
 
     return clients
 
@@ -382,16 +399,28 @@ async def get_mcp_client_for_server(profile_id: str, mcp_name: str) -> MCPClient
     if cache_key in mcp_clients:
         return mcp_clients[cache_key]
 
-    # Create client with auth configuration
-    auth_dict = mcp_server.auth.to_dict()
-    client = MCPClient(mcp_server.mcp_url, auth=auth_dict)
-    await client.initialize()
+    # Acquire a per-key lock so concurrent requests don't each
+    # trigger a separate OAuth browser popup for the same server.
+    if cache_key not in _client_init_locks:
+        _client_init_locks[cache_key] = asyncio.Lock()
 
-    # Cache the client
-    mcp_clients[cache_key] = client
-    print(f"MCP client initialized for '{profile_id}:{mcp_server.name}' at {mcp_server.mcp_url}")
+    async with _client_init_locks[cache_key]:
+        # Re-check after acquiring lock
+        if cache_key in mcp_clients:
+            return mcp_clients[cache_key]
 
-    return client
+        # Create client with auth configuration
+        auth_dict = mcp_server.auth.to_dict()
+        client = MCPClient(mcp_server.mcp_url, auth=auth_dict)
+        await client.initialize()
+
+        # Cache the client
+        mcp_clients[cache_key] = client
+        print(
+            f"MCP client initialized for '{profile_id}:{mcp_server.name}' at {mcp_server.mcp_url}"
+        )
+
+        return client
 
 
 async def get_or_create_mcp_client(profile_selection: str) -> MCPClient | None:
