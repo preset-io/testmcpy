@@ -695,7 +695,7 @@ tests:
     <div className="h-full flex flex-col">
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
         {/* File List Sidebar */}
-        <div className={`w-full md:w-80 flex-shrink-0 border-b md:border-b-0 md:border-r border-border ${showFileTree ? 'flex' : 'hidden'} md:flex flex-col bg-surface-elevated overflow-hidden max-h-[40vh] md:max-h-none`}>
+        <div className={`w-full md:w-80 flex-shrink-0 border-b md:border-b-0 md:border-r border-border ${showFileTree ? 'flex flex-col' : 'hidden'} md:flex md:flex-col bg-surface-elevated overflow-hidden max-h-[40vh] md:max-h-none`}>
           <div className="p-4 border-b border-border">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base md:text-lg font-semibold text-text-primary">Test Files</h2>

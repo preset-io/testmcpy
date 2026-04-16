@@ -1705,9 +1705,9 @@ function MCPExplorer({ selectedProfiles = [] }) {
       {/* Keyboard Shortcuts Modal */}
       {showShortcuts && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-0 md:p-4" onClick={() => setShowShortcuts(false)}>
-          <div className="bg-surface border border-border rounded-none md:rounded-xl shadow-strong p-6 md:max-w-md w-full h-full md:h-auto max-h-full md:max-h-[90vh] mx-0 md:mx-4" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-surface border border-border rounded-none md:rounded-xl shadow-strong p-6 md:max-w-md w-full h-full md:h-auto max-h-full md:max-h-[90vh] mx-0 md:mx-4 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold">Keyboard Shortcuts</h2>
+              <h2 className="text-lg md:text-xl font-bold">Keyboard Shortcuts</h2>
               <button
                 onClick={() => setShowShortcuts(false)}
                 className="text-text-tertiary hover:text-text-primary"
