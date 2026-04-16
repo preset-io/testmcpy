@@ -141,7 +141,10 @@ function ProfileEditorModal({ profile, onSave, onCancel }) {
 function MCPEditorModal({ mcp, onSave, onCancel }) {
   const [formData, setFormData] = useState({
     name: mcp?.name || '',
+    transport: mcp?.transport || 'sse',
     mcp_url: mcp?.mcp_url || '',
+    command: mcp?.command || '',
+    args: mcp?.args?.join(' ') || '',
     auth_type: mcp?.auth?.type || 'none',
     oauth_auto_discover: mcp?.auth?.type === 'oauth' && !mcp?.auth?.client_id,
     token: mcp?.auth?.token || '',
@@ -161,13 +164,17 @@ function MCPEditorModal({ mcp, onSave, onCancel }) {
   const validate = () => {
     const newErrors = {}
     if (!formData.name.trim()) newErrors.name = 'Name is required'
-    if (!formData.mcp_url.trim()) newErrors.mcp_url = 'URL is required'
 
-    // Validate URL format
-    try {
-      new URL(formData.mcp_url)
-    } catch {
-      newErrors.mcp_url = 'Invalid URL format'
+    if (formData.transport === 'stdio') {
+      if (!formData.command.trim()) newErrors.command = 'Command is required for stdio transport'
+    } else {
+      if (!formData.mcp_url.trim()) newErrors.mcp_url = 'URL is required'
+      // Validate URL format
+      try {
+        new URL(formData.mcp_url)
+      } catch {
+        newErrors.mcp_url = 'Invalid URL format'
+      }
     }
 
     // Validate auth fields based on type
@@ -196,8 +203,19 @@ function MCPEditorModal({ mcp, onSave, onCancel }) {
       const scopesArray = formData.scopes ?
         formData.scopes.split(',').map(s => s.trim()).filter(s => s) : []
 
+      // Convert args string to array
+      const argsArray = formData.args ?
+        formData.args.split(/\s+/).filter(s => s) : null
+
+      // For stdio, set mcp_url to a placeholder if empty
+      const mcpUrl = formData.transport === 'stdio'
+        ? (formData.mcp_url || `stdio://${formData.command}`)
+        : formData.mcp_url
+
       onSave({
         ...formData,
+        mcp_url: mcpUrl,
+        args: argsArray,
         scopes: scopesArray.length > 0 ? scopesArray : null
       })
     }
@@ -233,17 +251,64 @@ function MCPEditorModal({ mcp, onSave, onCancel }) {
               {errors.name && <p className="text-error text-xs mt-1">{errors.name}</p>}
             </div>
 
+            {/* Transport Type */}
             <div>
-              <label className="block text-sm font-medium mb-1">MCP URL</label>
-              <input
-                type="text"
-                value={formData.mcp_url}
-                onChange={(e) => updateField('mcp_url', e.target.value)}
-                className="input w-full font-mono text-sm"
-                placeholder="https://api.example.com/mcp/"
-              />
-              {errors.mcp_url && <p className="text-error text-xs mt-1">{errors.mcp_url}</p>}
+              <label className="block text-sm font-medium mb-1">Transport</label>
+              <select
+                value={formData.transport}
+                onChange={(e) => updateField('transport', e.target.value)}
+                className="input w-full"
+              >
+                <option value="sse">HTTP / SSE</option>
+                <option value="stdio">Stdio (local subprocess)</option>
+              </select>
+              <p className="text-text-tertiary text-xs mt-1">
+                {formData.transport === 'stdio'
+                  ? 'Spawns a local process and communicates via stdin/stdout JSON-RPC'
+                  : 'Connects to a remote MCP server over HTTP with SSE streaming'}
+              </p>
             </div>
+
+            {formData.transport === 'stdio' ? (
+              <>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Command</label>
+                  <input
+                    type="text"
+                    value={formData.command}
+                    onChange={(e) => updateField('command', e.target.value)}
+                    className="input w-full font-mono text-sm"
+                    placeholder="e.g., npx, python, node"
+                  />
+                  {errors.command && <p className="text-error text-xs mt-1">{errors.command}</p>}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Arguments (space-separated)</label>
+                  <input
+                    type="text"
+                    value={formData.args}
+                    onChange={(e) => updateField('args', e.target.value)}
+                    className="input w-full font-mono text-sm"
+                    placeholder="e.g., -y @modelcontextprotocol/server-filesystem /tmp"
+                  />
+                  <p className="text-text-tertiary text-xs mt-1">
+                    Arguments passed to the command
+                  </p>
+                </div>
+              </>
+            ) : (
+              <div>
+                <label className="block text-sm font-medium mb-1">MCP URL</label>
+                <input
+                  type="text"
+                  value={formData.mcp_url}
+                  onChange={(e) => updateField('mcp_url', e.target.value)}
+                  className="input w-full font-mono text-sm"
+                  placeholder="https://api.example.com/mcp/"
+                />
+                {errors.mcp_url && <p className="text-error text-xs mt-1">{errors.mcp_url}</p>}
+              </div>
+            )}
 
             {/* Auth Type */}
             <div>
@@ -703,6 +768,9 @@ function MCPProfiles({ selectedProfiles = [], onSelectProfiles, hideHeader = fal
     return {
       name: mcpData.name,
       mcp_url: mcpData.mcp_url,
+      transport: mcpData.transport || 'sse',
+      command: mcpData.command || null,
+      args: mcpData.args || null,
       auth: {
         type: mcpData.auth_type,
         token: mcpData.token || null,
@@ -1144,12 +1212,22 @@ function MCPProfiles({ selectedProfiles = [], onSelectProfiles, hideHeader = fal
                               </div>
 
                               <div className="space-y-1.5 text-xs">
-                                <div className="flex items-start gap-2">
-                                  <span className="text-text-disabled min-w-[50px]">URL:</span>
-                                  <code className="font-mono bg-surface-elevated px-2 py-0.5 rounded flex-1 break-all">
-                                    {mcp.mcp_url}
-                                  </code>
-                                </div>
+                                {mcp.transport === 'stdio' ? (
+                                  <div className="flex items-start gap-2">
+                                    <span className="text-text-disabled min-w-[50px]">Cmd:</span>
+                                    <code className="font-mono bg-surface-elevated px-2 py-0.5 rounded flex-1 break-all">
+                                      {mcp.command} {mcp.args?.join(' ') || ''}
+                                    </code>
+                                    <span className="px-1.5 py-0.5 bg-amber-500/15 text-amber-400 rounded text-[10px] font-medium">STDIO</span>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-start gap-2">
+                                    <span className="text-text-disabled min-w-[50px]">URL:</span>
+                                    <code className="font-mono bg-surface-elevated px-2 py-0.5 rounded flex-1 break-all">
+                                      {mcp.mcp_url}
+                                    </code>
+                                  </div>
+                                )}
 
                                 {mcp.auth && mcp.auth.type && mcp.auth.type !== 'none' && (
                                   <div className="flex items-start gap-2">
