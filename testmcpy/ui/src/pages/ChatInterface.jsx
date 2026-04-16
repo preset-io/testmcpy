@@ -691,9 +691,9 @@ ${evaluators}
     <div className="h-full flex flex-col">
       {/* Header */}
       <div className="p-4 border-b border-border bg-surface-elevated">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <div>
-            <h1 className="text-2xl font-bold">Chat Interface</h1>
+            <h1 className="text-xl md:text-2xl font-bold">Chat Interface</h1>
             <p className="text-text-secondary mt-1 text-base">
               Interactive chat with LLM using MCP tools
               {messages.length > 0 && (
@@ -703,7 +703,7 @@ ${evaluators}
               )}
             </p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-3 flex-wrap">
             {messages.length > 0 && (
               <button
                 onClick={clearChatHistory}
@@ -1212,7 +1212,7 @@ ${evaluators}
 
       {/* Input */}
       <div className="p-3 border-t border-border bg-surface-elevated shadow-strong" role="form" aria-label="Chat input">
-        <div className="max-w-4xl mx-auto flex gap-4">
+        <div className="max-w-4xl mx-auto flex gap-2 md:gap-4">
           <div className="flex-1 relative">
             <textarea
               ref={textareaRef}
@@ -1237,7 +1237,7 @@ ${evaluators}
             aria-label={loading ? 'Sending message...' : 'Send message'}
           >
             {loading ? <Loader size={20} className="animate-spin" /> : <Send size={20} />}
-            <span>{loading ? 'Sending...' : 'Send'}</span>
+            <span className="hidden sm:inline">{loading ? 'Sending...' : 'Send'}</span>
           </button>
         </div>
       </div>

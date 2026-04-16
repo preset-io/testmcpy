@@ -119,6 +119,7 @@ function TestManager({ selectedProfiles = [], selectedLlmProfile = null, llmProf
   const [showHistory, setShowHistory] = useState(false)
   const [selectedHistoryRun, setSelectedHistoryRun] = useState(null)
   const [bottomPanelTab, setBottomPanelTab] = useState('logs') // 'logs' or 'results'
+  const [showFileTree, setShowFileTree] = useState(false)
 
   useEffect(() => {
     loadTestFiles()
@@ -692,12 +693,12 @@ tests:
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex-1 flex overflow-hidden min-h-0">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
         {/* File List Sidebar */}
-        <div className="w-80 flex-shrink-0 border-r border-border flex flex-col bg-surface-elevated overflow-hidden">
+        <div className={`w-full md:w-80 flex-shrink-0 border-b md:border-b-0 md:border-r border-border ${showFileTree ? 'flex' : 'hidden'} md:flex flex-col bg-surface-elevated overflow-hidden max-h-[40vh] md:max-h-none`}>
           <div className="p-4 border-b border-border">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-text-primary">Test Files</h2>
+              <h2 className="text-base md:text-lg font-semibold text-text-primary">Test Files</h2>
               <button
                 onClick={() => setShowNewFileDialog(true)}
                 className="p-2 hover:bg-surface-hover rounded-lg transition-all duration-200 text-text-secondary hover:text-text-primary"
@@ -857,6 +858,12 @@ tests:
         </div>
         </div>  {/* End sidebar */}
 
+        {/* Mobile file tree toggle */}
+        <button onClick={() => setShowFileTree(!showFileTree)} className="md:hidden flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover border-b border-border w-full">
+          <Folder size={16} />
+          <span>{showFileTree ? 'Hide Files' : 'Show Files'}</span>
+        </button>
+
         {/* Editor & Results - inside main flex container, sibling to sidebar */}
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
         {selectedFile ? (
@@ -979,7 +986,7 @@ tests:
             {/* Split view: Editor + Bottom Panel */}
             <div className="flex-1 flex flex-col overflow-hidden relative min-h-0">
               {/* Editor area - always takes remaining space */}
-              <div className="flex-1 overflow-hidden min-h-0">
+              <div className="flex-1 overflow-hidden min-h-0 min-h-[250px]">
                 <Editor
                   height="100%"
                   defaultLanguage="yaml"
@@ -1169,9 +1176,9 @@ tests:
                     </button>
                   </div>
 
-                  <div className="flex-1 flex overflow-hidden">
+                  <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
                     {/* Timeline Chart */}
-                    <div className="w-64 flex-shrink-0 border-r border-border p-3 overflow-hidden">
+                    <div className="w-full md:w-64 flex-shrink-0 border-b md:border-b-0 md:border-r border-border p-3 overflow-hidden">
                       <div className="text-xs text-text-tertiary mb-2 font-medium">Pass Rate Timeline</div>
                       <div className="h-full flex flex-col justify-end pb-6">
                         <div className="flex items-end gap-1 h-32">
@@ -1255,7 +1262,7 @@ tests:
 
                     {/* Selected Run Details */}
                     {selectedHistoryRun && (
-                      <div className="w-72 flex-shrink-0 border-l border-border p-3 overflow-auto bg-surface-elevated/50">
+                      <div className="w-full md:w-72 flex-shrink-0 border-t md:border-t-0 md:border-l border-border p-3 overflow-auto bg-surface-elevated/50">
                         <div className="text-xs font-medium text-text-primary mb-2">Run Details</div>
                         <div className="space-y-2 text-xs">
                           <div className="flex justify-between">
@@ -1392,7 +1399,7 @@ tests:
               <div className="w-20 h-20 bg-surface-elevated rounded-2xl flex items-center justify-center mx-auto mb-4 border border-border">
                 <FileText size={36} className="text-text-disabled" />
               </div>
-              <p className="text-lg text-text-secondary">Select a test file to view or edit</p>
+              <p className="text-base md:text-lg text-text-secondary">Select a test file to view or edit</p>
               <p className="text-sm text-text-tertiary mt-2">Choose a file from the sidebar to get started</p>
             </div>
           </div>
