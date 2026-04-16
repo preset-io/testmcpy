@@ -767,14 +767,14 @@ function Reports() {
   return (
     <div className="h-full flex flex-col bg-background">
       {/* Header */}
-      <div className="flex-shrink-0 px-6 py-4 border-b border-border bg-surface-elevated">
+      <div className="flex-shrink-0 px-4 md:px-6 py-4 border-b border-border bg-surface-elevated">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-primary/10">
               <FileText size={24} className="text-primary" />
             </div>
             <div>
-              <h1 className="text-xl font-semibold text-text-primary">Reports</h1>
+              <h1 className="text-xl md:text-2xl font-semibold text-text-primary">Reports</h1>
               <p className="text-sm text-text-tertiary">View all test results and smoke test reports</p>
             </div>
           </div>
@@ -837,9 +837,9 @@ function Reports() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
         {/* List Panel */}
-        <div className="w-96 flex-shrink-0 border-r border-border overflow-auto bg-surface-elevated">
+        <div className={`w-full md:w-96 flex-shrink-0 border-b md:border-b-0 md:border-r border-border overflow-auto bg-surface-elevated ${selectedRun ? 'hidden md:block' : 'block'}`}>
           {loading ? (
             <div className="flex items-center justify-center h-full">
               <Loader2 className="animate-spin text-primary" size={32} />
@@ -926,7 +926,13 @@ function Reports() {
         </div>
 
         {/* Details Panel */}
-        <div className="flex-1 overflow-auto bg-background">
+        <div className={`flex-1 overflow-auto bg-background ${selectedRun ? 'block' : 'hidden md:block'}`}>
+          {selectedRun && (
+            <button onClick={() => { setSelectedRun(null); setRunDetails(null) }} className="md:hidden flex items-center gap-2 px-4 py-3 text-sm text-text-secondary hover:text-text-primary border-b border-border w-full">
+              <ChevronRight size={16} className="rotate-180" />
+              <span>Back to list</span>
+            </button>
+          )}
           {loadingDetails ? (
             <div className="flex items-center justify-center h-full">
               <Loader2 className="animate-spin text-primary" size={32} />

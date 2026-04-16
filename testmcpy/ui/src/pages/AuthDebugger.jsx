@@ -352,7 +352,7 @@ function OAuthSequenceDiagram({ steps = [], currentStep = -1 }) {
   }), [])
 
   return (
-    <div className="relative h-[600px] bg-gradient-to-br from-surface to-surface-elevated rounded-lg border border-border overflow-hidden shadow-xl">
+    <div className="relative min-h-[300px] md:min-h-[400px] h-[600px] bg-gradient-to-br from-surface to-surface-elevated rounded-lg border border-border overflow-hidden shadow-xl">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -788,11 +788,11 @@ function AuthDebugger() {
 
   return (
     <div className="h-full overflow-auto bg-background">
-      <div className="max-w-7xl mx-auto p-6 space-y-6">
+      <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-text-primary flex items-center gap-3">
+            <h1 className="text-xl md:text-2xl font-bold text-text-primary flex items-center gap-3">
               <div className="p-2 bg-primary/10 rounded-lg">
                 <Shield className="text-primary" size={28} />
               </div>
@@ -1183,7 +1183,7 @@ function AuthDebugger() {
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="bg-surface rounded-lg p-3">
                       <div className="text-xs text-text-tertiary mb-1">Total Steps</div>
                       <div className="text-2xl font-bold text-text-primary">
