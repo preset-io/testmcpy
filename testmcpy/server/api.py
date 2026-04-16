@@ -276,14 +276,22 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Enable CORS
+# Enable CORS (configurable via TESTMCPY_CORS_ORIGINS env var)
+_cors_origins_env = os.environ.get("TESTMCPY_CORS_ORIGINS", "*")
+_cors_origins = [o.strip() for o in _cors_origins_env.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify exact origins
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# API key auth middleware (activated when TESTMCPY_API_KEY is set)
+from testmcpy.server.auth_middleware import APIKeyAuthMiddleware  # noqa: E402
+
+app.add_middleware(APIKeyAuthMiddleware)
 
 # Add middleware to set CSP headers for ngrok compatibility
 from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
@@ -341,6 +349,14 @@ async def root():
     if index_file.exists():
         return FileResponse(index_file)
     return {"message": "testmcpy Web UI - Build the React app first"}
+
+
+@app.get("/health")
+async def health_probe():
+    """Simple health probe for load balancers and container orchestration."""
+    from testmcpy import __version__
+
+    return {"status": "ok", "version": __version__}
 
 
 @app.get("/api/health")
