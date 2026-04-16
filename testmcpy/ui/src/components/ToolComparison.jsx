@@ -61,11 +61,11 @@ const ToolComparison = ({ comparisonResults }) => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-text-primary">{tool_name}</h2>
+          <h2 className="text-xl md:text-2xl font-bold text-text-primary">{tool_name}</h2>
           <p className="text-sm text-text-secondary mt-1">
             Comparison Results - {results1.length} iteration{results1.length !== 1 ? 's' : ''}
           </p>
@@ -80,9 +80,9 @@ const ToolComparison = ({ comparisonResults }) => {
       </div>
 
       {/* Metrics Overview */}
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
         {/* Profile 1 Metrics */}
-        <div className="bg-surface-elevated border border-border rounded-lg p-6">
+        <div className="bg-surface-elevated border border-border rounded-lg p-4 md:p-6">
           <h3 className="font-semibold text-text-primary mb-4 flex items-center gap-2">
             <div className="w-3 h-3 bg-primary rounded-full"></div>
             {profile1}
@@ -116,7 +116,7 @@ const ToolComparison = ({ comparisonResults }) => {
         </div>
 
         {/* Profile 2 Metrics */}
-        <div className="bg-surface-elevated border border-border rounded-lg p-6">
+        <div className="bg-surface-elevated border border-border rounded-lg p-4 md:p-6">
           <h3 className="font-semibold text-text-primary mb-4 flex items-center gap-2">
             <div className="w-3 h-3 bg-accent rounded-full"></div>
             {profile2}
@@ -196,7 +196,7 @@ const ToolComparison = ({ comparisonResults }) => {
                 </div>
 
                 {/* Side-by-Side Content */}
-                <div className="grid grid-cols-2 divide-x divide-border">
+                <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-border">
                   {/* Profile 1 Result */}
                   <div className="p-4">
                     <div className="flex items-center justify-between mb-3">

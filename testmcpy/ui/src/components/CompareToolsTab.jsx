@@ -21,9 +21,9 @@ const CompareToolsTab = ({
   setComparisonResults,
 }) => {
   return (
-    <div className="max-w-7xl mx-auto space-y-6">
+    <div className="max-w-7xl mx-auto space-y-4 md:space-y-6">
       {!comparisonResults ? (
-        <div className="bg-surface-elevated border border-border rounded-lg p-6">
+        <div className="bg-surface-elevated border border-border rounded-lg p-4 md:p-6">
           <h2 className="text-xl font-bold text-text-primary mb-6 flex items-center gap-2">
             <GitCompare size={24} />
             Compare Tool Performance
@@ -49,7 +49,7 @@ const CompareToolsTab = ({
             </div>
 
             {/* Profile/Server Selection */}
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
               <div>
                 <label className="block text-sm font-medium text-text-primary mb-2">
                   Profile/Server 1

@@ -85,10 +85,10 @@ function Configuration() {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="p-8 border-b border-border bg-surface-elevated">
+      <div className="p-4 md:p-8 border-b border-border bg-surface-elevated">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold">Configuration</h1>
+            <h1 className="text-xl md:text-2xl font-bold">Configuration</h1>
             <p className="text-text-secondary mt-2 text-base">
               View current testmcpy configuration settings
             </p>
@@ -104,8 +104,8 @@ function Configuration() {
       </div>
 
       {/* Config Groups */}
-      <div className="flex-1 overflow-auto p-8 bg-background-subtle">
-        <div className="max-w-4xl mx-auto space-y-6">
+      <div className="flex-1 overflow-auto p-4 md:p-8 bg-background-subtle">
+        <div className="max-w-4xl mx-auto space-y-4 md:space-y-6">
           {/* Info Banner */}
           <div className="bg-info/10 border border-info/30 rounded-xl p-5 flex gap-4">
             <Info size={22} className="text-info-light flex-shrink-0 mt-0.5" />
@@ -340,7 +340,7 @@ function Configuration() {
           </div>
 
           {/* Help Text */}
-          <div className="bg-surface border border-border rounded-xl p-6">
+          <div className="bg-surface border border-border rounded-xl p-4 md:p-6">
             <h4 className="text-sm font-semibold text-text-primary mb-3">
               How to modify these settings
             </h4>
