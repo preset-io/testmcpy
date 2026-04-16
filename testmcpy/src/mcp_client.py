@@ -1078,6 +1078,207 @@ class MCPClient:
         await self.close()
 
 
+class StdioMCPClient:
+    """Client for interacting with MCP servers via stdio (subprocess) transport.
+
+    Spawns a subprocess with the given command+args and communicates via
+    stdin/stdout using JSON-RPC protocol.  Implements the same interface as
+    MCPClient (initialize, list_tools, call_tool, close).
+    """
+
+    def __init__(
+        self,
+        command: str,
+        args: list[str] | None = None,
+        env: dict[str, str] | None = None,
+    ):
+        self.command = command
+        self.args = args or []
+        self.env = env
+        self._process: asyncio.subprocess.Process | None = None
+        self._tools_cache: list[MCPTool] | None = None
+        self._request_id = 0
+        self._read_lock = asyncio.Lock()
+
+    # -- JSON-RPC helpers ---------------------------------------------------
+
+    def _next_id(self) -> int:
+        self._request_id += 1
+        return self._request_id
+
+    async def _send_request(self, method: str, params: dict[str, Any] | None = None) -> Any:
+        """Send a JSON-RPC request and return the result."""
+        import json
+
+        if not self._process or self._process.stdin is None or self._process.stdout is None:
+            raise MCPError("Stdio process not started. Call initialize() first.")
+
+        request_id = self._next_id()
+        request = {"jsonrpc": "2.0", "id": request_id, "method": method}
+        if params is not None:
+            request["params"] = params
+
+        payload = json.dumps(request) + "\n"
+        self._process.stdin.write(payload.encode())
+        await self._process.stdin.drain()
+
+        # Read response lines until we get a JSON-RPC response matching our id
+        async with self._read_lock:
+            while True:
+                line = await asyncio.wait_for(
+                    self._process.stdout.readline(),
+                    timeout=DEFAULT_TIMEOUT,
+                )
+                if not line:
+                    raise MCPConnectionError("Stdio process closed unexpectedly")
+
+                line_str = line.decode().strip()
+                if not line_str:
+                    continue
+
+                try:
+                    response = json.loads(line_str)
+                except json.JSONDecodeError:
+                    # Skip non-JSON lines (logging output, etc.)
+                    continue
+
+                # Match by id
+                if isinstance(response, dict) and response.get("id") == request_id:
+                    if "error" in response:
+                        err = response["error"]
+                        raise MCPError(
+                            f"JSON-RPC error {err.get('code', '?')}: {err.get('message', 'unknown')}"
+                        )
+                    return response.get("result")
+
+    # -- Public interface (mirrors MCPClient) --------------------------------
+
+    async def initialize(self, timeout: float = DEFAULT_TIMEOUT) -> dict[str, Any]:
+        """Spawn the subprocess and send the MCP initialize handshake."""
+        import shutil
+
+        resolved = shutil.which(self.command)
+        if resolved is None:
+            raise MCPConnectionError(f"Command not found: {self.command}")
+
+        env = {**dict(__import__("os").environ), **(self.env or {})}
+        self._process = await asyncio.create_subprocess_exec(
+            resolved,
+            *self.args,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=env,
+        )
+
+        # MCP initialize handshake
+        try:
+            result = await asyncio.wait_for(
+                self._send_request(
+                    "initialize",
+                    {
+                        "protocolVersion": "2024-11-05",
+                        "capabilities": {},
+                        "clientInfo": {"name": "testmcpy", "version": "1.0.0"},
+                    },
+                ),
+                timeout=timeout,
+            )
+        except asyncio.TimeoutError:
+            await self.close()
+            raise MCPTimeoutError(f"Stdio MCP initialize timed out after {timeout}s")
+
+        # Send initialized notification (no response expected)
+        import json
+
+        notif = json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n"
+        if self._process.stdin:
+            self._process.stdin.write(notif.encode())
+            await self._process.stdin.drain()
+
+        return {"status": "connected", "transport": "stdio", "server_info": result}
+
+    async def list_tools(
+        self, force_refresh: bool = False, timeout: float = DEFAULT_TIMEOUT
+    ) -> list[MCPTool]:
+        if not force_refresh and self._tools_cache is not None:
+            return self._tools_cache
+
+        try:
+            result = await asyncio.wait_for(self._send_request("tools/list"), timeout=timeout)
+        except asyncio.TimeoutError:
+            raise MCPTimeoutError(f"list_tools timed out after {timeout}s")
+
+        tools: list[MCPTool] = []
+        for item in result.get("tools", []):
+            tools.append(
+                MCPTool(
+                    name=item["name"],
+                    description=item.get("description", ""),
+                    input_schema=item.get("inputSchema", {}),
+                    output_schema=item.get("outputSchema"),
+                )
+            )
+        self._tools_cache = tools
+        return tools
+
+    async def call_tool(
+        self, tool_call: MCPToolCall, timeout: float = DEFAULT_TIMEOUT
+    ) -> MCPToolResult:
+        try:
+            result = await asyncio.wait_for(
+                self._send_request(
+                    "tools/call",
+                    {"name": tool_call.name, "arguments": tool_call.arguments or {}},
+                ),
+                timeout=timeout,
+            )
+            return MCPToolResult(
+                tool_call_id=tool_call.id or "unknown",
+                content=result.get("content"),
+                is_error=result.get("isError", False),
+            )
+        except asyncio.TimeoutError:
+            return MCPToolResult(
+                tool_call_id=tool_call.id or "unknown",
+                content=None,
+                is_error=True,
+                error_message=f"Tool call '{tool_call.name}' timed out after {timeout}s",
+            )
+        except MCPError as e:
+            return MCPToolResult(
+                tool_call_id=tool_call.id or "unknown",
+                content=None,
+                is_error=True,
+                error_message=str(e),
+            )
+
+    async def close(self):
+        """Kill the subprocess and clean up."""
+        if self._process:
+            try:
+                if self._process.stdin:
+                    self._process.stdin.close()
+                self._process.terminate()
+                try:
+                    await asyncio.wait_for(self._process.wait(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    self._process.kill()
+                    await self._process.wait()
+            except ProcessLookupError:
+                pass  # Already exited
+            finally:
+                self._process = None
+                self._tools_cache = None
+
+    async def __aenter__(self):
+        await self.initialize()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close()
+
+
 class MCPTester:
     """Simple tester for MCP connections."""
 

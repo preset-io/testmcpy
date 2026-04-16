@@ -82,6 +82,9 @@ class MCPServer:
     timeout: int = 30
     rate_limit_rpm: int = 60
     default: bool = False  # Mark this MCP server as default in the profile
+    transport: str = "sse"  # "sse" (HTTP/SSE) or "stdio" (subprocess)
+    command: str | None = None  # Command for stdio transport (e.g., "npx", "python")
+    args: list[str] | None = None  # Arguments for stdio transport command
 
 
 @dataclass
@@ -286,6 +289,9 @@ class MCPProfileConfig:
                     timeout=mcp_data.get("timeout", timeout),
                     rate_limit_rpm=mcp_data.get("rate_limit_rpm", rate_limit_rpm),
                     default=mcp_data.get("default", False),  # Check for default flag
+                    transport=mcp_data.get("transport", "sse"),
+                    command=mcp_data.get("command"),
+                    args=mcp_data.get("args"),
                 )
                 mcps.append(mcp_server)
 
