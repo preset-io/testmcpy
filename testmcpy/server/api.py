@@ -39,6 +39,7 @@ from testmcpy.server.routers import health as health_router  # noqa: E402
 from testmcpy.server.routers import metrics as metrics_router  # noqa: E402
 from testmcpy.server.routers import security as security_router  # noqa: E402
 from testmcpy.server.routers import tools as tools_router  # noqa: E402
+from testmcpy.server.routers import search as search_router  # noqa: E402
 from testmcpy.server.websocket import strip_mcp_prefix  # noqa: E402
 from testmcpy.src.llm_integration import create_llm_provider  # noqa: E402
 from testmcpy.src.mcp_client import MCPClient, MCPToolCall  # noqa: E402
@@ -371,6 +372,7 @@ app.include_router(health_router.router)
 app.include_router(metrics_router.router)
 app.include_router(security_router.router)
 app.include_router(tools_router.router)
+app.include_router(search_router.router)
 
 
 # API Routes

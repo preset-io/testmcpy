@@ -40,6 +40,7 @@ import SecurityDashboard from './pages/SecurityDashboard'
 import { TestRunProvider } from './contexts/TestRunContext'
 import { ThemeProvider, useTheme } from './contexts/ThemeContext'
 import { NotificationProvider } from './components/NotificationProvider'
+import CommandPalette from './components/CommandPalette'
 
 function ThemeSwitcher({ collapsed }) {
   const { theme, setTheme } = useTheme()
@@ -381,6 +382,9 @@ function AppContent() {
 
   return (
     <div className="flex h-screen bg-background text-text-primary">
+        {/* Command Palette (Cmd+K) */}
+        <CommandPalette />
+
         {/* Mobile backdrop overlay */}
         {mobileMenuOpen && (
           <div
