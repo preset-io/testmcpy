@@ -18,6 +18,9 @@ import {
   Sun,
   Moon,
   Monitor,
+  GitCompare,
+  Heart,
+  TrendingUp,
 } from 'lucide-react'
 
 import MCPExplorer from './pages/MCPExplorer'
@@ -30,6 +33,10 @@ import AuthDebugger from './pages/AuthDebugger'
 import GenerationHistory from './pages/GenerationHistory'
 import Reports from './pages/Reports'
 import CompatibilityMatrix from './pages/CompatibilityMatrix'
+import MetricsDashboard from './pages/MetricsDashboard'
+import RunComparison from './pages/RunComparison'
+import MCPHealth from './pages/MCPHealth'
+import SecurityDashboard from './pages/SecurityDashboard'
 import { TestRunProvider } from './contexts/TestRunContext'
 import { ThemeProvider, useTheme } from './contexts/ThemeContext'
 
@@ -339,6 +346,12 @@ function AppContent() {
     { path: '/compatibility', label: 'Compat', icon: Grid3X3 },
     { path: '/generation-history', label: 'Gen History', icon: History },
     { path: '/chat', label: 'Interact', icon: MessageSquare },
+    { section: 'Analytics' },
+    { path: '/metrics', label: 'Metrics', icon: TrendingUp },
+    { path: '/compare', label: 'Compare', icon: GitCompare },
+    { path: '/health', label: 'MCP Health', icon: Heart },
+    { path: '/security', label: 'Security', icon: Shield },
+    { section: 'Settings' },
     { path: '/auth-debugger', label: 'Auth Debug', icon: Shield },
     { path: '/config', label: 'Config', icon: Settings },
   ]
@@ -434,7 +447,18 @@ function AppContent() {
 
           {/* Navigation */}
           <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
-            {navItems.map((item) => {
+            {navItems.map((item, idx) => {
+              if (item.section) {
+                return showLabels ? (
+                  <div key={item.section} className="pt-3 pb-1 px-3">
+                    <span className="text-[10px] font-semibold text-text-disabled uppercase tracking-wider">{item.section}</span>
+                  </div>
+                ) : (
+                  <div key={item.section} className="pt-2 pb-1 px-3">
+                    <div className="border-t border-border" />
+                  </div>
+                )
+              }
               const Icon = item.icon
               return (
                 <NavLink
@@ -577,6 +601,10 @@ function AppContent() {
               <Route path="/reports" element={<Reports />} />
               <Route path="/compatibility" element={<CompatibilityMatrix />} />
               <Route path="/generation-history" element={<GenerationHistory />} />
+              <Route path="/metrics" element={<MetricsDashboard />} />
+              <Route path="/compare" element={<RunComparison />} />
+              <Route path="/health" element={<MCPHealth />} />
+              <Route path="/security" element={<SecurityDashboard />} />
               <Route path="/auth-debugger" element={<AuthDebugger />} />
               <Route path="/config" element={<Configuration />} />
               <Route path="/mcp-profiles" element={

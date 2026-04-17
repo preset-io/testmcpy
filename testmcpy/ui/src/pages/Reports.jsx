@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import TraceView from '../components/TraceView'
 import {
   FileText,
   CheckCircle,
@@ -477,6 +478,7 @@ function Reports() {
   const [runDetails, setRunDetails] = useState(null)
   const [loadingDetails, setLoadingDetails] = useState(false)
   const [autoRefresh, setAutoRefresh] = useState(true)
+  const [showTrace, setShowTrace] = useState(false)
   const autoRefreshRef = useRef(null)
 
   const loadTestRuns = useCallback(async () => {
@@ -697,6 +699,26 @@ function Reports() {
               />
             )}
           </div>
+        )}
+
+        {/* View Trace button */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowTrace(!showTrace)}
+            className={`text-xs px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
+              showTrace
+                ? 'bg-primary text-white'
+                : 'bg-surface border border-border text-text-secondary hover:bg-surface-hover'
+            }`}
+          >
+            <Clock size={12} />
+            {showTrace ? 'Hide Trace' : 'View Trace'}
+          </button>
+        </div>
+
+        {/* Trace View */}
+        {showTrace && selectedRun?.id && (
+          <TraceView runId={selectedRun.id} onClose={() => setShowTrace(false)} />
         )}
 
         {/* Test Results */}
