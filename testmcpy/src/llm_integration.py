@@ -2349,12 +2349,216 @@ User request: {prompt}"""
         await self.tool_discovery.close()
 
 
+class GeminiCLIProvider(LLMProvider):
+    """Google Gemini CLI provider via subprocess.
+
+    Wraps the Gemini CLI tool (installed via ``npm i -g @anthropic-ai/gemini-cli``
+    or ``npm i -g @anthropic-ai/gemini``).  Follows the same pattern as
+    ``CodexCLIProvider`` — the CLI handles authentication, tool discovery, and
+    model routing; we just pipe a prompt in and parse what comes back.
+    """
+
+    def __init__(
+        self,
+        model: str,
+        gemini_cli_path: str | None = None,
+        mcp_url: str | None = None,
+        auth: dict[str, Any] | None = None,
+    ):
+        self.model = model
+        self.gemini_cli_path = gemini_cli_path or self._find_gemini_cli()
+        # Use MCP_URL and auth from default profile if not provided
+        config = get_config()
+        if mcp_url is None:
+            mcp_url = config.get_mcp_url()
+        if auth is None:
+            default_mcp = config.get_default_mcp_server()
+            if default_mcp and default_mcp.auth:
+                auth = default_mcp.auth.to_dict()
+        self.tool_discovery = ToolDiscoveryService(mcp_url, auth=auth)
+
+    def _find_gemini_cli(self) -> str:
+        """Find Gemini CLI in PATH or common locations."""
+        # Check environment variable first
+        cli_path = os.environ.get("GEMINI_CLI_PATH")
+        if cli_path and os.path.exists(cli_path):
+            return cli_path
+
+        # Check common locations
+        common_paths = [
+            "/usr/local/bin/gemini",
+            "/opt/homebrew/bin/gemini",
+            os.path.expanduser("~/.local/bin/gemini"),
+            os.path.expanduser("~/.npm-global/bin/gemini"),
+            "gemini",  # In PATH
+        ]
+
+        for path in common_paths:
+            try:
+                result = subprocess.run([path, "--version"], capture_output=True, timeout=5)
+                if result.returncode == 0:
+                    return path
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                continue
+
+        raise FileNotFoundError(
+            "Gemini CLI not found. Install via: npm i -g @anthropic-ai/gemini-cli"
+        )
+
+    async def initialize(self):
+        """Initialize Gemini CLI provider."""
+        # Verify Gemini CLI is working
+        try:
+            result = subprocess.run(
+                [self.gemini_cli_path, "--version"], capture_output=True, timeout=10, text=True
+            )
+            if result.returncode != 0:
+                raise RuntimeError(f"Gemini CLI error: {result.stderr}")
+        except subprocess.TimeoutExpired as e:
+            raise RuntimeError("Gemini CLI timeout during initialization") from e
+
+        # Try to pre-discover tools, but don't fail if MCP service is unavailable
+        try:
+            await self.tool_discovery.discover_tools()
+            print(f"✅ Successfully connected to MCP service at {self.tool_discovery.mcp_url}")
+        except Exception as e:
+            print(f"⚠️  Warning: Failed to initialize MCP tools: {e}")
+            print(f"   MCP URL: {self.tool_discovery.mcp_url}")
+            print("   The provider will work without MCP tools (direct CLI calls only)")
+
+    async def generate_with_tools(
+        self,
+        prompt: str,
+        tools: list[dict[str, Any]],
+        timeout: float = 120.0,
+        messages: list[dict[str, Any]] | None = None,
+    ) -> LLMResult:
+        """Generate response using Gemini CLI."""
+        start_time = time.time()
+
+        try:
+            # Create tool-aware prompt template
+            enhanced_prompt = self._create_tool_prompt(prompt, tools)
+
+            # Build command — Gemini CLI accepts a prompt via stdin
+            cmd = [
+                self.gemini_cli_path,
+                "--print",  # Print response only, no interactive mode
+                "--model",
+                self.model,
+            ]
+
+            # Run as subprocess
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(input=enhanced_prompt.encode()), timeout=timeout
+            )
+
+            response_text = stdout.decode("utf-8").strip()
+
+            if process.returncode != 0:
+                error_text = stderr.decode("utf-8").strip()
+                return LLMResult(
+                    response=f"Gemini CLI error: {error_text}",
+                    tool_calls=[],
+                    duration=time.time() - start_time,
+                )
+
+            # Parse tool calls from CLI output
+            tool_calls = self._parse_tool_calls(response_text)
+
+            # Execute tool calls locally
+            for tool_call in tool_calls:
+                try:
+                    await self.tool_discovery.execute_tool_call(tool_call)
+                except Exception:
+                    pass  # Errors are handled by the tool execution
+
+            return LLMResult(
+                response=response_text,
+                tool_calls=tool_calls,
+                token_usage=None,  # CLI doesn't provide token counts
+                cost=0.0,  # CLI usage varies by subscription
+                duration=time.time() - start_time,
+                raw_response={"stdout": response_text},
+            )
+
+        except asyncio.TimeoutError:
+            return LLMResult(
+                response=f"Error: Gemini CLI timed out after {timeout}s",
+                tool_calls=[],
+                duration=time.time() - start_time,
+            )
+        except (FileNotFoundError, OSError) as e:
+            return LLMResult(
+                response=f"Error: {str(e)}", tool_calls=[], duration=time.time() - start_time
+            )
+
+    def _create_tool_prompt(self, prompt: str, tools: list[dict[str, Any]]) -> str:
+        """Create enhanced prompt with tool descriptions."""
+        if not tools:
+            return prompt
+
+        tool_descriptions = []
+        for tool in tools:
+            name = tool.get("name", "unknown")
+            desc = tool.get("description", "")
+            params = tool.get("inputSchema", tool.get("parameters", {}))
+
+            tool_desc = f"**{name}**: {desc}"
+            if params.get("properties"):
+                param_list = ", ".join(params["properties"].keys())
+                tool_desc += f" (parameters: {param_list})"
+
+            tool_descriptions.append(tool_desc)
+
+        return f"""You have access to the following tools:
+
+{chr(10).join(tool_descriptions)}
+
+When you need to use a tool, format your response like this:
+TOOL_CALL: {{"name": "tool_name", "arguments": {{"param": "value"}}}}
+
+User request: {prompt}"""
+
+    def _parse_tool_calls(self, response: str) -> list[dict[str, Any]]:
+        """Parse tool calls from Gemini CLI response."""
+        tool_calls = []
+
+        # Look for TOOL_CALL: patterns — try nested braces first so the
+        # regex engine does not short-circuit on the flat alternative.
+        tool_call_pattern = r"TOOL_CALL:\s*(\{[^}]*\{[^}]*\}[^}]*\}|\{[^}]+\})"
+        matches = re.findall(tool_call_pattern, response)
+
+        for match in matches:
+            try:
+                call_data = json.loads(match)
+                if "name" in call_data:
+                    tool_calls.append(
+                        {"name": call_data["name"], "arguments": call_data.get("arguments", {})}
+                    )
+            except json.JSONDecodeError:
+                continue
+
+        return tool_calls
+
+    async def close(self):
+        """Close connections."""
+        await self.tool_discovery.close()
+
+
 def create_llm_provider(provider: str, model: str, **kwargs) -> LLMProvider:
     """
     Create an LLM provider instance.
 
     Args:
-        provider: Provider name (ollama, openai, openrouter, local, anthropic, claude-sdk, claude-cli, claude-code, assistant, chatbot, codex-cli)
+        provider: Provider name (ollama, openai, openrouter, local, anthropic, claude-sdk, claude-cli, claude-code, assistant, chatbot, codex-cli, gemini-cli)
         model: Model name/path
         **kwargs: Additional provider-specific arguments
 
@@ -2376,6 +2580,7 @@ def create_llm_provider(provider: str, model: str, **kwargs) -> LLMProvider:
         "chatbot": AssistantProvider,  # Alias → assistant
         "codex-cli": CodexCLIProvider,
         "codex": CodexCLIProvider,  # Alias
+        "gemini-cli": GeminiCLIProvider,
     }
 
     if provider not in providers:

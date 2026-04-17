@@ -20,6 +20,7 @@ class Provider(str, Enum):
     OPENAI = "openai"
     GOOGLE = "google"
     GEMINI = "gemini"  # Alias for google
+    GEMINI_CLI = "gemini-cli"  # Gemini CLI tool
     OLLAMA = "ollama"
     CLAUDE_SDK = "claude-sdk"  # Claude Agent SDK (also handles claude-cli/claude-code)
 
@@ -373,10 +374,53 @@ CLAUDE_SDK_MODELS: list[ModelInfo] = [
 ]
 
 # ============================================================
+# Gemini CLI Models (wraps the Gemini CLI tool)
+# ============================================================
+
+GEMINI_CLI_MODELS: list[ModelInfo] = [
+    ModelInfo(
+        id="gemini-cli-2.5-pro",
+        name="Gemini CLI (2.5 Pro)",
+        provider=Provider.GEMINI_CLI,
+        description="Gemini CLI with 2.5 Pro model",
+        context_window=1_000_000,
+        max_output_tokens=65536,
+        input_price_per_1m=1.25,
+        output_price_per_1m=10.00,
+        capabilities=[
+            ModelCapability.TOOL_CALLING,
+            ModelCapability.LONG_CONTEXT,
+            ModelCapability.REASONING,
+        ],
+        family="gemini-cli",
+        is_default=True,
+        aliases=["gemini-cli", "gcli-pro", "gcli-2.5-pro"],
+    ),
+    ModelInfo(
+        id="gemini-cli-2.5-flash",
+        name="Gemini CLI (2.5 Flash)",
+        provider=Provider.GEMINI_CLI,
+        description="Gemini CLI with 2.5 Flash model",
+        context_window=1_000_000,
+        max_output_tokens=65536,
+        input_price_per_1m=0.15,
+        output_price_per_1m=0.60,
+        capabilities=[
+            ModelCapability.TOOL_CALLING,
+            ModelCapability.LONG_CONTEXT,
+        ],
+        family="gemini-cli",
+        aliases=["gcli-flash", "gcli-2.5-flash"],
+    ),
+]
+
+# ============================================================
 # Model Registry
 # ============================================================
 
-ALL_MODELS: list[ModelInfo] = CLAUDE_MODELS + OPENAI_MODELS + GEMINI_MODELS + CLAUDE_SDK_MODELS
+ALL_MODELS: list[ModelInfo] = (
+    CLAUDE_MODELS + OPENAI_MODELS + GEMINI_MODELS + CLAUDE_SDK_MODELS + GEMINI_CLI_MODELS
+)
 
 # Build lookup dictionaries
 _MODEL_BY_ID: dict[str, ModelInfo] = {m.id: m for m in ALL_MODELS}
