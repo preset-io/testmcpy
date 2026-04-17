@@ -1,11 +1,9 @@
 """Tests for CLI wizard commands - validation logic and YAML generation."""
 
-import os
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 import yaml
 
 

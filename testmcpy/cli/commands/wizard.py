@@ -229,7 +229,7 @@ def add_llm():
     # Step 2: Model
     console.print("\n[bold yellow]Step 2: Model Selection[/bold yellow]")
 
-    from testmcpy.src.model_registry import get_default_model, get_models_by_provider
+    from testmcpy.src.model_registry import get_models_by_provider
 
     models = get_models_by_provider(provider)
     if models:
@@ -249,9 +249,6 @@ def add_llm():
                 f"${m.output_price_per_1m:.2f}",
             )
         console.print(table)
-
-        default_model = get_default_model(provider)
-        default_id = default_model.id if default_model else models[0].id
 
         raw = Prompt.ask("[bold]Model (number or ID)[/bold]", default="1")
         try:

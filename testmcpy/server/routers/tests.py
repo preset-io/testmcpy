@@ -143,7 +143,6 @@ async def run_single_test(request: SingleTestRunRequest):
     provider = request.provider or config.default_provider
 
     # Resolve API key from LLM profile if provided
-    api_key = None
     if request.llm_profile:
         from testmcpy.llm_profiles import load_llm_profile
 
@@ -153,7 +152,6 @@ async def run_single_test(request: SingleTestRunRequest):
             if default_prov:
                 model = model or default_prov.model
                 provider = provider or default_prov.provider
-                api_key = default_prov.api_key
 
     # Build evaluators list
     evaluator_configs = request.evaluators

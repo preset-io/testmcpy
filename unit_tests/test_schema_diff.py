@@ -1,7 +1,6 @@
 """Unit tests for schema diff algorithm."""
 
 from testmcpy.src.schema_diff import (
-    SchemaDiffResult,
     diff_tool_schemas,
 )
 

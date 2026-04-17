@@ -1,15 +1,13 @@
 """Unit tests for StdioMCPClient (mocked subprocess)."""
 
-import asyncio
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from testmcpy.src.mcp_client import (
     MCPConnectionError,
     MCPError,
-    MCPTimeoutError,
     MCPToolCall,
     StdioMCPClient,
 )

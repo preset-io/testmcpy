@@ -1,6 +1,5 @@
 """Compatibility matrix — test tools across multiple MCP servers."""
 
-import asyncio
 import logging
 from typing import Any
 

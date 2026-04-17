@@ -1,14 +1,12 @@
 """Unit tests for GeminiCLIProvider."""
 
 import asyncio
-import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from testmcpy.src.llm_integration import GeminiCLIProvider, LLMResult, create_llm_provider
 from testmcpy.src.model_registry import Provider, get_model, get_models_by_provider
-
 
 # ---------------------------------------------------------------------------
 # Factory / Registry

@@ -2,7 +2,6 @@
 Unit tests for the search endpoint (Cmd+K command palette).
 """
 
-import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -26,8 +25,9 @@ def client(tmp_path):
     )
 
     with patch.object(Path, "cwd", return_value=tmp_path):
-        from testmcpy.server.routers.search import router
         from fastapi import FastAPI
+
+        from testmcpy.server.routers.search import router
 
         app = FastAPI()
         app.include_router(router)

@@ -1,7 +1,5 @@
 """Integration tests for compatibility matrix and schema diff endpoints."""
 
-import pytest
-
 
 class TestSchemaDiffEndpoint:
     """Tests for POST /api/tools/diff."""
