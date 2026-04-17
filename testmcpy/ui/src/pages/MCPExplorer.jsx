@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { ChevronDown, ChevronRight, Copy, Check, EyeOff, Sparkles, Code2, Search, Command, HelpCircle, CheckSquare, Square, MessageSquare, Wand2, TestTube2, Play, Clock, Bug, AlertCircle, GitCompare, LayoutList, LayoutGrid, History } from 'lucide-react'
+import { ChevronDown, ChevronRight, Copy, Check, EyeOff, Sparkles, Code2, Search, Command, HelpCircle, CheckSquare, Square, MessageSquare, Wand2, TestTube2, Play, Clock, Bug, AlertCircle, GitCompare, LayoutList, LayoutGrid, History, Diff } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import ReactJson from '@microlink/react-json-view'
 import ParameterCard from '../components/ParameterCard'
@@ -8,6 +8,7 @@ import SchemaCodeViewer from '../components/SchemaCodeViewer'
 import OptimizeDocsModal from '../components/OptimizeDocsModal'
 import ToolDebugModal from '../components/ToolDebugModal'
 import { ToolCardSkeleton } from '../components/SkeletonLoader'
+import MCPProfileSelector from '../components/MCPProfileSelector'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import { useEditorTheme } from '../hooks/useEditorTheme'
 
@@ -42,6 +43,12 @@ function MCPExplorer({ selectedProfiles = [] }) {
   const [showSmokeTestResults, setShowSmokeTestResults] = useState(false)
   const [smokeTestHistory, setSmokeTestHistory] = useState([])
   const [showSmokeTestHistory, setShowSmokeTestHistory] = useState(false)
+
+  // Schema diff state
+  const [diffProfile1, setDiffProfile1] = useState([])
+  const [diffProfile2, setDiffProfile2] = useState([])
+  const [diffResults, setDiffResults] = useState(null)
+  const [runningDiff, setRunningDiff] = useState(false)
 
   // Comparison mode state
   const [compareProfile1, setCompareProfile1] = useState([])
@@ -439,6 +446,41 @@ function MCPExplorer({ selectedProfiles = [] }) {
     )
   }
 
+  // Run schema diff
+  const runSchemaDiff = async () => {
+    if (diffProfile1.length === 0 || diffProfile2.length === 0) {
+      alert('Please select two profiles to compare')
+      return
+    }
+
+    setRunningDiff(true)
+    setDiffResults(null)
+
+    try {
+      const response = await fetch('/api/tools/diff', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          profile1: diffProfile1[0],
+          profile2: diffProfile2[0],
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.detail || 'Schema diff failed')
+      }
+
+      const data = await response.json()
+      setDiffResults(data)
+    } catch (error) {
+      console.error('Schema diff error:', error)
+      alert(`Schema diff failed: ${error.message}`)
+    } finally {
+      setRunningDiff(false)
+    }
+  }
+
   // Run tool comparison
   const runComparison = async () => {
     if (!compareToolName.trim()) {
@@ -684,6 +726,18 @@ function MCPExplorer({ selectedProfiles = [] }) {
               }`}
             >
               Prompts ({filterPrompts().length}/{prompts.length})
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab('schema-diff')
+                setDiffResults(null)
+              }}
+              className={`tab ${
+                activeTab === 'schema-diff' ? 'tab-active' : 'tab-inactive'
+              }`}
+            >
+              <Diff size={16} className="mr-1" />
+              Schema Diff
             </button>
             <button
               onClick={() => {
@@ -1337,6 +1391,189 @@ function MCPExplorer({ selectedProfiles = [] }) {
               <div className="text-center py-20">
                 <div className="text-text-tertiary text-lg">No prompts available</div>
                 <p className="text-text-disabled text-sm mt-2">Prompts will appear here when they are added</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'schema-diff' && (
+          <div className="max-w-5xl mx-auto">
+            <div className="bg-surface-elevated border border-border rounded-lg p-6 mb-6">
+              <h3 className="font-bold text-lg mb-4">Schema Diff</h3>
+              <p className="text-text-secondary text-sm mb-4">
+                Compare tool schemas between two MCP servers to detect added, removed, or changed tools and parameters.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Baseline (Profile 1)</label>
+                  <MCPProfileSelector
+                    selectedProfiles={diffProfile1}
+                    onChange={setDiffProfile1}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Compare Against (Profile 2)</label>
+                  <MCPProfileSelector
+                    selectedProfiles={diffProfile2}
+                    onChange={setDiffProfile2}
+                  />
+                </div>
+              </div>
+
+              <button
+                onClick={runSchemaDiff}
+                disabled={runningDiff || diffProfile1.length === 0 || diffProfile2.length === 0}
+                className="btn btn-primary flex items-center gap-2"
+              >
+                {runningDiff ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Comparing...
+                  </>
+                ) : (
+                  <>
+                    <Diff size={16} />
+                    Compare Schemas
+                  </>
+                )}
+              </button>
+            </div>
+
+            {diffResults && (
+              <div className="space-y-4">
+                {/* Summary */}
+                <div className="bg-surface-elevated border border-border rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-bold">Summary</h4>
+                    <div className="flex items-center gap-3 text-sm">
+                      <span className="text-text-secondary">
+                        {diffResults.profile1} ({diffResults.profile1_tool_count} tools) vs {diffResults.profile2} ({diffResults.profile2_tool_count} tools)
+                      </span>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="bg-success/10 border border-success/30 rounded p-3 text-center">
+                      <p className="text-2xl font-bold text-success">{diffResults.summary.added_count}</p>
+                      <p className="text-xs text-success/80">Added</p>
+                    </div>
+                    <div className="bg-error/10 border border-error/30 rounded p-3 text-center">
+                      <p className="text-2xl font-bold text-error">{diffResults.summary.removed_count}</p>
+                      <p className="text-xs text-error/80">Removed</p>
+                    </div>
+                    <div className="bg-warning/10 border border-warning/30 rounded p-3 text-center">
+                      <p className="text-2xl font-bold text-warning">{diffResults.summary.changed_count}</p>
+                      <p className="text-xs text-warning/80">Changed</p>
+                    </div>
+                    <div className="bg-error/10 border border-error/30 rounded p-3 text-center">
+                      <p className="text-2xl font-bold text-error">{diffResults.summary.breaking_count}</p>
+                      <p className="text-xs text-error/80">Breaking</p>
+                    </div>
+                  </div>
+                </div>
+
+                {!diffResults.has_changes && (
+                  <div className="bg-success/10 border border-success/30 rounded-lg p-6 text-center">
+                    <Check size={48} className="text-success mx-auto mb-2" />
+                    <p className="text-lg font-medium text-success">No schema differences found</p>
+                    <p className="text-sm text-text-secondary mt-1">Both servers have identical tool schemas</p>
+                  </div>
+                )}
+
+                {/* Added Tools */}
+                {diffResults.added.length > 0 && (
+                  <div className="bg-surface-elevated border border-border rounded-lg p-4">
+                    <h4 className="font-bold mb-3 flex items-center gap-2">
+                      <span className="w-3 h-3 rounded-full bg-success" />
+                      Added Tools ({diffResults.added.length})
+                    </h4>
+                    <div className="space-y-1">
+                      {diffResults.added.map((tool, idx) => (
+                        <div key={idx} className="flex items-center gap-2 px-3 py-2 bg-success/5 border border-success/20 rounded">
+                          <span className="text-success font-mono text-sm">+ {tool.tool_name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Removed Tools */}
+                {diffResults.removed.length > 0 && (
+                  <div className="bg-surface-elevated border border-border rounded-lg p-4">
+                    <h4 className="font-bold mb-3 flex items-center gap-2">
+                      <span className="w-3 h-3 rounded-full bg-error" />
+                      Removed Tools ({diffResults.removed.length})
+                    </h4>
+                    <div className="space-y-1">
+                      {diffResults.removed.map((tool, idx) => (
+                        <div key={idx} className="flex items-center gap-2 px-3 py-2 bg-error/5 border border-error/20 rounded">
+                          <span className="text-error font-mono text-sm">- {tool.tool_name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Changed Tools */}
+                {diffResults.changed.length > 0 && (
+                  <div className="bg-surface-elevated border border-border rounded-lg p-4">
+                    <h4 className="font-bold mb-3 flex items-center gap-2">
+                      <span className="w-3 h-3 rounded-full bg-warning" />
+                      Changed Tools ({diffResults.changed.length})
+                    </h4>
+                    <div className="space-y-3">
+                      {diffResults.changed.map((tool, idx) => (
+                        <details key={idx} className="border border-warning/20 rounded bg-warning/5">
+                          <summary className="p-3 cursor-pointer hover:bg-warning/10 font-mono text-sm">
+                            ~ {tool.tool_name}
+                            {tool.description_changed && (
+                              <span className="ml-2 text-xs text-warning bg-warning/20 px-1.5 py-0.5 rounded">desc changed</span>
+                            )}
+                            {tool.param_changes?.length > 0 && (
+                              <span className="ml-2 text-xs text-warning bg-warning/20 px-1.5 py-0.5 rounded">
+                                {tool.param_changes.length} param change{tool.param_changes.length !== 1 ? 's' : ''}
+                              </span>
+                            )}
+                          </summary>
+                          <div className="p-3 border-t border-warning/20 space-y-2">
+                            {tool.description_changed && (
+                              <div className="text-xs space-y-1">
+                                <p className="font-medium text-text-secondary">Description:</p>
+                                <div className="bg-error/5 border border-error/20 rounded px-2 py-1">
+                                  <span className="text-error">- </span>{tool.old_description?.substring(0, 200)}
+                                </div>
+                                <div className="bg-success/5 border border-success/20 rounded px-2 py-1">
+                                  <span className="text-success">+ </span>{tool.new_description?.substring(0, 200)}
+                                </div>
+                              </div>
+                            )}
+                            {tool.param_changes?.map((param, pidx) => (
+                              <div key={pidx} className={`text-xs px-2 py-1.5 rounded border ${
+                                param.change_type === 'added' ? 'bg-success/5 border-success/20' :
+                                param.change_type === 'removed' ? 'bg-error/5 border-error/20' :
+                                'bg-warning/5 border-warning/20'
+                              }`}>
+                                <span className={`font-mono font-medium ${
+                                  param.change_type === 'added' ? 'text-success' :
+                                  param.change_type === 'removed' ? 'text-error' :
+                                  'text-warning'
+                                }`}>
+                                  {param.change_type === 'added' ? '+' : param.change_type === 'removed' ? '-' : '~'} {param.param_name}
+                                </span>
+                                <span className="text-text-tertiary ml-2">
+                                  ({param.change_type}
+                                  {param.old_value !== undefined && param.old_value !== null && ` from: ${JSON.stringify(param.old_value)}`}
+                                  {param.new_value !== undefined && param.new_value !== null && ` to: ${JSON.stringify(param.new_value)}`}
+                                  )
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
