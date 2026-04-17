@@ -854,7 +854,7 @@ ${evaluators}
                             <span className="text-text-disabled font-normal">({message.thinking.length.toLocaleString()} chars)</span>
                           </button>
                           {!collapsedThinking[idx] && (
-                            <div className="bg-purple-900/20 border border-purple-500/30 rounded-lg p-3 text-sm text-text-secondary max-h-64 overflow-y-auto">
+                            <div className="bg-purple-100 dark:bg-purple-900/20 border border-purple-300 dark:border-purple-500/30 rounded-lg p-3 text-sm text-text-secondary max-h-64 overflow-y-auto">
                               <div className="whitespace-pre-wrap font-mono text-xs leading-relaxed">
                                 {message.thinking}
                               </div>
@@ -869,7 +869,7 @@ ${evaluators}
                           For actual tool results, see "Raw Tool Output" in the tool calls section below.
                         </div>
                       )}
-                      <div className="prose prose-invert prose-sm max-w-none leading-relaxed prose-p:my-2 prose-pre:bg-background-subtle prose-pre:border prose-pre:border-border prose-code:text-primary-light prose-a:text-primary-light prose-a:no-underline hover:prose-a:underline prose-strong:text-text-primary prose-headings:text-text-primary">
+                      <div className="prose dark:prose-invert prose-sm max-w-none leading-relaxed prose-p:my-2 prose-pre:bg-background-subtle prose-pre:border prose-pre:border-border prose-code:text-primary-light prose-a:text-primary-light prose-a:no-underline hover:prose-a:underline prose-strong:text-text-primary prose-headings:text-text-primary">
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm]}
                           components={{

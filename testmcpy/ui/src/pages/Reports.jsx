@@ -285,7 +285,7 @@ function TestResultCard({ result }) {
               icon={MessageSquare}
               defaultOpen={false}
             >
-              <div className="prose prose-sm prose-invert max-w-none p-3 bg-surface rounded-lg border border-border max-h-96 overflow-y-auto">
+              <div className="prose prose-sm dark:prose-invert max-w-none p-3 bg-surface rounded-lg border border-border max-h-96 overflow-y-auto">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
                   {typeof (result.response || result.llm_response) === 'string'
                     ? (result.response || result.llm_response)
