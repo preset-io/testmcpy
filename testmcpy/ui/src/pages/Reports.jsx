@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import TraceView from '../components/TraceView'
@@ -21,7 +22,9 @@ import {
   Wrench,
   MessageSquare,
   BarChart3,
-  ClipboardCheck
+  ClipboardCheck,
+  Link2,
+  Download,
 } from 'lucide-react'
 
 const AUTO_REFRESH_INTERVAL = 10000
@@ -470,6 +473,7 @@ function SmokeTestResultCard({ result }) {
 }
 
 function Reports() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState('tests')
   const [testRuns, setTestRuns] = useState([])
   const [smokeReports, setSmokeReports] = useState([])
@@ -479,7 +483,9 @@ function Reports() {
   const [loadingDetails, setLoadingDetails] = useState(false)
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [showTrace, setShowTrace] = useState(false)
+  const [copiedLink, setCopiedLink] = useState(false)
   const autoRefreshRef = useRef(null)
+  const deepLinkProcessed = useRef(false)
 
   const loadTestRuns = useCallback(async () => {
     try {
@@ -515,6 +521,74 @@ function Reports() {
   useEffect(() => {
     loadAllReports()
   }, [loadAllReports])
+
+  // Deep-link: load run from URL params after data loads
+  useEffect(() => {
+    if (deepLinkProcessed.current) return
+    if (loading) return
+    const runParam = searchParams.get('run')
+    const typeParam = searchParams.get('type') || 'tests'
+    if (runParam) {
+      deepLinkProcessed.current = true
+      setActiveTab(typeParam)
+      loadRunDetails(runParam, typeParam)
+    }
+  }, [loading, searchParams])
+
+  // Update URL when selecting a run
+  const selectRun = useCallback((runId, type) => {
+    setSearchParams({ run: runId, type }, { replace: true })
+    loadRunDetails(runId, type)
+  }, [setSearchParams])
+
+  // Copy shareable link
+  const copyRunLink = useCallback((runId, type) => {
+    const url = new URL(window.location.href)
+    url.searchParams.set('run', runId)
+    url.searchParams.set('type', type)
+    navigator.clipboard.writeText(url.toString()).then(() => {
+      setCopiedLink(true)
+      setTimeout(() => setCopiedLink(false), 2000)
+    })
+  }, [])
+
+  // Export run as JSON
+  const exportRunJson = useCallback(() => {
+    if (!runDetails) return
+    const blob = new Blob([JSON.stringify(runDetails, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `report_${selectedRun?.id || 'export'}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [runDetails, selectedRun])
+
+  // Export run as CSV
+  const exportRunCsv = useCallback(() => {
+    if (!runDetails) return
+    const results = runDetails.results || []
+    if (results.length === 0) return
+
+    const headers = ['test_name', 'passed', 'score', 'duration', 'cost', 'error']
+    const rows = results.map(r => [
+      r.test_name || r.name || '',
+      r.passed ?? r.success ?? '',
+      r.score ?? '',
+      r.duration ?? (r.duration_ms ? r.duration_ms / 1000 : '') ?? '',
+      r.cost ?? '',
+      (r.error || '').replace(/"/g, '""'),
+    ])
+
+    const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${v}"`).join(','))].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `report_${selectedRun?.id || 'export'}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [runDetails, selectedRun])
 
   // Auto-refresh
   useEffect(() => {
@@ -579,7 +653,7 @@ function Reports() {
             ? 'bg-primary/10 border-l-2 border-l-primary'
             : 'hover:bg-surface border-l-2 border-l-transparent'
         }`}
-        onClick={() => loadRunDetails(run.run_id, 'tests')}
+        onClick={() => selectRun(run.run_id, 'tests')}
       >
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
@@ -701,8 +775,8 @@ function Reports() {
           </div>
         )}
 
-        {/* View Trace button */}
-        <div className="flex items-center gap-2">
+        {/* Action buttons */}
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => setShowTrace(!showTrace)}
             className={`text-xs px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
@@ -713,6 +787,27 @@ function Reports() {
           >
             <Clock size={12} />
             {showTrace ? 'Hide Trace' : 'View Trace'}
+          </button>
+          <button
+            onClick={() => copyRunLink(selectedRun.id, selectedRun.type)}
+            className="text-xs px-3 py-1.5 rounded-lg bg-surface border border-border text-text-secondary hover:bg-surface-hover transition-colors flex items-center gap-1.5"
+          >
+            <Link2 size={12} />
+            {copiedLink ? 'Copied!' : 'Copy Link'}
+          </button>
+          <button
+            onClick={exportRunJson}
+            className="text-xs px-3 py-1.5 rounded-lg bg-surface border border-border text-text-secondary hover:bg-surface-hover transition-colors flex items-center gap-1.5"
+          >
+            <Download size={12} />
+            JSON
+          </button>
+          <button
+            onClick={exportRunCsv}
+            className="text-xs px-3 py-1.5 rounded-lg bg-surface border border-border text-text-secondary hover:bg-surface-hover transition-colors flex items-center gap-1.5"
+          >
+            <Download size={12} />
+            CSV
           </button>
         </div>
 
@@ -895,7 +990,7 @@ function Reports() {
                         ? 'bg-primary/10 border-l-2 border-l-primary'
                         : 'hover:bg-surface border-l-2 border-l-transparent'
                     }`}
-                    onClick={() => loadRunDetails(report.report_id, 'smoke')}
+                    onClick={() => selectRun(report.report_id, 'smoke')}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
