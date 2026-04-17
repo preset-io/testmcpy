@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { Send, Loader, Wrench, DollarSign, ChevronDown, ChevronRight, CheckCircle, FileText, Plus, Server, Trash2, Brain, RefreshCw, Download, Edit3, Settings2 } from 'lucide-react'
+import { Send, Loader, Wrench, DollarSign, ChevronDown, ChevronRight, CheckCircle, FileText, Plus, Server, Trash2, RefreshCw, Download, Edit3, Settings2 } from 'lucide-react'
 import ReactJson from '@microlink/react-json-view'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useKeyboardShortcuts, useAnnounce } from '../hooks/useKeyboardShortcuts'
 import { useEditorTheme } from '../hooks/useEditorTheme'
+import ToolCallTimeline from '../components/ToolCallTimeline'
 
 // JSON viewer component with IDE-like collapsible tree
 function JSONViewer({ data }) {
@@ -89,8 +90,6 @@ function ChatInterface({ selectedProfiles = [], selectedLlmProfile, llmProfiles 
   const [selectedMessageIndex, setSelectedMessageIndex] = useState(null)
   const [evalResults, setEvalResults] = useState({})
   const [runningEval, setRunningEval] = useState(null)
-  const [collapsedToolCalls, setCollapsedToolCalls] = useState({})
-  const [collapsedThinking, setCollapsedThinking] = useState({})
   const textareaRef = useRef(null)
   const [historySize, setHistorySize] = useState(10)  // Number of messages to keep in history
   const abortControllerRef = useRef(null)
@@ -949,33 +948,13 @@ ${evaluators}
                         </div>
                       )}
 
-                      {/* Extended Thinking Section */}
-                      {message.thinking && (
-                        <div className="mb-3">
-                          <button
-                            onClick={() => setCollapsedThinking(prev => ({ ...prev, [idx]: !prev[idx] }))}
-                            className="flex items-center gap-2 text-xs font-medium text-purple-400 hover:text-purple-300 transition-colors mb-2"
-                          >
-                            {collapsedThinking[idx] ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-                            <Brain size={14} />
-                            <span>Thinking</span>
-                            <span className="text-text-disabled font-normal">({message.thinking.length.toLocaleString()} chars)</span>
-                          </button>
-                          {!collapsedThinking[idx] && (
-                            <div className="bg-purple-100 dark:bg-purple-900/20 border border-purple-300 dark:border-purple-500/30 rounded-lg p-3 text-sm text-text-secondary max-h-64 overflow-y-auto">
-                              <div className="whitespace-pre-wrap font-mono text-xs leading-relaxed">
-                                {message.thinking}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {message.tool_calls && message.tool_calls.length > 0 && (
-                        <div className="mb-3 p-2 bg-primary/10 border border-primary/30 rounded-lg text-xs text-text-secondary">
-                          <span className="font-semibold text-primary-light">Note:</span> The LLM's interpretation may be inaccurate.
-                          For actual tool results, see "Raw Tool Output" in the tool calls section below.
-                        </div>
+                      {/* Tool Call & Thinking Timeline (compact, Agor-style) */}
+                      {(message.thinking || (message.tool_calls && message.tool_calls.length > 0)) && (
+                        <ToolCallTimeline
+                          toolCalls={message.tool_calls || []}
+                          thinking={message.thinking}
+                          streaming={message.streaming}
+                        />
                       )}
                       <div className="prose dark:prose-invert prose-sm max-w-none leading-relaxed prose-p:my-2 prose-pre:bg-background-subtle prose-pre:border prose-pre:border-border prose-code:text-primary-light prose-a:text-primary-light prose-a:no-underline hover:prose-a:underline prose-strong:text-text-primary prose-headings:text-text-primary">
                         <ReactMarkdown
@@ -1158,152 +1137,6 @@ ${evaluators}
                     </div>
                   )}
 
-                  {/* Tool calls - grouped by turn, collapsed by default */}
-                  {message.tool_calls && message.tool_calls.length > 0 && (() => {
-                    // Group tool calls by turn
-                    const turnGroups = {}
-                    message.tool_calls.forEach(call => {
-                      const turn = call.turn || 1
-                      if (!turnGroups[turn]) turnGroups[turn] = []
-                      turnGroups[turn].push(call)
-                    })
-                    const turnNumbers = Object.keys(turnGroups).map(Number).sort((a, b) => a - b)
-                    const hasMultipleTurns = turnNumbers.length > 1
-
-                    return (
-                    <div className="mt-3 pt-3 border-t border-border">
-                      <button
-                        onClick={() => setCollapsedToolCalls(prev => ({ ...prev, [idx]: !prev[idx] }))}
-                        className="flex items-center gap-2 text-xs font-medium text-text-secondary hover:text-text-primary transition-colors"
-                      >
-                        {collapsedToolCalls[idx] ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-                        <Wrench size={14} />
-                        <span>Used {message.tool_calls.length} tool(s){hasMultipleTurns ? ` across ${turnNumbers.length} turns` : ''}</span>
-                      </button>
-                      {!collapsedToolCalls[idx] && (
-                        <div className="mt-3 space-y-3">
-                          {turnNumbers.map(turnNum => {
-                            const turnCalls = turnGroups[turnNum]
-                            return (
-                              <div key={turnNum}>
-                                {hasMultipleTurns && (
-                                  <div className="flex items-center gap-2 mb-2">
-                                    <div className="h-px flex-1 bg-border" />
-                                    <span className="text-[10px] font-medium text-text-disabled uppercase tracking-wider">
-                                      Turn {turnNum}: {turnCalls.length} tool{turnCalls.length !== 1 ? 's' : ''}
-                                    </span>
-                                    <div className="h-px flex-1 bg-border" />
-                                  </div>
-                                )}
-                                {turnCalls.map((call, callIdx) => (
-                          <div
-                            key={`${turnNum}-${callIdx}`}
-                            className="bg-surface-hover rounded-lg p-3 border border-border"
-                          >
-                            <div className="flex items-baseline gap-2 mb-2">
-                              <span className="font-mono font-semibold text-primary-light text-sm">
-                                {call.name}
-                              </span>
-                              <span className="text-xs text-text-disabled">
-                                ({Object.keys(call.arguments || {}).length} params)
-                              </span>
-                            </div>
-
-                            {/* Arguments - shown as collapsible object */}
-                            {call.arguments && Object.keys(call.arguments).length > 0 && (
-                              <div className="mb-2">
-                                <div className="text-xs text-text-tertiary mb-1">Arguments:</div>
-                                <div className="bg-background-subtle rounded p-2">
-                                  <ReactJson
-                                    src={call.arguments}
-                                    theme={jsonTheme}
-                                    collapsed={1}
-                                    displayDataTypes={false}
-                                    displayObjectSize={true}
-                                    enableClipboard={true}
-                                    name="request"
-                                    indentWidth={2}
-                                    iconStyle="triangle"
-                                    style={{
-                                      backgroundColor: 'transparent',
-                                      fontSize: '11px',
-                                      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace'
-                                    }}
-                                  />
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Result - shown as collapsible object (same as arguments) */}
-                            {call.result && (
-                              <div className="mt-3">
-                                <div className="text-xs text-text-tertiary mb-2 font-semibold">Raw Tool Output:</div>
-                                <div className="bg-background-subtle rounded-lg p-3 border border-border overflow-x-auto">
-                                  <ReactJson
-                                    src={(() => {
-                                      // Parse JSON strings recursively
-                                      const parseJsonStrings = (obj) => {
-                                        if (obj === null || obj === undefined) return obj
-                                        if (typeof obj === 'string') {
-                                          if ((obj.trim().startsWith('{') && obj.trim().endsWith('}')) ||
-                                              (obj.trim().startsWith('[') && obj.trim().endsWith(']'))) {
-                                            try {
-                                              return parseJsonStrings(JSON.parse(obj))
-                                            } catch (e) {
-                                              return obj
-                                            }
-                                          }
-                                          return obj
-                                        }
-                                        if (Array.isArray(obj)) {
-                                          return obj.map(parseJsonStrings)
-                                        }
-                                        if (typeof obj === 'object') {
-                                          const parsed = {}
-                                          for (const [key, value] of Object.entries(obj)) {
-                                            parsed[key] = parseJsonStrings(value)
-                                          }
-                                          return parsed
-                                        }
-                                        return obj
-                                      }
-                                      return parseJsonStrings(call.result)
-                                    })()}
-                                    theme={jsonTheme}
-                                    collapsed={1}
-                                    displayDataTypes={false}
-                                    displayObjectSize={true}
-                                    enableClipboard={true}
-                                    name="response"
-                                    indentWidth={2}
-                                    iconStyle="triangle"
-                                    style={{
-                                      backgroundColor: 'transparent',
-                                      fontSize: '12px',
-                                      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace'
-                                    }}
-                                  />
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Error display */}
-                            {call.error && (
-                              <div className="mt-3 p-3 bg-error/10 border border-error/30 rounded-lg">
-                                <div className="text-xs font-semibold text-error mb-1">Error:</div>
-                                <div className="text-xs text-text-secondary font-mono">{call.error}</div>
-                              </div>
-                            )}
-                            </div>
-                                ))}
-                              </div>
-                            )
-                          })}
-                        </div>
-                      )}
-                    </div>
-                    )
-                  })()}
 
                   {/* Metadata - inline */}
                   {message.token_usage && (
