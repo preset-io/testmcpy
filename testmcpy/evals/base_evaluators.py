@@ -2506,6 +2506,7 @@ def create_evaluator(name: str, **kwargs) -> BaseEvaluator:
         AuthSuccessfulEvaluator,
         JWTClaimsValidEvaluator,
         OAuth2FlowEvaluator,
+        OAuthDiscoveryEvaluator,
         TokenValidEvaluator,
     )
 
@@ -2541,6 +2542,7 @@ def create_evaluator(name: str, **kwargs) -> BaseEvaluator:
         "oauth2_flow_complete": OAuth2FlowEvaluator,
         "auth_error_handling": AuthErrorHandlingEvaluator,
         "jwt_claims_valid": JWTClaimsValidEvaluator,
+        "oauth_discovery_valid": OAuthDiscoveryEvaluator,
         # Load/burst test aggregate evaluators
         "success_rate_above": SuccessRateAbove,
         "latency_percentile": LatencyPercentile,
