@@ -174,3 +174,4 @@ CLAUDE.md
 # Test artifacts (generated during testing)
 tests/
 !tests/.gitkeep
+integration_tests/e2e/screenshots/
