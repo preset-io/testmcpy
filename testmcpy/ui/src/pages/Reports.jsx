@@ -607,6 +607,8 @@ function Reports() {
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [showTrace, setShowTrace] = useState(false)
   const [copiedLink, setCopiedLink] = useState(false)
+  const [filterStatus, setFilterStatus] = useState('all') // all, pass, fail
+  const [filterSearch, setFilterSearch] = useState('')
   const autoRefreshRef = useRef(null)
   const deepLinkProcessed = useRef(false)
 
@@ -764,6 +766,22 @@ function Reports() {
       console.error('Failed to delete:', error)
     }
   }
+
+  // Filtered test runs
+  const filteredTestRuns = testRuns.filter(run => {
+    if (filterStatus === 'pass' && run.failed > 0) return false
+    if (filterStatus === 'fail' && run.failed === 0) return false
+    if (filterSearch && !run.test_file?.toLowerCase().includes(filterSearch.toLowerCase()) &&
+        !run.model?.toLowerCase().includes(filterSearch.toLowerCase())) return false
+    return true
+  })
+
+  const filteredSmokeReports = smokeReports.filter(report => {
+    if (filterStatus === 'pass' && report.failed > 0) return false
+    if (filterStatus === 'fail' && report.failed === 0) return false
+    if (filterSearch && !report.profile_id?.toLowerCase().includes(filterSearch.toLowerCase())) return false
+    return true
+  })
 
   const renderRunListItem = (run) => {
     const rate = getPassRate(run.passed, run.total_tests)
@@ -1074,6 +1092,32 @@ function Reports() {
             </span>
           </button>
         </div>
+
+        {/* Filter bar */}
+        <div className="flex items-center gap-3 mt-3 flex-wrap">
+          <input
+            type="text"
+            value={filterSearch}
+            onChange={(e) => setFilterSearch(e.target.value)}
+            placeholder="Filter by name or model..."
+            className="input text-xs py-1.5 px-3 w-48"
+          />
+          <div className="flex items-center gap-1">
+            {['all', 'pass', 'fail'].map(status => (
+              <button
+                key={status}
+                onClick={() => setFilterStatus(status)}
+                className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                  filterStatus === status
+                    ? status === 'pass' ? 'bg-success/20 text-success' : status === 'fail' ? 'bg-error/20 text-error' : 'bg-primary/20 text-primary'
+                    : 'bg-surface hover:bg-surface-hover text-text-secondary'
+                }`}
+              >
+                {status === 'all' ? 'All' : status === 'pass' ? 'Passed' : 'Failed'}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* Content */}
@@ -1093,7 +1137,7 @@ function Reports() {
               </div>
             ) : (
               <div className="divide-y divide-border">
-                {testRuns.map(renderRunListItem)}
+                {filteredTestRuns.map(renderRunListItem)}
               </div>
             )
           ) : (
@@ -1105,7 +1149,7 @@ function Reports() {
               </div>
             ) : (
               <div className="divide-y divide-border">
-                {smokeReports.map((report) => (
+                {filteredSmokeReports.map((report) => (
                   <div
                     key={report.report_id}
                     className={`p-4 cursor-pointer transition-colors group ${
