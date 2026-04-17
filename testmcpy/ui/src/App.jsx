@@ -14,6 +14,7 @@ import {
   Shield,
   History,
   BarChart3,
+  Grid3X3,
   Sun,
   Moon,
   Monitor,
@@ -28,6 +29,7 @@ import LLMProfiles from './pages/LLMProfiles'
 import AuthDebugger from './pages/AuthDebugger'
 import GenerationHistory from './pages/GenerationHistory'
 import Reports from './pages/Reports'
+import CompatibilityMatrix from './pages/CompatibilityMatrix'
 import { TestRunProvider } from './contexts/TestRunContext'
 import { ThemeProvider, useTheme } from './contexts/ThemeContext'
 
@@ -334,6 +336,7 @@ function AppContent() {
     { path: '/', label: 'Explorer', icon: Package },
     { path: '/tests', label: 'Tests', icon: FileText },
     { path: '/reports', label: 'Reports', icon: BarChart3 },
+    { path: '/compatibility', label: 'Compat', icon: Grid3X3 },
     { path: '/generation-history', label: 'Gen History', icon: History },
     { path: '/chat', label: 'Interact', icon: MessageSquare },
     { path: '/auth-debugger', label: 'Auth Debug', icon: Shield },
@@ -572,6 +575,7 @@ function AppContent() {
               <Route path="/chat" element={<ChatInterface selectedProfiles={selectedProfiles} selectedLlmProfile={selectedLlmProfile} llmProfiles={llmProfiles} />} />
               <Route path="/tests" element={<TestManager selectedProfiles={selectedProfiles} selectedLlmProfile={selectedLlmProfile} llmProfiles={llmProfiles} />} />
               <Route path="/reports" element={<Reports />} />
+              <Route path="/compatibility" element={<CompatibilityMatrix />} />
               <Route path="/generation-history" element={<GenerationHistory />} />
               <Route path="/auth-debugger" element={<AuthDebugger />} />
               <Route path="/config" element={<Configuration />} />
