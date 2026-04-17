@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react'
-import { X, Loader, CheckCircle, AlertCircle, Wand2, Copy, Check, TrendingUp, AlertTriangle, Info } from 'lucide-react'
+import { X, Loader, CheckCircle, AlertCircle, Wand2, Copy, Check, TrendingUp, AlertTriangle, Info, FlaskConical, XCircle, ChevronDown, ChevronRight } from 'lucide-react'
 
 function OptimizeDocsModal({ tool, onClose }) {
+  const [activeTab, setActiveTab] = useState('analysis') // 'analysis' or 'eval'
   const [step, setStep] = useState('analyzing') // 'analyzing', 'success', 'error'
   const [analysis, setAnalysis] = useState(null)
   const [suggestions, setSuggestions] = useState(null)
@@ -10,6 +11,12 @@ function OptimizeDocsModal({ tool, onClose }) {
   const [duration, setDuration] = useState(0)
   const [copiedSection, setCopiedSection] = useState(null)
   const [config, setConfig] = useState(null)
+
+  // Live eval state
+  const [evalStep, setEvalStep] = useState('idle') // 'idle', 'running', 'done', 'error'
+  const [evalResults, setEvalResults] = useState(null)
+  const [evalError, setEvalError] = useState(null)
+  const [expandedEvalResults, setExpandedEvalResults] = useState(new Set())
 
   useEffect(() => {
     loadConfig()
@@ -72,6 +79,76 @@ function OptimizeDocsModal({ tool, onClose }) {
     }
   }
 
+  const runLiveEval = async () => {
+    try {
+      setEvalStep('running')
+      setEvalError(null)
+      setEvalResults(null)
+      setActiveTab('eval')
+
+      const provider = config?.DEFAULT_PROVIDER?.value || 'anthropic'
+      const model = config?.DEFAULT_MODEL?.value || 'claude-haiku-4-5'
+
+      const response = await fetch('/api/mcp/optimize-docs/eval', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tool_name: tool.name,
+          description: tool.description,
+          input_schema: tool.input_schema,
+          provider,
+          model,
+          num_prompts: 10,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Eval failed')
+      }
+
+      const data = await response.json()
+      setEvalResults(data)
+      setEvalStep('done')
+    } catch (err) {
+      console.error('Live eval failed:', err)
+      setEvalError(err.message)
+      setEvalStep('error')
+    }
+  }
+
+  const toggleEvalResult = (idx) => {
+    setExpandedEvalResults(prev => {
+      const next = new Set(prev)
+      if (next.has(idx)) next.delete(idx)
+      else next.add(idx)
+      return next
+    })
+  }
+
+  const getOutcomeStyle = (outcome) => {
+    switch (outcome) {
+      case 'correct': return 'text-success bg-success/10'
+      case 'wrong_params': return 'text-warning bg-warning/10'
+      case 'false_positive': return 'text-error bg-error/10'
+      case 'false_negative': return 'text-error bg-error/10'
+      case 'wrong_tool': return 'text-warning bg-warning/10'
+      default: return 'text-text-secondary bg-surface-elevated'
+    }
+  }
+
+  const getOutcomeLabel = (outcome) => {
+    switch (outcome) {
+      case 'correct': return 'Correct'
+      case 'wrong_params': return 'Wrong Params'
+      case 'false_positive': return 'False Positive'
+      case 'false_negative': return 'Missed'
+      case 'wrong_tool': return 'Wrong Tool'
+      case 'no_call': return 'No Call'
+      default: return outcome
+    }
+  }
+
   const copyToClipboard = (text, section) => {
     navigator.clipboard.writeText(text)
     setCopiedSection(section)
@@ -79,8 +156,7 @@ function OptimizeDocsModal({ tool, onClose }) {
   }
 
   const handleClose = () => {
-    if (step === 'analyzing') {
-      // Don't allow closing during analysis
+    if (step === 'analyzing' || evalStep === 'running') {
       return
     }
     onClose()
@@ -153,9 +229,190 @@ function OptimizeDocsModal({ tool, onClose }) {
           </button>
         </div>
 
+        {/* Tabs */}
+        <div className="flex border-b border-border px-4 md:px-6">
+          <button
+            onClick={() => setActiveTab('analysis')}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'analysis'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            <span className="flex items-center gap-1.5">
+              <Wand2 size={14} />
+              Doc Analysis
+            </span>
+          </button>
+          <button
+            onClick={() => { setActiveTab('eval'); if (evalStep === 'idle') runLiveEval() }}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'eval'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            <span className="flex items-center gap-1.5">
+              <FlaskConical size={14} />
+              Live Eval
+              {evalResults && (
+                <span className={`text-xs px-1.5 py-0.5 rounded-full ${getScoreBgColor(evalResults.score)}`}>
+                  {evalResults.score}%
+                </span>
+              )}
+            </span>
+          </button>
+        </div>
+
         {/* Content */}
         <div className="flex-1 overflow-auto p-4 md:p-6">
-          {step === 'analyzing' && (
+
+          {/* ====== EVAL TAB ====== */}
+          {activeTab === 'eval' && (
+            <>
+              {evalStep === 'idle' && (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <FlaskConical size={48} className="text-text-tertiary mb-4" />
+                  <h3 className="text-lg font-semibold text-text-primary mb-2">Live Tool-Calling Eval</h3>
+                  <p className="text-text-secondary text-center max-w-md mb-4">
+                    Send test prompts to an LLM and check if it calls <span className="font-mono text-primary">{tool.name}</span> with correct parameters.
+                  </p>
+                  <button onClick={runLiveEval} className="btn btn-primary">
+                    Run Eval
+                  </button>
+                </div>
+              )}
+
+              {evalStep === 'running' && (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <Loader className="w-12 h-12 text-purple-500 animate-spin mb-4" />
+                  <h3 className="text-lg font-semibold text-text-primary mb-2">Running Live Eval...</h3>
+                  <p className="text-text-secondary text-center max-w-md">
+                    Generating test prompts and checking if the LLM calls the tool correctly.
+                    This may take 15-30 seconds.
+                  </p>
+                </div>
+              )}
+
+              {evalStep === 'done' && evalResults && (
+                <div className="space-y-4">
+                  {/* Score bar */}
+                  <div className={`p-4 rounded-lg border ${getScoreBgColor(evalResults.score)}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className={`text-3xl font-bold ${getScoreColor(evalResults.score)}`}>
+                          {evalResults.score}%
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-text-primary">Tool-Calling Accuracy</h3>
+                          <p className="text-sm text-text-secondary">
+                            {evalResults.correct}/{evalResults.total_prompts} correct
+                            {evalResults.wrong_params > 0 && ` · ${evalResults.wrong_params} wrong params`}
+                            {evalResults.false_positives > 0 && ` · ${evalResults.false_positives} false pos`}
+                            {evalResults.false_negatives > 0 && ` · ${evalResults.false_negatives} missed`}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xs text-text-tertiary">
+                          ${evalResults.cost.toFixed(4)} · {evalResults.duration.toFixed(1)}s
+                        </div>
+                        <button onClick={runLiveEval} className="text-xs text-primary hover:underline mt-1">
+                          Re-run
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Suggestions */}
+                  {evalResults.suggestions.length > 0 && (
+                    <div className="p-3 rounded-lg bg-warning/5 border border-warning/20">
+                      <h4 className="text-sm font-semibold text-warning mb-2 flex items-center gap-1.5">
+                        <AlertTriangle size={14} /> Suggestions
+                      </h4>
+                      <ul className="space-y-1">
+                        {evalResults.suggestions.map((s, i) => (
+                          <li key={i} className="text-sm text-text-secondary">{s}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Results table */}
+                  <div>
+                    <h4 className="text-sm font-semibold text-text-primary mb-2">Test Results</h4>
+                    <div className="space-y-1">
+                      {evalResults.results.map((r, idx) => (
+                        <div key={idx} className="border border-border rounded-lg overflow-hidden">
+                          <button
+                            onClick={() => toggleEvalResult(idx)}
+                            className="w-full px-3 py-2 flex items-center gap-2 text-left hover:bg-surface-hover transition-colors"
+                          >
+                            {r.outcome === 'correct'
+                              ? <CheckCircle size={14} className="text-success flex-shrink-0" />
+                              : r.outcome === 'wrong_params'
+                                ? <AlertTriangle size={14} className="text-warning flex-shrink-0" />
+                                : <XCircle size={14} className="text-error flex-shrink-0" />
+                            }
+                            <span className="text-sm text-text-primary truncate flex-1">{r.prompt}</span>
+                            <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${getOutcomeStyle(r.outcome)}`}>
+                              {getOutcomeLabel(r.outcome)}
+                            </span>
+                            <span className="text-xs text-text-tertiary">{r.difficulty}</span>
+                            {expandedEvalResults.has(idx)
+                              ? <ChevronDown size={14} className="text-text-tertiary" />
+                              : <ChevronRight size={14} className="text-text-tertiary" />
+                            }
+                          </button>
+                          {expandedEvalResults.has(idx) && (
+                            <div className="px-3 py-2 border-t border-border bg-surface-elevated text-xs space-y-1">
+                              <div><span className="text-text-tertiary">Tests:</span> <span className="text-text-secondary">{r.what_it_tests}</span></div>
+                              <div><span className="text-text-tertiary">Should call:</span> <span className="text-text-secondary">{r.should_call ? 'Yes' : 'No'}</span></div>
+                              <div><span className="text-text-tertiary">Called:</span> <span className="font-mono text-text-secondary">{r.actual_tool_called || 'none'}</span></div>
+                              {r.expected_params && (
+                                <div><span className="text-text-tertiary">Expected params:</span> <code className="text-text-secondary">{JSON.stringify(r.expected_params)}</code></div>
+                              )}
+                              {r.actual_params && (
+                                <div><span className="text-text-tertiary">Actual params:</span> <code className="text-text-secondary">{JSON.stringify(r.actual_params)}</code></div>
+                              )}
+                              {r.param_mismatches.length > 0 && (
+                                <div className="mt-1 p-2 bg-warning/5 rounded border border-warning/20">
+                                  <div className="font-semibold text-warning mb-1">Parameter Mismatches:</div>
+                                  {r.param_mismatches.map((m, mi) => (
+                                    <div key={mi} className="text-text-secondary">
+                                      <span className="font-mono">{m.param}</span>: {m.issue}
+                                      {m.expected !== null && <> (expected: <code>{JSON.stringify(m.expected)}</code>)</>}
+                                      {m.actual !== null && <> (got: <code>{JSON.stringify(m.actual)}</code>)</>}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {evalStep === 'error' && (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <div className="w-16 h-16 bg-error/10 rounded-full flex items-center justify-center mb-4">
+                    <AlertCircle size={32} className="text-error" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-text-primary mb-2">Eval Failed</h3>
+                  <p className="text-text-secondary text-center max-w-md mb-4">{evalError}</p>
+                  <button onClick={runLiveEval} className="btn btn-secondary text-sm">
+                    Try Again
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ====== ANALYSIS TAB ====== */}
+          {activeTab === 'analysis' && step === 'analyzing' && (
             <div className="flex flex-col items-center justify-center py-12">
               <Loader className="w-12 h-12 text-purple-500 animate-spin mb-4" />
               <h3 className="text-lg font-semibold text-text-primary mb-2">Analyzing Documentation...</h3>
@@ -165,7 +422,7 @@ function OptimizeDocsModal({ tool, onClose }) {
             </div>
           )}
 
-          {step === 'success' && analysis && suggestions && (
+          {activeTab === 'analysis' && step === 'success' && analysis && suggestions && (
             <div className="space-y-6">
               {/* Score Summary */}
               <div className={`p-4 rounded-lg border ${getScoreBgColor(analysis.score)}`}>
@@ -340,7 +597,7 @@ function OptimizeDocsModal({ tool, onClose }) {
             </div>
           )}
 
-          {step === 'error' && error && (
+          {activeTab === 'analysis' && step === 'error' && error && (
             <div className="flex flex-col items-center justify-center py-12">
               <div className="w-16 h-16 bg-error/10 rounded-full flex items-center justify-center mb-4">
                 <AlertCircle size={32} className="text-error" />

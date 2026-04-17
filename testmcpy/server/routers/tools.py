@@ -51,6 +51,48 @@ class OptimizeDocsResponse(BaseModel):
     duration: float
 
 
+class DocEvalRequest(BaseModel):
+    """Request to live-test tool documentation with LLM prompts."""
+
+    tool_name: str
+    description: str
+    input_schema: dict[str, Any]
+    output_schema: dict[str, Any] | None = None
+    model: str | None = None
+    provider: str | None = None
+    num_prompts: int = Field(default=10, ge=3, le=20)
+
+
+class DocEvalPromptResult(BaseModel):
+    """Result of a single eval prompt."""
+
+    prompt: str
+    should_call: bool
+    difficulty: str  # easy, medium, hard
+    what_it_tests: str
+    actual_tool_called: str | None = None
+    actual_params: dict[str, Any] | None = None
+    expected_params: dict[str, Any] | None = None
+    outcome: str  # correct, wrong_params, wrong_tool, false_positive, false_negative, no_call
+    param_mismatches: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class DocEvalResponse(BaseModel):
+    """Aggregate eval results."""
+
+    score: float  # 0-100
+    total_prompts: int
+    correct: int
+    wrong_params: int
+    false_positives: int
+    false_negatives: int
+    results: list[DocEvalPromptResult]
+    param_mismatch_summary: list[dict[str, Any]] = Field(default_factory=list)
+    suggestions: list[str] = Field(default_factory=list)
+    cost: float
+    duration: float
+
+
 class SchemaDiffRequest(BaseModel):
     """Request to compare tool schemas between two MCP profiles."""
 
@@ -600,6 +642,318 @@ Call the submit_analysis tool NOW with complete data."""
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to optimize documentation: {str(e)}")
+
+
+@router.post("/mcp/optimize-docs/eval", response_model=DocEvalResponse)
+async def eval_tool_docs(request: DocEvalRequest) -> DocEvalResponse:
+    """Live-test tool documentation by sending prompts to an LLM and
+    checking if it calls the tool correctly.
+
+    Phase 1: LLM generates test prompts (positive, negative, adversarial).
+    Phase 2: Each prompt is sent to the LLM with the tool available.
+    Phase 3: Results are scored and param mismatches highlighted.
+    """
+    start_time = time.time()
+    total_cost = 0.0
+
+    model = request.model or config.default_model
+    provider = request.provider or config.default_provider
+
+    if not model or not provider:
+        raise HTTPException(
+            status_code=400,
+            detail="Model and provider must be configured.",
+        )
+
+    try:
+        # Use Haiku for cost efficiency
+        llm_model = model
+        if provider == "anthropic" and "haiku" not in model.lower():
+            llm_model = "claude-haiku-4-5"
+
+        llm_provider = create_llm_provider(provider, llm_model)
+        await llm_provider.initialize()
+
+        schema_str = json.dumps(request.input_schema, indent=2)
+
+        # ------------------------------------------------------------------
+        # Phase 1: Generate test prompts
+        # ------------------------------------------------------------------
+        gen_prompt = f"""You are testing whether an LLM can correctly use an MCP tool based on its documentation.
+
+Tool name: {request.tool_name}
+Tool description: {request.description}
+Tool input schema:
+{schema_str}
+
+Generate exactly {request.num_prompts} test prompts as a JSON array. Each element:
+{{
+  "prompt": "the user message to send",
+  "should_call": true/false,
+  "expected_params": {{"param": "value"}} or null if should_call=false,
+  "difficulty": "easy"|"medium"|"hard",
+  "what_it_tests": "brief description"
+}}
+
+Distribution:
+- {request.num_prompts // 2} positive prompts that SHOULD trigger this tool with correct params
+  (vary the phrasing — some explicit, some natural language)
+- {request.num_prompts // 4 or 1} negative prompts that should NOT trigger this tool
+  (ask about something unrelated or a different resource type)
+- {request.num_prompts - request.num_prompts // 2 - max(request.num_prompts // 4, 1)} adversarial prompts that test tricky edge cases
+  (use plausible but wrong parameter names, ambiguous wording, missing required fields)
+
+IMPORTANT: For adversarial prompts that use wrong param names, set should_call=true and
+expected_params with the CORRECT param names — the test checks if the LLM figures out the
+right names despite the ambiguous prompt.
+
+Return ONLY the JSON array, no other text."""
+
+        gen_result = await llm_provider.generate(gen_prompt)
+        total_cost += gen_result.cost
+
+        # Parse generated prompts
+        gen_text = gen_result.text.strip()
+        # Strip markdown code fences if present
+        if gen_text.startswith("```"):
+            gen_text = re.sub(r"^```\w*\n?", "", gen_text)
+            gen_text = re.sub(r"\n?```$", "", gen_text)
+
+        test_prompts = json.loads(gen_text)
+        if not isinstance(test_prompts, list):
+            raise ValueError("Expected JSON array of test prompts")
+
+        # ------------------------------------------------------------------
+        # Phase 2: Execute each prompt with the tool available
+        # ------------------------------------------------------------------
+        # Build the target tool definition for tool-calling
+        target_tool = {
+            "type": "function",
+            "function": {
+                "name": request.tool_name,
+                "description": request.description,
+                "parameters": request.input_schema,
+            },
+        }
+
+        # Add distractor tools so the LLM has to choose
+        distractor_tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "list_items",
+                    "description": "List items with optional filters and pagination.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "page": {"type": "integer", "description": "Page number"},
+                            "search": {"type": "string", "description": "Search query"},
+                        },
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_system_info",
+                    "description": "Get system and instance information.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                    },
+                },
+            },
+        ]
+
+        all_tools = [target_tool] + distractor_tools
+        results: list[DocEvalPromptResult] = []
+
+        for tp in test_prompts:
+            prompt_text = tp.get("prompt", "")
+            should_call = tp.get("should_call", True)
+            expected_params = tp.get("expected_params")
+            difficulty = tp.get("difficulty", "medium")
+            what_it_tests = tp.get("what_it_tests", "")
+
+            # Ask LLM to respond — it should call a tool or answer directly
+            eval_result = await llm_provider.generate_with_tools(
+                prompt=prompt_text,
+                tools=all_tools,
+                timeout=30.0,
+            )
+            total_cost += eval_result.cost
+
+            # Determine what the LLM did
+            actual_tool = None
+            actual_params = None
+            if eval_result.tool_calls:
+                tc = eval_result.tool_calls[0]
+                actual_tool = tc.get("name")
+                actual_params = tc.get("arguments", {})
+
+            # Score the result
+            outcome = "no_call"
+            param_mismatches: list[dict[str, Any]] = []
+
+            if should_call:
+                if actual_tool == request.tool_name:
+                    # Right tool — check params
+                    if expected_params and actual_params:
+                        all_correct = True
+                        for key, expected_val in expected_params.items():
+                            actual_val = actual_params.get(key)
+                            # Also check nested request object
+                            if actual_val is None and isinstance(
+                                actual_params.get("request"), dict
+                            ):
+                                actual_val = actual_params["request"].get(key)
+                            if actual_val is None:
+                                all_correct = False
+                                param_mismatches.append(
+                                    {
+                                        "param": key,
+                                        "expected": expected_val,
+                                        "actual": None,
+                                        "issue": "missing",
+                                    }
+                                )
+                            elif str(actual_val) != str(expected_val):
+                                # Check if it used a wrong param name
+                                all_correct = False
+                                param_mismatches.append(
+                                    {
+                                        "param": key,
+                                        "expected": expected_val,
+                                        "actual": actual_val,
+                                        "issue": "wrong_value",
+                                    }
+                                )
+                        # Check for unexpected params (wrong names)
+                        actual_keys = set(actual_params.keys())
+                        if "request" in actual_keys and isinstance(
+                            actual_params.get("request"), dict
+                        ):
+                            actual_keys = set(actual_params["request"].keys())
+                        expected_keys = set(expected_params.keys())
+                        extra_keys = actual_keys - expected_keys
+                        for ek in extra_keys:
+                            param_mismatches.append(
+                                {
+                                    "param": ek,
+                                    "expected": None,
+                                    "actual": actual_params.get(ek)
+                                    or (
+                                        actual_params.get("request", {}).get(ek)
+                                        if isinstance(actual_params.get("request"), dict)
+                                        else None
+                                    ),
+                                    "issue": "unexpected_param",
+                                }
+                            )
+                            all_correct = False
+
+                        outcome = "correct" if all_correct else "wrong_params"
+                    else:
+                        outcome = "correct"
+                elif actual_tool is not None:
+                    outcome = "wrong_tool"
+                else:
+                    outcome = "false_negative"
+            else:
+                if actual_tool == request.tool_name:
+                    outcome = "false_positive"
+                elif actual_tool is not None:
+                    outcome = "correct"  # Called a different tool, that's fine
+                else:
+                    outcome = "correct"  # Didn't call any tool, correct for negative case
+
+            results.append(
+                DocEvalPromptResult(
+                    prompt=prompt_text,
+                    should_call=should_call,
+                    difficulty=difficulty,
+                    what_it_tests=what_it_tests,
+                    actual_tool_called=actual_tool,
+                    actual_params=actual_params,
+                    expected_params=expected_params,
+                    outcome=outcome,
+                    param_mismatches=param_mismatches,
+                )
+            )
+
+        await llm_provider.close()
+
+        # ------------------------------------------------------------------
+        # Phase 3: Aggregate scores
+        # ------------------------------------------------------------------
+        correct = sum(1 for r in results if r.outcome == "correct")
+        wrong_params = sum(1 for r in results if r.outcome == "wrong_params")
+        false_positives = sum(1 for r in results if r.outcome == "false_positive")
+        false_negatives = sum(1 for r in results if r.outcome == "false_negative")
+        total = len(results)
+
+        score = (correct / total * 100) if total > 0 else 0
+
+        # Collect all param mismatches for summary
+        all_mismatches: list[dict[str, Any]] = []
+        for r in results:
+            for m in r.param_mismatches:
+                all_mismatches.append({**m, "prompt": r.prompt[:80]})
+
+        # Generate suggestions based on results
+        suggestions: list[str] = []
+        if wrong_params > 0:
+            wrong_param_names = {m["param"] for m in all_mismatches if m["issue"] == "missing"}
+            unexpected_names = {
+                m["param"] for m in all_mismatches if m["issue"] == "unexpected_param"
+            }
+            if wrong_param_names and unexpected_names:
+                suggestions.append(
+                    f"LLM used parameter names {unexpected_names} instead of "
+                    f"{wrong_param_names}. Consider renaming fields or adding "
+                    f"explicit param name guidance in the description."
+                )
+            if wrong_param_names:
+                suggestions.append(
+                    f"Parameters {wrong_param_names} were missed. Add examples "
+                    f"showing the exact parameter names in the tool description."
+                )
+        if false_positives > 0:
+            suggestions.append(
+                "Tool was called when it shouldn't have been. Make the description "
+                "more specific about WHEN to use this tool vs alternatives."
+            )
+        if false_negatives > 0:
+            suggestions.append(
+                "Tool was NOT called when it should have been. Make the description "
+                "clearer about what this tool does and when to use it."
+            )
+
+        duration = time.time() - start_time
+
+        return DocEvalResponse(
+            score=round(score, 1),
+            total_prompts=total,
+            correct=correct,
+            wrong_params=wrong_params,
+            false_positives=false_positives,
+            false_negatives=false_negatives,
+            results=results,
+            param_mismatch_summary=all_mismatches,
+            suggestions=suggestions,
+            cost=total_cost,
+            duration=duration,
+        )
+
+    except json.JSONDecodeError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to parse LLM-generated test prompts: {e}",
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Doc eval failed: {e}")
 
 
 @router.post("/tools/compare")
