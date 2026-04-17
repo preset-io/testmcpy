@@ -26,20 +26,20 @@ from testmcpy.config import get_config  # noqa: E402
 from testmcpy.mcp_profiles import load_profile  # noqa: E402
 from testmcpy.server.routers import agent as agent_router  # noqa: E402
 from testmcpy.server.routers import auth as auth_router  # noqa: E402
+from testmcpy.server.routers import compare as compare_router  # noqa: E402
+from testmcpy.server.routers import compatibility as compatibility_router  # noqa: E402
 from testmcpy.server.routers import generation_logs as generation_logs_router  # noqa: E402
+from testmcpy.server.routers import health as health_router  # noqa: E402
 from testmcpy.server.routers import llm as llm_router  # noqa: E402
 from testmcpy.server.routers import mcp_profiles as mcp_profiles_router  # noqa: E402
+from testmcpy.server.routers import metrics as metrics_router  # noqa: E402
 from testmcpy.server.routers import results as results_router  # noqa: E402
+from testmcpy.server.routers import search as search_router  # noqa: E402
+from testmcpy.server.routers import security as security_router  # noqa: E402
 from testmcpy.server.routers import smoke_reports as smoke_reports_router  # noqa: E402
 from testmcpy.server.routers import test_profiles as test_profiles_router  # noqa: E402
 from testmcpy.server.routers import tests as tests_router  # noqa: E402
-from testmcpy.server.routers import compatibility as compatibility_router  # noqa: E402
-from testmcpy.server.routers import compare as compare_router  # noqa: E402
-from testmcpy.server.routers import health as health_router  # noqa: E402
-from testmcpy.server.routers import metrics as metrics_router  # noqa: E402
-from testmcpy.server.routers import security as security_router  # noqa: E402
 from testmcpy.server.routers import tools as tools_router  # noqa: E402
-from testmcpy.server.routers import search as search_router  # noqa: E402
 from testmcpy.server.websocket import strip_mcp_prefix  # noqa: E402
 from testmcpy.src.llm_integration import create_llm_provider  # noqa: E402
 from testmcpy.src.mcp_client import MCPClient, MCPToolCall  # noqa: E402
@@ -257,14 +257,20 @@ def is_auth_error(error_msg: str) -> bool:
 
 
 def is_connection_error(error_msg: str) -> bool:
-    """Check if an error message indicates a connection issue (auth, timeout, or connection failure)."""
+    """Check if an error message indicates a fatal connection issue.
+
+    Only returns True for errors where the MCP session is truly dead and
+    the cached client must be discarded. Auth errors (401/403) are NOT
+    included because the PresetOAuth transport handles token refresh and
+    re-auth internally — evicting the client on an expired token would
+    just trigger a new browser OAuth popup.
+    """
     error_lower = error_msg.lower()
     return (
-        is_auth_error(error_msg)
-        or "timeout" in error_lower
-        or "timed out" in error_lower
-        or "connection" in error_lower
-        or "refused" in error_lower
+        "refused" in error_lower
+        or "reset by peer" in error_lower
+        or "name or service not known" in error_lower
+        or "no route to host" in error_lower
     )
 
 
