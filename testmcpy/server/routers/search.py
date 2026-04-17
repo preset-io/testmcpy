@@ -84,7 +84,7 @@ async def search(q: str = Query(..., min_length=1, max_length=200)) -> dict:
                                     "description": f"Test in {rel}",
                                 }
                             )
-                except Exception:
+                except (yaml.YAMLError, OSError, ValueError):
                     pass
 
     # 3. Search MCP profiles
@@ -115,7 +115,7 @@ async def search(q: str = Query(..., min_length=1, max_length=200)) -> dict:
                                 "description": f"MCP Server in {pname}",
                             }
                         )
-        except Exception:
+        except (yaml.YAMLError, OSError):
             pass
 
     # 4. Search LLM profiles
@@ -147,7 +147,7 @@ async def search(q: str = Query(..., min_length=1, max_length=200)) -> dict:
                                 "description": f"Model in {pname}",
                             }
                         )
-        except Exception:
+        except (yaml.YAMLError, OSError):
             pass
 
     # Deduplicate by (type, name, url)

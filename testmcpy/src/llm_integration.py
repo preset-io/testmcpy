@@ -2352,8 +2352,8 @@ User request: {prompt}"""
 class GeminiCLIProvider(LLMProvider):
     """Google Gemini CLI provider via subprocess.
 
-    Wraps the Gemini CLI tool (installed via ``npm i -g @anthropic-ai/gemini-cli``
-    or ``npm i -g @anthropic-ai/gemini``).  Follows the same pattern as
+    Wraps the Gemini CLI tool (installed via ``npm i -g @google/gemini-cli``
+    or the official Gemini CLI package).  Follows the same pattern as
     ``CodexCLIProvider`` — the CLI handles authentication, tool discovery, and
     model routing; we just pipe a prompt in and parse what comes back.
     """
@@ -2365,6 +2365,8 @@ class GeminiCLIProvider(LLMProvider):
         mcp_url: str | None = None,
         auth: dict[str, Any] | None = None,
     ):
+        if not re.match(r"^[a-zA-Z0-9._-]+$", model):
+            raise ValueError(f"Invalid model identifier: {model}")
         self.model = model
         self.gemini_cli_path = gemini_cli_path or self._find_gemini_cli()
         # Use MCP_URL and auth from default profile if not provided
@@ -2421,7 +2423,7 @@ class GeminiCLIProvider(LLMProvider):
         try:
             await self.tool_discovery.discover_tools()
             print(f"✅ Successfully connected to MCP service at {self.tool_discovery.mcp_url}")
-        except Exception as e:
+        except (ConnectionError, TimeoutError, OSError, ValueError) as e:
             print(f"⚠️  Warning: Failed to initialize MCP tools: {e}")
             print(f"   MCP URL: {self.tool_discovery.mcp_url}")
             print("   The provider will work without MCP tools (direct CLI calls only)")
@@ -2477,8 +2479,8 @@ class GeminiCLIProvider(LLMProvider):
             for tool_call in tool_calls:
                 try:
                     await self.tool_discovery.execute_tool_call(tool_call)
-                except Exception:
-                    pass  # Errors are handled by the tool execution
+                except (ConnectionError, TimeoutError, OSError, ValueError, RuntimeError) as e:
+                    logging.warning("Gemini CLI tool call failed: %s", e)
 
             return LLMResult(
                 response=response_text,

@@ -1,6 +1,7 @@
 """Interactive wizard commands for adding MCP servers, LLM providers, and tests."""
 
 import asyncio
+import re
 from pathlib import Path
 
 import typer
@@ -136,7 +137,7 @@ def add_mcp():
                 console.print(
                     f"[dim]  Tools: {', '.join(tool_names)}{'...' if len(tools) > 5 else ''}[/dim]"
                 )
-        except Exception as e:
+        except (ConnectionError, TimeoutError, OSError, RuntimeError, ValueError) as e:
             console.print(f"[red]Connection failed: {e}[/red]")
             if not Confirm.ask("Continue anyway?", default=True):
                 raise typer.Abort()
@@ -322,7 +323,7 @@ def add_llm():
                 console.print(f"[green]Test passed! ({result.get('duration', 0):.2f}s)[/green]")
             else:
                 console.print(f"[red]Test failed: {result.get('error', 'Unknown error')}[/red]")
-        except Exception as e:
+        except (ConnectionError, TimeoutError, OSError, RuntimeError, ValueError) as e:
             console.print(f"[yellow]Could not test (server may not be running): {e}[/yellow]")
 
     # Step 5: Save
@@ -412,6 +413,12 @@ def add_test():
     filename = _prompt("Test file name", "my_tests.yaml")
     if not filename.endswith(".yaml"):
         filename += ".yaml"
+    # Sanitize filename: allow only alphanumeric, underscores, hyphens, dots
+    if not re.match(r"^[a-zA-Z0-9._-]+$", filename):
+        console.print(
+            "[red]Invalid filename - only alphanumeric, underscores, hyphens, and dots allowed[/red]"
+        )
+        raise typer.Abort()
 
     # Step 2: Write tests
     console.print("\n[bold yellow]Step 2: Define Tests[/bold yellow]")
@@ -500,7 +507,10 @@ def add_test():
     if not tests_dir.exists():
         tests_dir.mkdir(parents=True, exist_ok=True)
 
-    file_path = tests_dir / filename
+    file_path = (tests_dir / filename).resolve()
+    if not file_path.is_relative_to(tests_dir.resolve()):
+        console.print("[red]Invalid filename - must be within tests directory[/red]")
+        raise typer.Abort()
 
     if file_path.exists():
         if not Confirm.ask(

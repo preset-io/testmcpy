@@ -35,6 +35,7 @@ async def _ping_server(mcp_server, profile_id: str, profile_name: str) -> dict[s
     }
 
     start = time.time()
+    client = None
     try:
         auth_dict = mcp_server.auth.to_dict() if mcp_server.auth else None
         client = MCPClient(mcp_server.mcp_url, auth=auth_dict)
@@ -46,8 +47,6 @@ async def _ping_server(mcp_server, profile_id: str, profile_name: str) -> dict[s
         result["status"] = "healthy"
         result["response_time_ms"] = round(elapsed_ms, 1)
         result["tool_count"] = len(tools)
-
-        await client.close()
     except asyncio.TimeoutError:
         elapsed_ms = (time.time() - start) * 1000
         result["status"] = "timeout"
@@ -63,6 +62,12 @@ async def _ping_server(mcp_server, profile_id: str, profile_name: str) -> dict[s
         result["status"] = "error"
         result["response_time_ms"] = round(elapsed_ms, 1)
         result["error"] = str(e)
+    finally:
+        if client is not None:
+            try:
+                await client.close()
+            except (ConnectionError, OSError, RuntimeError):
+                pass
 
     from datetime import datetime, timezone
 

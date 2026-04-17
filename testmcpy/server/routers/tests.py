@@ -815,6 +815,8 @@ async def create_test_file(request: TestFileCreate):
         )
 
     file_path = tests_dir / filename
+    if not file_path.resolve().is_relative_to(tests_dir.resolve()):
+        raise HTTPException(status_code=400, detail="Invalid filename")
 
     if file_path.exists():
         raise HTTPException(status_code=400, detail="File already exists")
