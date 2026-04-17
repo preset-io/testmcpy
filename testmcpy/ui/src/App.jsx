@@ -351,7 +351,7 @@ function AppContent() {
     { section: 'Analytics' },
     { path: '/metrics', label: 'Metrics', icon: TrendingUp },
     { path: '/compare', label: 'Compare', icon: GitCompare },
-    { path: '/health', label: 'MCP Health', icon: Heart },
+    { path: '/mcp-health', label: 'MCP Health', icon: Heart },
     { path: '/security', label: 'Security', icon: Shield },
     { section: 'Settings' },
     { path: '/auth-debugger', label: 'Auth Debug', icon: Shield },
@@ -608,7 +608,7 @@ function AppContent() {
               <Route path="/generation-history" element={<GenerationHistory />} />
               <Route path="/metrics" element={<MetricsDashboard />} />
               <Route path="/compare" element={<RunComparison />} />
-              <Route path="/health" element={<MCPHealth />} />
+              <Route path="/mcp-health" element={<MCPHealth />} />
               <Route path="/security" element={<SecurityDashboard />} />
               <Route path="/auth-debugger" element={<AuthDebugger />} />
               <Route path="/config" element={<Configuration />} />

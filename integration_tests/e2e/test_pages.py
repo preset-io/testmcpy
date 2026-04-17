@@ -10,6 +10,11 @@ PAGES = [
     ("/config", "Configuration"),
     ("/mcp-profiles", "MCPProfiles"),
     ("/llm-profiles", "LLMProfiles"),
+    ("/compatibility", "CompatibilityMatrix"),
+    ("/metrics", "MetricsDashboard"),
+    ("/compare", "RunComparison"),
+    ("/mcp-health", "MCPHealth"),
+    ("/security", "SecurityDashboard"),
 ]
 
 
