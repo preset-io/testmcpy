@@ -2023,7 +2023,7 @@ function MCPExplorer({ selectedProfiles = [] }) {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2 md:gap-4 mt-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 md:gap-4 mt-4">
                   <div className="bg-surface/50 rounded p-3 border border-border">
                     <p className="text-xs text-text-tertiary uppercase">Total Tests</p>
                     <p className="text-xl md:text-2xl font-bold">{smokeTestReport.total_tests}</p>
