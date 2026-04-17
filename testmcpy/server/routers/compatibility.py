@@ -1,7 +1,7 @@
 """Compatibility matrix — test tools across multiple MCP servers."""
 
 import asyncio
-import time
+import logging
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -9,7 +9,14 @@ from pydantic import BaseModel
 
 from testmcpy.mcp_profiles import load_profile
 from testmcpy.server.state import get_mcp_clients
-from testmcpy.src.mcp_client import MCPClient, MCPToolCall
+from testmcpy.src.mcp_client import (
+    MCPClient,
+    MCPConnectionError,
+    MCPError,
+    MCPTimeoutError,
+)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["compatibility"])
 
@@ -83,7 +90,8 @@ async def compatibility_matrix(request: CompatibilityMatrixRequest):
             try:
                 await client.initialize()
                 needs_close = True
-            except Exception as e:
+            except (MCPConnectionError, MCPTimeoutError, MCPError) as e:
+                logger.warning("Failed to initialize client for %s: %s", profile_ref, e)
                 profile_tools[profile_ref] = {"_error": str(e)}
                 continue
 
@@ -97,7 +105,8 @@ async def compatibility_matrix(request: CompatibilityMatrixRequest):
                     "inputSchema": t.input_schema,
                 }
             profile_tools[profile_ref] = tool_map
-        except Exception as e:
+        except (MCPConnectionError, MCPTimeoutError, MCPError) as e:
+            logger.warning("Failed to list tools for %s: %s", profile_ref, e)
             profile_tools[profile_ref] = {"_error": str(e)}
         finally:
             if needs_close:

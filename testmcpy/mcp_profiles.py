@@ -8,6 +8,7 @@ profiles. Each profile can contain MULTIPLE MCP servers, allowing you to:
 - Mix different MCP servers for your specific use case
 """
 
+import logging
 import os
 import re
 from dataclasses import dataclass, field
@@ -15,6 +16,8 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -354,6 +357,26 @@ class MCPProfileConfig:
                         f"Warning: Skipping MCP entry {idx} in profile '{profile_id}' - missing 'mcp_url'"
                     )
                     continue
+                transport = mcp_data.get("transport", "sse")
+                if transport not in ("sse", "stdio"):
+                    logger.warning(
+                        "Unknown transport '%s' in MCP entry %d of profile '%s', "
+                        "defaulting to 'sse'",
+                        transport,
+                        idx,
+                        profile_id,
+                    )
+                    transport = "sse"
+
+                command = mcp_data.get("command")
+                if transport == "stdio" and not command:
+                    logger.warning(
+                        "MCP entry %d in profile '%s' uses stdio transport "
+                        "but has no 'command' configured",
+                        idx,
+                        profile_id,
+                    )
+
                 mcp_server = MCPServer(
                     name=mcp_data.get("name", "Unnamed MCP"),
                     mcp_url=mcp_url,
@@ -361,8 +384,8 @@ class MCPProfileConfig:
                     timeout=mcp_data.get("timeout", timeout),
                     rate_limit_rpm=mcp_data.get("rate_limit_rpm", rate_limit_rpm),
                     default=mcp_data.get("default", False),  # Check for default flag
-                    transport=mcp_data.get("transport", "sse"),
-                    command=mcp_data.get("command"),
+                    transport=transport,
+                    command=command,
                     args=mcp_data.get("args"),
                 )
                 mcps.append(mcp_server)

@@ -58,8 +58,8 @@ class SchemaDiffResult:
             breaking_params = [
                 p
                 for p in tc.param_changes
-                if p.change_type in ("removed", "type_changed", "required_changed")
-                and p.new_value is True  # param became required
+                if p.change_type in ("removed", "type_changed")
+                or (p.change_type == "required_changed" and p.new_value is True)
             ]
             if breaking_params:
                 breaking.append(

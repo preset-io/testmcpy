@@ -215,6 +215,50 @@ class TestDiffToolSchemas:
         # tool_a removed is a breaking change
         assert any(bc.tool_name == "tool_a" for bc in breaking)
 
+    def test_breaking_changes_removed_params_and_type_changes(self):
+        """Removed params and type-changed params appear in breaking_changes."""
+        old = [
+            {
+                "name": "tool_x",
+                "description": "X",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "alpha": {"type": "integer"},
+                        "beta": {"type": "string"},
+                        "gamma": {"type": "boolean"},
+                    },
+                    "required": [],
+                },
+            }
+        ]
+        new = [
+            {
+                "name": "tool_x",
+                "description": "X",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "alpha": {"type": "integer"},
+                        "beta": {"type": "number"},  # type changed
+                        # gamma removed
+                    },
+                    "required": [],
+                },
+            }
+        ]
+        result = diff_tool_schemas(old, new)
+        breaking = result.breaking_changes
+        # tool_x should appear in breaking due to removed param and type change
+        breaking_tool = next((bc for bc in breaking if bc.tool_name == "tool_x"), None)
+        assert breaking_tool is not None, "tool_x should be in breaking_changes"
+        param_names = {p.param_name for p in breaking_tool.param_changes}
+        assert "gamma" in param_names, "Removed param 'gamma' should be breaking"
+        assert "beta" in param_names, "Type-changed param 'beta' should be breaking"
+        change_types = {p.change_type for p in breaking_tool.param_changes}
+        assert "removed" in change_types
+        assert "type_changed" in change_types
+
     def test_to_dict(self):
         """to_dict returns a serializable dict."""
         old = [{"name": "a", "description": "A"}]

@@ -1,6 +1,7 @@
 """Tool management and debugging endpoints."""
 
 import json
+import logging
 import re
 import time
 from typing import Any
@@ -12,7 +13,9 @@ from testmcpy.config import get_config
 from testmcpy.mcp_profiles import load_profile
 from testmcpy.server.state import get_default_mcp_client, get_mcp_clients
 from testmcpy.src.llm_integration import create_llm_provider
-from testmcpy.src.mcp_client import MCPClient
+from testmcpy.src.mcp_client import MCPClient, MCPError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["tools"])
 
@@ -181,8 +184,8 @@ async def diff_tool_schemas_endpoint(request: SchemaDiffRequest):
                     }
                     for t in tools
                 ]
-            except Exception:
-                pass  # Fall through to fresh connection
+            except MCPError as e:
+                logger.debug("Cached client failed: %s", e)
 
         # Load profile and connect
         profile = load_profile(profile_id)
