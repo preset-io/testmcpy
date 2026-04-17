@@ -1,0 +1,82 @@
+version: "1.0"
+name: "OAuth Discovery Tests (RFC 8414)"
+description: >
+  Tests for OAuth 2.0 Authorization Server Metadata discovery (RFC 8414).
+  Validates that the MCP server's well-known endpoint returns correct metadata.
+
+# These tests require a reachable MCP server URL (no auth credentials needed).
+#
+# Run with: testmcpy run tests/auth/oauth_discovery.yaml --mcp-url <url> --verbose
+
+tests:
+  # ============================================================================
+  # Metadata Validation Tests
+  # ============================================================================
+
+  - name: "test_discovery_returns_metadata"
+    description: "Verify OAuth discovery endpoint returns valid metadata"
+    auth_only: true
+    auth:
+      type: bearer
+      token: "discovery-test-placeholder"
+    evaluators:
+      - name: "oauth_discovery_valid"
+        args:
+          required_fields: ["issuer", "token_endpoint"]
+
+  - name: "test_discovery_has_token_endpoint"
+    description: "Verify discovery metadata includes token_endpoint (RFC 8414 Section 2)"
+    auth_only: true
+    auth:
+      type: bearer
+      token: "discovery-test-placeholder"
+    evaluators:
+      - name: "oauth_discovery_valid"
+        args:
+          required_fields: ["token_endpoint"]
+
+  - name: "test_discovery_has_issuer"
+    description: "Verify discovery metadata includes issuer (RFC 8414 Section 2)"
+    auth_only: true
+    auth:
+      type: bearer
+      token: "discovery-test-placeholder"
+    evaluators:
+      - name: "oauth_discovery_valid"
+        args:
+          required_fields: ["issuer"]
+
+  - name: "test_discovery_grant_types"
+    description: "Verify discovery metadata advertises authorization_code grant type"
+    auth_only: true
+    auth:
+      type: bearer
+      token: "discovery-test-placeholder"
+    evaluators:
+      - name: "oauth_discovery_valid"
+        args:
+          required_fields: ["token_endpoint"]
+          expected_grant_types: ["authorization_code"]
+
+  - name: "test_discovery_pkce_support"
+    description: "Verify server supports PKCE with S256 challenge method (OAuth 2.1 requirement)"
+    auth_only: true
+    auth:
+      type: bearer
+      token: "discovery-test-placeholder"
+    evaluators:
+      - name: "oauth_discovery_valid"
+        args:
+          required_fields: ["token_endpoint"]
+          require_pkce: true
+
+  - name: "test_discovery_scopes_available"
+    description: "Verify discovery metadata includes scopes_supported"
+    auth_only: true
+    auth:
+      type: bearer
+      token: "discovery-test-placeholder"
+    evaluators:
+      - name: "oauth_discovery_valid"
+        args:
+          required_fields: ["token_endpoint", "scopes_supported"]
