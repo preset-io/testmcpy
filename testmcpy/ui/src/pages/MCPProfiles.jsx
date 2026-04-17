@@ -3,8 +3,9 @@ import {
   Server, Check, AlertCircle, RefreshCw, ChevronDown, ChevronRight,
   Edit2, Trash2, Plus, Save, X, Copy, Download, Upload, Key, Lock,
   Unlock, Globe, CheckCircle, XCircle, AlertTriangle, ArrowUp, ArrowDown,
-  Settings
+  Settings, Wand2, Loader2
 } from 'lucide-react'
+import Wizard from '../components/Wizard'
 
 // Toast notification component
 function Toast({ message, type = 'success', onClose }) {
@@ -508,6 +509,507 @@ function MCPEditorModal({ mcp, onSave, onCancel }) {
   )
 }
 
+// MCP Wizard - guided multi-step flow for adding an MCP server
+function MCPWizard({ profiles, onComplete, onCancel }) {
+  const [wizardData, setWizardData] = useState({
+    // Step 1: Server Info
+    name: '',
+    description: '',
+    transport: 'sse',
+    // Step 2: Connection
+    mcp_url: '',
+    command: '',
+    args: '',
+    timeout: 30,
+    rate_limit_rpm: 60,
+    // Step 3: Auth
+    auth_type: 'none',
+    token: '',
+    api_url: '',
+    api_token: '',
+    api_secret: '',
+    client_id: '',
+    client_secret: '',
+    token_url: '',
+    scopes: '',
+    oauth_auto_discover: false,
+    insecure: false,
+    // Step 4: Test results
+    testResult: null,
+    testLoading: false,
+    // Step 5: Save
+    targetProfileId: profiles.length > 0 ? profiles[0].id : '',
+  })
+
+  const handleTestConnection = async () => {
+    setWizardData(prev => ({ ...prev, testLoading: true, testResult: null }))
+    try {
+      // Build the MCP config for testing
+      const mcpUrl = wizardData.transport === 'stdio'
+        ? `stdio://${wizardData.command}`
+        : wizardData.mcp_url
+
+      const authData = { type: wizardData.auth_type }
+      if (wizardData.auth_type === 'bearer') authData.token = wizardData.token
+      if (wizardData.auth_type === 'jwt') {
+        authData.api_url = wizardData.api_url
+        authData.api_token = wizardData.api_token
+        authData.api_secret = wizardData.api_secret
+      }
+      if (wizardData.auth_type === 'oauth') {
+        if (wizardData.oauth_auto_discover) {
+          authData.oauth_auto_discover = true
+        } else {
+          authData.client_id = wizardData.client_id
+          authData.client_secret = wizardData.client_secret
+          authData.token_url = wizardData.token_url
+        }
+      }
+
+      const res = await fetch('/api/mcp/test-connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mcp_url: mcpUrl,
+          transport: wizardData.transport,
+          command: wizardData.command || null,
+          args: wizardData.args ? wizardData.args.split(/\s+/).filter(Boolean) : null,
+          auth: authData,
+          timeout: wizardData.timeout,
+        })
+      })
+      const data = await res.json()
+      setWizardData(prev => ({
+        ...prev,
+        testLoading: false,
+        testResult: data.success
+          ? { success: true, tools: data.tools || [], tool_count: data.tool_count || 0 }
+          : { success: false, error: data.message || data.error || 'Connection failed' }
+      }))
+    } catch (err) {
+      setWizardData(prev => ({
+        ...prev,
+        testLoading: false,
+        testResult: { success: false, error: err.message }
+      }))
+    }
+  }
+
+  const steps = [
+    {
+      label: 'Server Info',
+      validate: (data) => {
+        if (!data.name.trim()) return 'Server name is required'
+        return true
+      },
+      component: ({ data, setData }) => (
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-1">Server Name</label>
+            <input
+              type="text"
+              value={data.name}
+              onChange={(e) => setData(prev => ({ ...prev, name: e.target.value }))}
+              className="input w-full"
+              placeholder="e.g., Superset MCP, GitHub MCP"
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Description (optional)</label>
+            <input
+              type="text"
+              value={data.description}
+              onChange={(e) => setData(prev => ({ ...prev, description: e.target.value }))}
+              className="input w-full"
+              placeholder="What does this MCP server do?"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Transport Type</label>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { value: 'sse', label: 'HTTP / SSE', desc: 'Remote server over HTTP with SSE streaming' },
+                { value: 'stdio', label: 'Stdio', desc: 'Local subprocess via stdin/stdout JSON-RPC' },
+              ].map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setData(prev => ({ ...prev, transport: opt.value }))}
+                  className={`p-3 rounded-lg border-2 text-left transition-all ${
+                    data.transport === opt.value
+                      ? 'border-primary bg-primary/10'
+                      : 'border-border hover:border-primary/30'
+                  }`}
+                >
+                  <div className="font-medium text-sm">{opt.label}</div>
+                  <div className="text-xs text-text-tertiary mt-1">{opt.desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      label: 'Connection',
+      validate: (data) => {
+        if (data.transport === 'stdio') {
+          if (!data.command.trim()) return 'Command is required for stdio transport'
+        } else {
+          if (!data.mcp_url.trim()) return 'MCP URL is required'
+          try { new URL(data.mcp_url) } catch { return 'Invalid URL format' }
+        }
+        return true
+      },
+      component: ({ data, setData }) => (
+        <div className="space-y-4">
+          {data.transport === 'stdio' ? (
+            <>
+              <div>
+                <label className="block text-sm font-medium mb-1">Command</label>
+                <input
+                  type="text"
+                  value={data.command}
+                  onChange={(e) => setData(prev => ({ ...prev, command: e.target.value }))}
+                  className="input w-full font-mono text-sm"
+                  placeholder="e.g., npx, python, node"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Arguments (space-separated)</label>
+                <input
+                  type="text"
+                  value={data.args}
+                  onChange={(e) => setData(prev => ({ ...prev, args: e.target.value }))}
+                  className="input w-full font-mono text-sm"
+                  placeholder="e.g., -y @modelcontextprotocol/server-filesystem /tmp"
+                />
+              </div>
+            </>
+          ) : (
+            <div>
+              <label className="block text-sm font-medium mb-1">MCP URL</label>
+              <input
+                type="text"
+                value={data.mcp_url}
+                onChange={(e) => setData(prev => ({ ...prev, mcp_url: e.target.value }))}
+                className="input w-full font-mono text-sm"
+                placeholder="https://api.example.com/mcp/"
+                autoFocus
+              />
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Timeout (seconds)</label>
+              <input
+                type="number"
+                value={data.timeout}
+                onChange={(e) => setData(prev => ({ ...prev, timeout: parseInt(e.target.value) || 30 }))}
+                className="input w-full"
+                min="1" max="300"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Rate Limit (req/min)</label>
+              <input
+                type="number"
+                value={data.rate_limit_rpm}
+                onChange={(e) => setData(prev => ({ ...prev, rate_limit_rpm: parseInt(e.target.value) || 60 }))}
+                className="input w-full"
+                min="1" max="1000"
+              />
+            </div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      label: 'Authentication',
+      optional: true,
+      component: ({ data, setData }) => (
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-1">Authentication Type</label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {[
+                { value: 'none', label: 'None', icon: <Unlock size={16} /> },
+                { value: 'bearer', label: 'Bearer', icon: <Key size={16} /> },
+                { value: 'jwt', label: 'JWT', icon: <Lock size={16} /> },
+                { value: 'oauth', label: 'OAuth 2.0', icon: <Globe size={16} /> },
+              ].map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setData(prev => ({ ...prev, auth_type: opt.value }))}
+                  className={`p-3 rounded-lg border-2 text-center transition-all ${
+                    data.auth_type === opt.value
+                      ? 'border-primary bg-primary/10'
+                      : 'border-border hover:border-primary/30'
+                  }`}
+                >
+                  <div className="flex justify-center mb-1 text-text-secondary">{opt.icon}</div>
+                  <div className="text-xs font-medium">{opt.label}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {data.auth_type === 'bearer' && (
+            <div>
+              <label className="block text-sm font-medium mb-1">Bearer Token</label>
+              <input
+                type="password"
+                value={data.token}
+                onChange={(e) => setData(prev => ({ ...prev, token: e.target.value }))}
+                className="input w-full font-mono text-sm"
+                placeholder="Enter token or ${ENV_VAR_NAME}"
+              />
+              <p className="text-text-tertiary text-xs mt-1">Tip: Use {'${VAR_NAME}'} to reference environment variables</p>
+            </div>
+          )}
+
+          {data.auth_type === 'jwt' && (
+            <>
+              <div>
+                <label className="block text-sm font-medium mb-1">API URL</label>
+                <input type="text" value={data.api_url}
+                  onChange={(e) => setData(prev => ({ ...prev, api_url: e.target.value }))}
+                  className="input w-full font-mono text-sm" placeholder="https://api.example.com/v1/auth/" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">API Token</label>
+                <input type="password" value={data.api_token}
+                  onChange={(e) => setData(prev => ({ ...prev, api_token: e.target.value }))}
+                  className="input w-full font-mono text-sm" placeholder="Enter token or ${ENV_VAR_NAME}" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">API Secret</label>
+                <input type="password" value={data.api_secret}
+                  onChange={(e) => setData(prev => ({ ...prev, api_secret: e.target.value }))}
+                  className="input w-full font-mono text-sm" placeholder="Enter secret or ${ENV_VAR_NAME}" />
+              </div>
+            </>
+          )}
+
+          {data.auth_type === 'oauth' && (
+            <>
+              <div className="flex items-center gap-2 p-3 bg-surface rounded-lg border border-border">
+                <input type="checkbox" id="wiz_oauth_auto"
+                  checked={data.oauth_auto_discover}
+                  onChange={(e) => setData(prev => ({ ...prev, oauth_auto_discover: e.target.checked }))}
+                  className="w-4 h-4" />
+                <label htmlFor="wiz_oauth_auto" className="text-sm">
+                  <span className="font-medium">Auto-discover OAuth configuration</span>
+                  <p className="text-text-tertiary text-xs mt-0.5">Use RFC 8414 well-known endpoint</p>
+                </label>
+              </div>
+              {!data.oauth_auto_discover && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Client ID</label>
+                    <input type="text" value={data.client_id}
+                      onChange={(e) => setData(prev => ({ ...prev, client_id: e.target.value }))}
+                      className="input w-full font-mono text-sm" placeholder="Enter client ID" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Client Secret</label>
+                    <input type="password" value={data.client_secret}
+                      onChange={(e) => setData(prev => ({ ...prev, client_secret: e.target.value }))}
+                      className="input w-full font-mono text-sm" placeholder="Enter secret" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Token URL</label>
+                    <input type="text" value={data.token_url}
+                      onChange={(e) => setData(prev => ({ ...prev, token_url: e.target.value }))}
+                      className="input w-full font-mono text-sm" placeholder="https://api.example.com/oauth/token" />
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+          <div className="flex items-center gap-2">
+            <input type="checkbox" id="wiz_insecure"
+              checked={data.insecure}
+              onChange={(e) => setData(prev => ({ ...prev, insecure: e.target.checked }))}
+              className="w-4 h-4" />
+            <label htmlFor="wiz_insecure" className="text-sm">
+              <span className="font-medium">Skip SSL verification</span>
+              <span className="text-text-tertiary ml-1">(for self-signed certificates)</span>
+            </label>
+          </div>
+        </div>
+      ),
+    },
+    {
+      label: 'Test Connection',
+      optional: true,
+      component: ({ data, setData }) => (
+        <div className="space-y-4">
+          <p className="text-sm text-text-secondary">
+            Test the connection to verify your MCP server is reachable and responding.
+          </p>
+
+          <button
+            onClick={handleTestConnection}
+            disabled={data.testLoading}
+            className="btn btn-primary"
+          >
+            {data.testLoading ? (
+              <><Loader2 size={14} className="animate-spin" /> Testing...</>
+            ) : (
+              <><Server size={14} /> Test Connection</>
+            )}
+          </button>
+
+          {data.testResult && (
+            <div className={`p-4 rounded-lg border ${
+              data.testResult.success
+                ? 'bg-success/10 border-success/30'
+                : 'bg-error/10 border-error/30'
+            }`}>
+              <div className="flex items-center gap-2 mb-2">
+                {data.testResult.success ? (
+                  <><CheckCircle size={18} className="text-success" />
+                    <span className="font-medium text-success">Connection Successful</span></>
+                ) : (
+                  <><XCircle size={18} className="text-error" />
+                    <span className="font-medium text-error">Connection Failed</span></>
+                )}
+              </div>
+              {data.testResult.success && (
+                <div className="text-sm text-text-secondary">
+                  Found <span className="font-semibold text-primary">{data.testResult.tool_count}</span> tools
+                  {data.testResult.tools?.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {data.testResult.tools.slice(0, 10).map((tool, i) => (
+                        <span key={i} className="px-2 py-0.5 bg-surface rounded text-xs font-mono">
+                          {typeof tool === 'string' ? tool : tool.name || tool}
+                        </span>
+                      ))}
+                      {data.testResult.tools.length > 10 && (
+                        <span className="text-xs text-text-tertiary">
+                          +{data.testResult.tools.length - 10} more
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+              {data.testResult.error && (
+                <p className="text-sm text-error mt-1">{data.testResult.error}</p>
+              )}
+            </div>
+          )}
+        </div>
+      ),
+    },
+    {
+      label: 'Save',
+      validate: (data) => {
+        if (!data.targetProfileId) return 'Please select a profile to add this MCP to'
+        return true
+      },
+      component: ({ data, setData }) => (
+        <div className="space-y-4">
+          <h4 className="text-sm font-medium text-text-secondary">Review your MCP server configuration:</h4>
+          <div className="bg-surface rounded-lg p-4 border border-border space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-text-tertiary">Name</span>
+              <span className="font-medium">{data.name}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-text-tertiary">Transport</span>
+              <span className="font-mono text-xs">{data.transport === 'stdio' ? 'Stdio' : 'HTTP/SSE'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-text-tertiary">{data.transport === 'stdio' ? 'Command' : 'URL'}</span>
+              <span className="font-mono text-xs truncate max-w-[250px]">
+                {data.transport === 'stdio' ? `${data.command} ${data.args}` : data.mcp_url}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-text-tertiary">Auth</span>
+              <span>{data.auth_type === 'none' ? 'None' : data.auth_type.toUpperCase()}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-text-tertiary">Timeout</span>
+              <span>{data.timeout}s</span>
+            </div>
+            {data.testResult?.success && (
+              <div className="flex justify-between">
+                <span className="text-text-tertiary">Connection Test</span>
+                <span className="text-success flex items-center gap-1">
+                  <CheckCircle size={12} /> Passed ({data.testResult.tool_count} tools)
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Add to Profile</label>
+            <select
+              value={data.targetProfileId}
+              onChange={(e) => setData(prev => ({ ...prev, targetProfileId: e.target.value }))}
+              className="input w-full"
+            >
+              {profiles.map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      ),
+    },
+  ]
+
+  const handleComplete = (data) => {
+    // Transform wizard data to the format expected by handleAddMCP
+    const scopesArray = data.scopes ? data.scopes.split(',').map(s => s.trim()).filter(Boolean) : null
+    const argsArray = data.args ? data.args.split(/\s+/).filter(Boolean) : null
+    const mcpUrl = data.transport === 'stdio'
+      ? (data.mcp_url || `stdio://${data.command}`)
+      : data.mcp_url
+
+    const mcpData = {
+      name: data.name,
+      mcp_url: mcpUrl,
+      transport: data.transport,
+      command: data.command || null,
+      args: argsArray,
+      auth_type: data.auth_type,
+      token: data.token || null,
+      api_url: data.api_url || null,
+      api_token: data.api_token || null,
+      api_secret: data.api_secret || null,
+      client_id: data.client_id || null,
+      client_secret: data.client_secret || null,
+      token_url: data.token_url || null,
+      scopes: scopesArray,
+      oauth_auto_discover: data.oauth_auto_discover || false,
+      insecure: data.insecure || false,
+      timeout: data.timeout,
+      rate_limit_rpm: data.rate_limit_rpm,
+    }
+
+    onComplete(data.targetProfileId, mcpData)
+  }
+
+  return (
+    <Wizard
+      title="Add MCP Server"
+      steps={steps}
+      data={wizardData}
+      setData={setWizardData}
+      onComplete={handleComplete}
+      onCancel={onCancel}
+    />
+  )
+}
+
 function MCPProfiles({ selectedProfiles = [], onSelectProfiles, hideHeader = false }) {
   const [profiles, setProfiles] = useState([])
   const [defaultProfile, setDefaultProfile] = useState(null)
@@ -520,6 +1022,7 @@ function MCPProfiles({ selectedProfiles = [], onSelectProfiles, hideHeader = fal
   const [profileEditor, setProfileEditor] = useState(null)
   const [mcpEditor, setMCPEditor] = useState(null)
   const [testingConnection, setTestingConnection] = useState(null)
+  const [showMCPWizard, setShowMCPWizard] = useState(false)
 
   useEffect(() => {
     loadProfiles()
@@ -935,13 +1438,22 @@ function MCPProfiles({ selectedProfiles = [], onSelectProfiles, hideHeader = fal
                 Refresh
               </button>
               {profiles.length > 0 && (
-                <button
-                  onClick={() => setProfileEditor({ isNew: true })}
-                  className="btn btn-primary flex items-center gap-2"
-                >
-                  <Plus size={16} />
-                  Add Profile
-                </button>
+                <>
+                  <button
+                    onClick={() => setShowMCPWizard(true)}
+                    className="btn btn-primary flex items-center gap-2"
+                  >
+                    <Wand2 size={16} />
+                    Add MCP (Wizard)
+                  </button>
+                  <button
+                    onClick={() => setProfileEditor({ isNew: true })}
+                    className="btn btn-secondary flex items-center gap-2"
+                  >
+                    <Plus size={16} />
+                    Add Profile
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -1321,6 +1833,17 @@ function MCPProfiles({ selectedProfiles = [], onSelectProfiles, hideHeader = fal
             }
           }}
           onCancel={() => setMCPEditor(null)}
+        />
+      )}
+
+      {showMCPWizard && (
+        <MCPWizard
+          profiles={profiles}
+          onComplete={(profileId, mcpData) => {
+            handleAddMCP(profileId, mcpData)
+            setShowMCPWizard(false)
+          }}
+          onCancel={() => setShowMCPWizard(false)}
         />
       )}
     </div>
