@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { Send, Loader, Wrench, DollarSign, ChevronDown, ChevronRight, CheckCircle, FileText, Plus, Server, Trash2, Brain } from 'lucide-react'
+import { Send, Loader, Wrench, DollarSign, ChevronDown, ChevronRight, CheckCircle, FileText, Plus, Server, Trash2, Brain, RefreshCw, Download, Edit3, Settings2 } from 'lucide-react'
 import ReactJson from '@microlink/react-json-view'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -94,6 +94,10 @@ function ChatInterface({ selectedProfiles = [], selectedLlmProfile, llmProfiles 
   const textareaRef = useRef(null)
   const [historySize, setHistorySize] = useState(10)  // Number of messages to keep in history
   const abortControllerRef = useRef(null)
+  const [editingMessageIdx, setEditingMessageIdx] = useState(null)
+  const [editingText, setEditingText] = useState('')
+  const [systemPrompt, setSystemPrompt] = useState('')
+  const [showSystemPrompt, setShowSystemPrompt] = useState(false)
 
   // For Chat, only use the first selected profile (single MCP at a time)
   const activeProfile = selectedProfiles.length > 0 ? selectedProfiles[0] : null
@@ -218,6 +222,62 @@ function ChatInterface({ selectedProfiles = [], selectedLlmProfile, llmProfiles 
     localStorage.removeItem('chatHistory')
   }
 
+  // Regenerate: resend the last user message
+  const regenerateLastResponse = () => {
+    if (loading || messages.length < 2) return
+    // Find last user message
+    let lastUserIdx = -1
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') { lastUserIdx = i; break }
+    }
+    if (lastUserIdx < 0) return
+    const lastUserMsg = messages[lastUserIdx].content
+    // Remove messages from last user message onward
+    const trimmed = messages.slice(0, lastUserIdx)
+    setMessages(trimmed)
+    saveChatHistory(trimmed)
+    setInput(lastUserMsg)
+    // Auto-send after a tick
+    setTimeout(() => {
+      const fakeEvent = { target: { value: lastUserMsg } }
+      // We set input above, sendMessage will pick it up
+    }, 50)
+  }
+
+  // Edit a user message: trim conversation and re-send
+  const editAndResend = (idx) => {
+    if (loading) return
+    const trimmed = messages.slice(0, idx)
+    setMessages(trimmed)
+    saveChatHistory(trimmed)
+    setInput(editingText)
+    setEditingMessageIdx(null)
+    setEditingText('')
+  }
+
+  // Export conversation as markdown
+  const exportAsMarkdown = () => {
+    const lines = messages.map(m => {
+      const role = m.role === 'user' ? '**User**' : '**Assistant**'
+      let text = `### ${role}\n\n${m.content || ''}\n`
+      if (m.tool_calls && m.tool_calls.length > 0) {
+        text += `\n_Tool calls: ${m.tool_calls.map(tc => tc.name).join(', ')}_\n`
+      }
+      return text
+    })
+    if (systemPrompt) {
+      lines.unshift(`### System Prompt\n\n${systemPrompt}\n\n---\n`)
+    }
+    const md = lines.join('\n---\n\n')
+    const blob = new Blob([md], { type: 'text/markdown' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `chat_export_${new Date().toISOString().slice(0, 10)}.md`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
@@ -264,6 +324,11 @@ function ChatInterface({ selectedProfiles = [], selectedLlmProfile, llmProfiles 
         role: msg.role,
         content: msg.content
       }))
+
+      // Prepend system prompt as first system message if set
+      if (systemPrompt.trim()) {
+        historyForAPI.unshift({ role: 'system', content: systemPrompt.trim() })
+      }
 
       const llmConfig = getLlmConfig()
       const res = await fetch('/api/chat/stream', {
@@ -703,21 +768,64 @@ ${evaluators}
               )}
             </p>
           </div>
-          <div className="flex gap-3 flex-wrap">
-            {messages.length > 0 && (
+          <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={() => setShowSystemPrompt(!showSystemPrompt)}
+              className={`btn ${showSystemPrompt ? 'btn-primary' : 'btn-secondary'} text-sm flex items-center gap-2`}
+              title="System prompt"
+            >
+              <Settings2 size={16} />
+              <span className="hidden sm:inline">System</span>
+            </button>
+            {messages.length >= 2 && (
               <button
-                onClick={clearChatHistory}
+                onClick={regenerateLastResponse}
+                disabled={loading}
                 className="btn btn-secondary text-sm flex items-center gap-2"
-                title="Clear chat history"
+                title="Regenerate last response"
               >
-                <Trash2 size={16} />
-                <span>Clear History</span>
+                <RefreshCw size={16} />
+                <span className="hidden sm:inline">Regenerate</span>
               </button>
+            )}
+            {messages.length > 0 && (
+              <>
+                <button
+                  onClick={exportAsMarkdown}
+                  className="btn btn-secondary text-sm flex items-center gap-2"
+                  title="Export as Markdown"
+                >
+                  <Download size={16} />
+                  <span className="hidden sm:inline">Export</span>
+                </button>
+                <button
+                  onClick={clearChatHistory}
+                  className="btn btn-secondary text-sm flex items-center gap-2"
+                  title="Clear chat history"
+                >
+                  <Trash2 size={16} />
+                  <span className="hidden sm:inline">Clear</span>
+                </button>
+              </>
             )}
           </div>
         </div>
 
       </div>
+
+      {/* System Prompt */}
+      {showSystemPrompt && (
+        <div className="px-4 py-3 border-b border-border bg-surface">
+          <label className="block text-xs font-semibold text-text-secondary mb-1">System Prompt</label>
+          <textarea
+            value={systemPrompt}
+            onChange={(e) => setSystemPrompt(e.target.value)}
+            placeholder="Enter a system prompt to guide the LLM's behavior..."
+            className="input w-full text-sm"
+            rows={3}
+          />
+        </div>
+      )}
 
       {/* Active MCP Banner */}
       {activeProfile && (
@@ -903,7 +1011,32 @@ ${evaluators}
                       </div>
                     </>
                   ) : (
-                    <div className="whitespace-pre-wrap leading-relaxed">{message.content}</div>
+                    {editingMessageIdx === idx ? (
+                      <div className="space-y-2">
+                        <textarea
+                          value={editingText}
+                          onChange={(e) => setEditingText(e.target.value)}
+                          className="w-full bg-white/10 rounded p-2 text-sm resize-none"
+                          rows={3}
+                          autoFocus
+                        />
+                        <div className="flex gap-2">
+                          <button onClick={() => editAndResend(idx)} className="text-xs bg-white/20 hover:bg-white/30 px-2 py-1 rounded">Send</button>
+                          <button onClick={() => setEditingMessageIdx(null)} className="text-xs bg-white/10 hover:bg-white/20 px-2 py-1 rounded">Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="whitespace-pre-wrap leading-relaxed group/msg">
+                        {message.content}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setEditingMessageIdx(idx); setEditingText(message.content) }}
+                          className="ml-2 inline-flex opacity-0 group-hover/msg:opacity-100 transition-opacity p-0.5 rounded hover:bg-white/20"
+                          title="Edit message"
+                        >
+                          <Edit3 size={12} />
+                        </button>
+                      </div>
+                    )}
                   )}
 
                   {/* Eval and Test Actions for Assistant Messages */}
