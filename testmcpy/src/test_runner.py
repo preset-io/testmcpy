@@ -124,6 +124,7 @@ class TestCase:
     auth: dict[str, Any] | None = None
     steps: list[TestStep] | None = None  # For multi-turn tests
     load_test: dict[str, Any] | None = None  # For load/burst tests
+    auth_only: bool = False  # For auth-only tests (skip LLM call)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "TestCase":
@@ -137,6 +138,9 @@ class TestCase:
             evaluators = resolve_evaluators(
                 data.get("evaluators", steps[0].evaluators if steps else [])
             )
+        elif data.get("auth_only", False):
+            prompt = data.get("prompt", "")
+            evaluators = resolve_evaluators(data.get("evaluators", []))
         else:
             prompt = data["prompt"]
             evaluators = resolve_evaluators(data.get("evaluators", []))
@@ -151,6 +155,7 @@ class TestCase:
             auth=data.get("auth"),
             steps=steps,
             load_test=data.get("load_test"),
+            auth_only=data.get("auth_only", False),
         )
 
     @property
@@ -162,6 +167,11 @@ class TestCase:
     def is_load_test(self) -> bool:
         """Check if this is a load/burst test."""
         return self.load_test is not None
+
+    @property
+    def is_auth_only(self) -> bool:
+        """Check if this is an auth-only test (no LLM call)."""
+        return self.auth_only and self.auth is not None
 
 
 @dataclass
@@ -687,6 +697,178 @@ class TestRunner:
                 except Exception:
                     pass  # Ignore cleanup errors
 
+    async def run_auth_only_test(self, test_case: TestCase) -> TestResult:
+        """Run an auth-only test that skips the LLM call.
+
+        Tests authentication flows directly without requiring an LLM provider.
+        Creates a temporary MCP client with the test's auth config, performs
+        the auth flow, and runs evaluators against the auth metadata.
+        """
+        start_time = time.time()
+        auth_success = None
+        auth_token = None
+        auth_error = None
+        auth_error_message = None
+        auth_flow_steps = []
+        test_mcp_client = None
+
+        try:
+            if self.verbose:
+                auth_type = test_case.auth.get("type", "unknown")
+                self._log(f"  Auth-only test: {auth_type} flow")
+
+            # Create a temporary MCP client with the test's auth config
+            test_mcp_client = MCPClient(self.mcp_url, auth=test_case.auth)
+
+            try:
+                await test_mcp_client.initialize()
+                auth_success = True
+
+                # Try to get the token from the client's auth object
+                if test_mcp_client.auth and hasattr(test_mcp_client.auth, "token"):
+                    auth_token = test_mcp_client.auth.token
+
+                # Infer auth flow steps from successful auth
+                auth_type = test_case.auth.get("type", "unknown")
+                if auth_type == "oauth":
+                    auth_flow_steps = [
+                        "request_prepared",
+                        "token_endpoint_called",
+                        "response_received",
+                        "token_extracted",
+                    ]
+                elif auth_type == "jwt":
+                    auth_flow_steps = [
+                        "request_prepared",
+                        "jwt_endpoint_called",
+                        "response_received",
+                        "token_extracted",
+                    ]
+                elif auth_type == "bearer":
+                    auth_flow_steps = ["token_validated"]
+
+                if self.verbose:
+                    self._log(
+                        f"  Authentication succeeded (token length: {len(auth_token) if auth_token else 0})"
+                    )
+
+            except Exception as auth_exc:
+                auth_success = False
+                auth_error = str(auth_exc)
+                auth_error_message = str(auth_exc)
+                if self.verbose:
+                    self._log(f"  Authentication failed: {auth_error}")
+
+            # Build evaluator context with auth metadata
+            context = {
+                "prompt": test_case.prompt,
+                "response": "",
+                "tool_calls": [],
+                "tool_results": [],
+                "mcp_client": test_mcp_client,
+                "metadata": {
+                    "duration_seconds": time.time() - start_time,
+                    "model": self.model,
+                    "total_tokens": 0,
+                    "cost": 0.0,
+                    "auth_success": auth_success,
+                    "auth_token": auth_token,
+                    "auth_error": auth_error,
+                    "auth_error_message": auth_error_message,
+                    "auth_flow_steps": auth_flow_steps,
+                    "mcp_url": self.mcp_url,
+                },
+            }
+
+            # Run evaluators
+            evaluations = []
+            all_passed = True
+            total_score = 0.0
+
+            for eval_config in test_case.evaluators:
+                evaluator = self._create_evaluator(eval_config)
+                eval_result = await evaluator.aevaluate(context)
+
+                evaluations.append(
+                    {
+                        "evaluator": evaluator.name,
+                        "passed": eval_result.passed,
+                        "score": eval_result.score,
+                        "reason": eval_result.reason,
+                        "details": eval_result.details,
+                    }
+                )
+
+                if self.verbose:
+                    status = "PASS" if eval_result.passed else "FAIL"
+                    self._log(
+                        f"  Evaluator {evaluator.name}: {status} (score: {eval_result.score:.2f})"
+                    )
+                    self._log(f"    Reason: {eval_result.reason}")
+                    if eval_result.details:
+                        self._log(f"    Details: {eval_result.details}")
+
+                if not eval_result.passed:
+                    all_passed = False
+                total_score += eval_result.score
+
+            avg_score = total_score / len(test_case.evaluators) if test_case.evaluators else 0.0
+            duration = time.time() - start_time
+
+            if all_passed:
+                reason = "All evaluators passed"
+            else:
+                failed_evals = [e for e in evaluations if not e["passed"]]
+                failed_names = [e["evaluator"] for e in failed_evals]
+                if len(failed_evals) == 1:
+                    reason = f"Failed: {failed_names[0]}"
+                else:
+                    reason = f"Failed: {', '.join(failed_names)}"
+
+            return TestResult(
+                test_name=test_case.name,
+                passed=all_passed,
+                score=avg_score,
+                duration=duration,
+                reason=reason,
+                tool_calls=[],
+                tool_results=[],
+                response="",
+                evaluations=evaluations,
+                cost=0.0,
+                token_usage={},
+                auth_success=auth_success,
+                auth_token=auth_token,
+                auth_error=auth_error,
+                auth_error_message=auth_error_message,
+                auth_flow_steps=auth_flow_steps,
+                logs=[],
+            )
+
+        except Exception as e:
+            duration = time.time() - start_time
+            return TestResult(
+                test_name=test_case.name,
+                passed=False,
+                score=0.0,
+                duration=duration,
+                reason=f"Auth-only test failed with error: {str(e)}",
+                error=str(e),
+                auth_success=auth_success,
+                auth_token=auth_token,
+                auth_error=auth_error,
+                auth_error_message=auth_error_message,
+                auth_flow_steps=auth_flow_steps,
+                logs=[],
+            )
+
+        finally:
+            if test_mcp_client:
+                try:
+                    await test_mcp_client.close()
+                except Exception:
+                    pass
+
     async def run_multi_turn_test(self, test_case: TestCase) -> TestResult:
         """Run a multi-turn test with sequential steps sharing context."""
         if not test_case.is_multi_turn:
@@ -1096,7 +1278,9 @@ class TestRunner:
         """Run a test with retry logic for rate limit failures."""
         for attempt in range(max_test_retries + 1):
             # Dispatch to appropriate runner
-            if test_case.is_load_test:
+            if test_case.is_auth_only:
+                result = await self.run_auth_only_test(test_case)
+            elif test_case.is_load_test:
                 result = await self.run_load_test(test_case)
             elif test_case.is_multi_turn:
                 result = await self.run_multi_turn_test(test_case)
