@@ -103,6 +103,40 @@ def create_insecure_httpx_factory():
     return factory
 
 
+def create_mtls_httpx_factory(
+    client_cert: str,
+    client_key: str | None = None,
+    ca_bundle: str | None = None,
+):
+    """Create an httpx client factory with mTLS (client certificate) support.
+
+    Args:
+        client_cert: Path to client certificate file (.pem or .crt)
+        client_key: Path to client private key file (.pem or .key)
+        ca_bundle: Path to CA bundle file for server verification
+    """
+    import ssl
+
+    ssl_context = ssl.create_default_context()
+    if ca_bundle:
+        ssl_context.load_verify_locations(ca_bundle)
+    ssl_context.load_cert_chain(certfile=client_cert, keyfile=client_key)
+
+    def factory(
+        headers: dict[str, str] | None = None,
+        timeout: httpx.Timeout | None = None,
+        auth: httpx.Auth | None = None,
+    ) -> httpx.AsyncClient:
+        return httpx.AsyncClient(
+            headers=headers,
+            timeout=timeout,
+            auth=auth,
+            verify=ssl_context,
+        )
+
+    return factory
+
+
 # Suppress MCP notification validation warnings
 logging.getLogger("root").setLevel(logging.ERROR)
 warnings.filterwarnings("ignore", message="Failed to validate notification")
@@ -250,6 +284,8 @@ class MCPClient:
         # Can be a BearerAuth instance, the literal "oauth" (triggers fastmcp
         # OAuth auto-discovery), or None for no auth.
         self.auth: BearerAuth | str | None = None  # Will be set in initialize()
+        self._token_manager = None  # Optional TokenManager for auto-refresh
+        self._extra_headers: dict[str, str] = {}  # For api_key / custom_headers auth
 
     async def _fetch_jwt_token(
         self,
@@ -588,7 +624,62 @@ class MCPClient:
 
                 print("  [Auth] Using OAuth authentication from parameter", file=sys.stderr)
                 token = await self._fetch_oauth_token(client_id, client_secret, token_url, scopes)
+
+                # Set up TokenManager if refresh_token is available
+                refresh_token = self.auth_config.get("refresh_token")
+                token_expiry = self.auth_config.get("token_expiry")
+                if refresh_token and token_url:
+                    from testmcpy.src.token_manager import TokenManager
+
+                    verify_ssl = not self.auth_config.get("insecure", False)
+                    self._token_manager = TokenManager(
+                        access_token=token,
+                        refresh_token=refresh_token,
+                        token_url=token_url,
+                        expiry=token_expiry,
+                        client_id=client_id,
+                        client_secret=client_secret,
+                        verify_ssl=verify_ssl,
+                    )
+                    print("  [Auth] TokenManager configured for auto-refresh", file=sys.stderr)
+
                 return BearerAuth(token=token)
+
+            elif auth_type == "api_key":
+                # API Key authentication via custom header
+                api_key = self.auth_config.get("api_key")
+                api_key_env = self.auth_config.get("api_key_env")
+                header_name = self.auth_config.get("header_name", "X-API-Key")
+
+                if not api_key and api_key_env:
+                    import os
+
+                    api_key = os.environ.get(api_key_env)
+                    if not api_key:
+                        raise MCPError(f"API key env var '{api_key_env}' not set")
+
+                if not api_key:
+                    raise MCPError("API key auth requires 'api_key' or 'api_key_env' field")
+
+                print(
+                    f"  [Auth] Using API key authentication (header: {header_name})",
+                    file=sys.stderr,
+                )
+                # Store custom headers for transport configuration
+                self._extra_headers = {header_name: api_key}
+                return None  # No bearer auth, headers handled separately
+
+            elif auth_type == "custom_headers":
+                custom_headers = self.auth_config.get("headers", {})
+                if not custom_headers:
+                    raise MCPError("Custom headers auth requires 'headers' field")
+
+                print(
+                    f"  [Auth] Using custom headers authentication ({len(custom_headers)} headers)",
+                    file=sys.stderr,
+                )
+                self._extra_headers = dict(custom_headers)
+                return None  # No bearer auth, headers handled separately
 
             elif auth_type == "none":
                 print("  [Auth] No authentication (explicit)", file=sys.stderr)
@@ -630,6 +721,11 @@ class MCPClient:
                 # Check if we need to skip SSL verification
                 insecure = self.auth_config.get("insecure", False) if self.auth_config else False
 
+                # Check for mTLS configuration
+                client_cert = self.auth_config.get("client_cert") if self.auth_config else None
+                client_key = self.auth_config.get("client_key") if self.auth_config else None
+                ca_bundle = self.auth_config.get("ca_bundle") if self.auth_config else None
+
                 # For OAuth auto-discovery, always use our PresetOAuth subclass
                 # (not fastmcp's upstream OAuth) so the RFC 8707 resource
                 # indicator includes the /mcp path. Otherwise superset-shell
@@ -639,26 +735,31 @@ class MCPClient:
                 if transport_auth == "oauth":
                     transport_auth = PresetOAuth(self.base_url, insecure=insecure)
 
-                if insecure:
+                # Determine the httpx client factory based on SSL config
+                httpx_factory = None
+                if client_cert:
+                    print("  [MCP] mTLS enabled (client certificate)", file=sys.stderr)
+                    httpx_factory = create_mtls_httpx_factory(
+                        client_cert=client_cert,
+                        client_key=client_key,
+                        ca_bundle=ca_bundle,
+                    )
+                elif insecure:
                     print("  [MCP] SSL verification disabled (insecure mode)", file=sys.stderr)
-                    transport = StreamableHttpTransport(
-                        url=self.base_url,
-                        auth=transport_auth,
-                        httpx_client_factory=create_insecure_httpx_factory(),
-                    )
-                    # Don't pass auth again to Client — it would overwrite the
-                    # transport's auth we just configured.
-                    self.client = Client(transport)
-                else:
-                    # Construct the transport explicitly so we can inject our
-                    # PresetOAuth instance (passing auth="oauth" as a string
-                    # would make fastmcp instantiate its unpatched upstream
-                    # OAuth class instead).
-                    transport = StreamableHttpTransport(
-                        url=self.base_url,
-                        auth=transport_auth,
-                    )
-                    self.client = Client(transport)
+                    httpx_factory = create_insecure_httpx_factory()
+
+                # Build transport kwargs
+                transport_kwargs: dict[str, Any] = {
+                    "url": self.base_url,
+                    "auth": transport_auth,
+                }
+                if httpx_factory:
+                    transport_kwargs["httpx_client_factory"] = httpx_factory
+                if self._extra_headers:
+                    transport_kwargs["headers"] = self._extra_headers
+
+                transport = StreamableHttpTransport(**transport_kwargs)
+                self.client = Client(transport)
 
                 await asyncio.wait_for(self.client.__aenter__(), timeout=timeout)
             except asyncio.TimeoutError:
@@ -959,6 +1060,38 @@ class MCPClient:
                 error_message=f"Tool call '{tool_call.name}' timed out after {timeout}s",
             )
         except Exception as e:
+            # Check for 401 Unauthorized — attempt token refresh and retry once
+            error_str = str(e)
+            is_401 = "401" in error_str or "Unauthorized" in error_str
+            if is_401 and self._token_manager:
+                try:
+                    from testmcpy.src.token_manager import TokenRefreshError
+
+                    print(
+                        f"  [Auth] Got 401 for '{tool_call.name}', refreshing token...",
+                        file=sys.stderr,
+                    )
+                    await self._token_manager.refresh()
+                    # Update the BearerAuth with new token
+                    self.auth = BearerAuth(token=self._token_manager.access_token)
+                    # Retry the call once (recursive with no further retry)
+                    saved_manager = self._token_manager
+                    self._token_manager = None  # Prevent infinite retry loop
+                    try:
+                        return await self.call_tool(tool_call, timeout)
+                    finally:
+                        self._token_manager = saved_manager
+                except (TokenRefreshError, Exception) as refresh_err:
+                    return MCPToolResult(
+                        tool_call_id=tool_call.id or "unknown",
+                        content=None,
+                        is_error=True,
+                        error_message=(
+                            f"Tool call '{tool_call.name}' got 401 and token "
+                            f"refresh failed: {refresh_err}"
+                        ),
+                    )
+
             return MCPToolResult(
                 tool_call_id=tool_call.id or "unknown",
                 content=None,

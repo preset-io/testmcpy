@@ -2504,6 +2504,7 @@ def create_evaluator(name: str, **kwargs) -> BaseEvaluator:
     from testmcpy.evals.auth_evaluators import (
         AuthErrorHandlingEvaluator,
         AuthSuccessfulEvaluator,
+        JWTClaimsValidEvaluator,
         OAuth2FlowEvaluator,
         TokenValidEvaluator,
     )
@@ -2539,6 +2540,7 @@ def create_evaluator(name: str, **kwargs) -> BaseEvaluator:
         "token_valid": TokenValidEvaluator,
         "oauth2_flow_complete": OAuth2FlowEvaluator,
         "auth_error_handling": AuthErrorHandlingEvaluator,
+        "jwt_claims_valid": JWTClaimsValidEvaluator,
         # Load/burst test aggregate evaluators
         "success_rate_above": SuccessRateAbove,
         "latency_percentile": LatencyPercentile,

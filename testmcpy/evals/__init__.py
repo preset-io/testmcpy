@@ -3,6 +3,7 @@
 from testmcpy.evals.auth_evaluators import (
     AuthErrorHandlingEvaluator,
     AuthSuccessfulEvaluator,
+    JWTClaimsValidEvaluator,
     OAuth2FlowEvaluator,
     TokenValidEvaluator,
 )
@@ -61,6 +62,7 @@ __all__ = [
     "TokenValidEvaluator",
     "OAuth2FlowEvaluator",
     "AuthErrorHandlingEvaluator",
+    "JWTClaimsValidEvaluator",
     # Evaluator packs
     "resolve_evaluator_pack",
     "resolve_evaluators",

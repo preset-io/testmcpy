@@ -3,10 +3,14 @@ Authentication-specific evaluators for testmcpy.
 
 These evaluators validate authentication flows including OAuth2, JWT,
 and Bearer token authentication. They can be used to test auth success,
-token validity, OAuth flow completion, and error handling.
+token validity, OAuth flow completion, error handling, and JWT claim
+validation.
 """
 
+import base64
+import json
 import re
+import time
 from typing import Any
 
 from testmcpy.evals.base_evaluators import BaseEvaluator, EvalResult
@@ -536,4 +540,197 @@ class AuthErrorHandlingEvaluator(BaseEvaluator):
             score=1.0,
             reason="Error message provides clear, detailed information",
             details={"message": auth_error_message, "length": len(auth_error_message)},
+        )
+
+
+class JWTClaimsValidEvaluator(BaseEvaluator):
+    """
+    Evaluate JWT token claims for correctness.
+
+    Decodes a JWT token (without cryptographic verification by default) and
+    validates specified claims: iss, aud, exp, sub, and any custom claims.
+
+    Args:
+        args: Configuration dict with optional keys:
+            - token_field: Metadata field containing the JWT token
+                          (default: "auth_token")
+            - iss: Expected issuer claim value
+            - aud: Expected audience claim value (string or list)
+            - sub: Expected subject claim value
+            - check_exp: Whether to check expiration (default: True)
+            - custom_claims: Dict of claim_name -> expected_value pairs
+
+    Example:
+        ```python
+        evaluator = JWTClaimsValidEvaluator(args={
+            "iss": "https://auth.example.com",
+            "aud": "my-api",
+            "check_exp": True,
+            "custom_claims": {"role": "admin"}
+        })
+        ```
+    """
+
+    def __init__(self, args: dict[str, Any] | None = None):
+        self.args = args or {}
+
+    @property
+    def name(self) -> str:
+        return "jwt_claims_valid"
+
+    @property
+    def description(self) -> str:
+        checks = []
+        if self.args.get("iss"):
+            checks.append(f"iss={self.args['iss']}")
+        if self.args.get("aud"):
+            checks.append(f"aud={self.args['aud']}")
+        if self.args.get("sub"):
+            checks.append(f"sub={self.args['sub']}")
+        if self.args.get("check_exp", True):
+            checks.append("exp")
+        if self.args.get("custom_claims"):
+            checks.append(f"custom({len(self.args['custom_claims'])})")
+        return f"Validates JWT claims: {', '.join(checks) or 'structure only'}"
+
+    @staticmethod
+    def decode_jwt_payload(token: str) -> dict[str, Any]:
+        """Decode the payload of a JWT token without verification.
+
+        Args:
+            token: JWT token string (header.payload.signature)
+
+        Returns:
+            Decoded payload as a dictionary.
+
+        Raises:
+            ValueError: If the token is not a valid JWT structure.
+        """
+        parts = token.split(".")
+        if len(parts) != 3:
+            raise ValueError(f"Invalid JWT structure: expected 3 parts, got {len(parts)}")
+
+        payload_part = parts[1]
+        # Add padding if needed for base64 decoding
+        padding = 4 - len(payload_part) % 4
+        if padding != 4:
+            payload_part += "=" * padding
+
+        payload_bytes = base64.urlsafe_b64decode(payload_part)
+        return json.loads(payload_bytes)
+
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
+        """
+        Evaluate JWT token claims.
+
+        Args:
+            context: Dictionary containing metadata with the JWT token.
+
+        Returns:
+            EvalResult with claim validation details.
+        """
+        metadata = context.get("metadata", {})
+        token_field = self.args.get("token_field", "auth_token")
+        token = metadata.get(token_field)
+
+        if not token:
+            return EvalResult(
+                passed=False,
+                score=0.0,
+                reason=f"No JWT token found in metadata field '{token_field}'",
+            )
+
+        # Decode JWT
+        try:
+            payload = self.decode_jwt_payload(token)
+        except (ValueError, json.JSONDecodeError, Exception) as e:
+            return EvalResult(
+                passed=False,
+                score=0.1,
+                reason=f"Failed to decode JWT: {e}",
+                details={"error": str(e)},
+            )
+
+        failed_claims: list[str] = []
+        passed_claims: list[str] = []
+        details: dict[str, Any] = {"claims": list(payload.keys())}
+
+        # Check issuer (iss)
+        expected_iss = self.args.get("iss")
+        if expected_iss is not None:
+            actual_iss = payload.get("iss")
+            if actual_iss == expected_iss:
+                passed_claims.append("iss")
+            else:
+                failed_claims.append(f"iss: expected '{expected_iss}', got '{actual_iss}'")
+
+        # Check audience (aud)
+        expected_aud = self.args.get("aud")
+        if expected_aud is not None:
+            actual_aud = payload.get("aud")
+            # aud can be a string or list
+            if isinstance(actual_aud, list):
+                if expected_aud in actual_aud:
+                    passed_claims.append("aud")
+                else:
+                    failed_claims.append(f"aud: expected '{expected_aud}' in {actual_aud}")
+            elif actual_aud == expected_aud:
+                passed_claims.append("aud")
+            else:
+                failed_claims.append(f"aud: expected '{expected_aud}', got '{actual_aud}'")
+
+        # Check subject (sub)
+        expected_sub = self.args.get("sub")
+        if expected_sub is not None:
+            actual_sub = payload.get("sub")
+            if actual_sub == expected_sub:
+                passed_claims.append("sub")
+            else:
+                failed_claims.append(f"sub: expected '{expected_sub}', got '{actual_sub}'")
+
+        # Check expiration (exp)
+        check_exp = self.args.get("check_exp", True)
+        if check_exp:
+            exp = payload.get("exp")
+            if exp is None:
+                failed_claims.append("exp: missing expiration claim")
+            elif not isinstance(exp, (int, float)):
+                failed_claims.append(f"exp: invalid type {type(exp).__name__}")
+            elif exp < time.time():
+                failed_claims.append(f"exp: token expired at {exp} (current: {int(time.time())})")
+                details["expired"] = True
+            else:
+                passed_claims.append("exp")
+                details["expires_in_seconds"] = int(exp - time.time())
+
+        # Check custom claims
+        custom_claims = self.args.get("custom_claims", {})
+        for claim_name, expected_value in custom_claims.items():
+            actual_value = payload.get(claim_name)
+            if actual_value == expected_value:
+                passed_claims.append(claim_name)
+            else:
+                failed_claims.append(
+                    f"{claim_name}: expected '{expected_value}', got '{actual_value}'"
+                )
+
+        details["passed_claims"] = passed_claims
+        details["failed_claims"] = failed_claims
+
+        total_checks = len(passed_claims) + len(failed_claims)
+        score = len(passed_claims) / total_checks if total_checks > 0 else 1.0
+
+        if failed_claims:
+            return EvalResult(
+                passed=False,
+                score=score,
+                reason=f"JWT claim validation failed: {'; '.join(failed_claims)}",
+                details=details,
+            )
+
+        return EvalResult(
+            passed=True,
+            score=1.0,
+            reason=f"All JWT claims valid ({len(passed_claims)} checked)",
+            details=details,
         )
