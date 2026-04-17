@@ -1388,12 +1388,16 @@ class ClaudeSDKProvider(LLMProvider):
                     async for message in query(prompt=prompt, options=options):
                         message_count += 1
                         msg_type = type(message).__name__
-                        raw_events.append({"type": msg_type})
-                        log(f"[ClaudeSDK] Message #{message_count}: {msg_type}")
 
                         if isinstance(message, SystemMessage):
-                            # System messages from SDK — skip
+                            raw_events.append(
+                                {"type": msg_type, "subtype": message.subtype, "data": message.data}
+                            )
+                            log(f"[ClaudeSDK] System ({message.subtype})")
                             continue
+
+                        raw_events.append({"type": msg_type})
+                        log(f"[ClaudeSDK] Message #{message_count}: {msg_type}")
 
                         if isinstance(message, RateLimitEvent):
                             # Rate limit info from subscription — log but continue
