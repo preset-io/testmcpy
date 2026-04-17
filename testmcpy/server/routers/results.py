@@ -338,3 +338,80 @@ async def export_test_run_json(run_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=f"Test run {run_id} not found")
 
     return run
+
+
+@router.get("/run/{run_id}/traces")
+async def get_run_traces(run_id: str) -> dict[str, Any]:
+    """
+    Get tool call timing data for a test run (trace waterfall view).
+
+    Extracts timing from stored question results to build
+    a timeline of tool calls within each test.
+    """
+    storage = get_storage()
+    run = storage.get_run(run_id)
+
+    if not run:
+        raise HTTPException(status_code=404, detail=f"Test run {run_id} not found")
+
+    traces = []
+    for qr in run.get("question_results", []):
+        question_trace = {
+            "question_id": qr["question_id"],
+            "passed": qr["passed"],
+            "total_duration_ms": qr["duration_ms"],
+            "tool_calls": [],
+        }
+
+        tool_uses = qr.get("tool_uses") or []
+        tool_results = qr.get("tool_results") or []
+
+        # Build timeline from tool_uses and tool_results
+        cumulative_ms = 0
+        for i, tool_use in enumerate(tool_uses):
+            tool_name = tool_use.get("name", tool_use.get("tool_name", f"tool_{i}"))
+            arguments = tool_use.get("arguments", tool_use.get("input", {}))
+
+            # Try to get corresponding result
+            result_data = None
+            is_error = False
+            if i < len(tool_results):
+                result_data = tool_results[i]
+                is_error = bool(result_data.get("is_error") or result_data.get("error"))
+
+            # Estimate duration: if we have individual timing, use it;
+            # otherwise distribute evenly across tool calls
+            call_duration_ms = 0
+            if isinstance(tool_use, dict) and "duration_ms" in tool_use:
+                call_duration_ms = tool_use["duration_ms"]
+            elif isinstance(result_data, dict) and "duration_ms" in (result_data or {}):
+                call_duration_ms = result_data["duration_ms"]
+            elif tool_uses:
+                # Distribute total duration evenly as estimate
+                call_duration_ms = qr["duration_ms"] / len(tool_uses)
+
+            start_ms = cumulative_ms
+            cumulative_ms += call_duration_ms
+
+            question_trace["tool_calls"].append(
+                {
+                    "index": i,
+                    "name": tool_name,
+                    "arguments": arguments,
+                    "result": result_data,
+                    "is_error": is_error,
+                    "start_ms": round(start_ms),
+                    "duration_ms": round(call_duration_ms),
+                    "status": "error" if is_error else "success",
+                }
+            )
+
+        traces.append(question_trace)
+
+    return {
+        "run_id": run_id,
+        "model": run["model"],
+        "provider": run["provider"],
+        "started_at": run["started_at"],
+        "traces": traces,
+    }

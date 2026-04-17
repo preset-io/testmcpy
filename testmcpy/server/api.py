@@ -34,6 +34,10 @@ from testmcpy.server.routers import smoke_reports as smoke_reports_router  # noq
 from testmcpy.server.routers import test_profiles as test_profiles_router  # noqa: E402
 from testmcpy.server.routers import tests as tests_router  # noqa: E402
 from testmcpy.server.routers import compatibility as compatibility_router  # noqa: E402
+from testmcpy.server.routers import compare as compare_router  # noqa: E402
+from testmcpy.server.routers import health as health_router  # noqa: E402
+from testmcpy.server.routers import metrics as metrics_router  # noqa: E402
+from testmcpy.server.routers import security as security_router  # noqa: E402
 from testmcpy.server.routers import tools as tools_router  # noqa: E402
 from testmcpy.server.websocket import strip_mcp_prefix  # noqa: E402
 from testmcpy.src.llm_integration import create_llm_provider  # noqa: E402
@@ -362,6 +366,10 @@ app.include_router(smoke_reports_router.router)
 app.include_router(test_profiles_router.router)
 app.include_router(tests_router.router)
 app.include_router(compatibility_router.router)
+app.include_router(compare_router.router)
+app.include_router(health_router.router)
+app.include_router(metrics_router.router)
+app.include_router(security_router.router)
 app.include_router(tools_router.router)
 
 
