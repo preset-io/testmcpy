@@ -18,8 +18,11 @@ import {
   TrendingUp,
   Clock,
   DollarSign,
+  Wand2,
+  Server,
 } from 'lucide-react'
 import Editor from '@monaco-editor/react'
+import Wizard from '../components/Wizard'
 import TestStatusIndicator from '../components/TestStatusIndicator'
 import TestResultPanel from '../components/TestResultPanel'
 import { useKeyboardShortcuts, useAnnounce } from '../hooks/useKeyboardShortcuts'
@@ -76,6 +79,284 @@ function parseTestLocations(content) {
   return tests
 }
 
+// Available evaluator types for the wizard
+const EVALUATOR_TYPES = [
+  { name: 'execution_successful', desc: 'Check that the LLM execution completed without errors', args: [] },
+  { name: 'was_mcp_tool_called', desc: 'Check that a specific MCP tool was called', args: [{ key: 'tool_name', label: 'Tool Name', required: true }] },
+  { name: 'final_answer_contains', desc: 'Check that the response contains specific text', args: [{ key: 'text', label: 'Expected Text', required: true }, { key: 'case_sensitive', label: 'Case Sensitive', type: 'bool' }] },
+  { name: 'tool_called_with_params', desc: 'Check that a tool was called with specific parameters', args: [{ key: 'tool_name', label: 'Tool Name', required: true }, { key: 'params', label: 'Parameters (JSON)', type: 'json' }] },
+  { name: 'tool_call_count', desc: 'Check the number of tool calls made', args: [{ key: 'tool_name', label: 'Tool Name', required: true }, { key: 'count', label: 'Expected Count', type: 'number' }] },
+  { name: 'within_time_limit', desc: 'Check execution completed within time limit', args: [{ key: 'seconds', label: 'Seconds', type: 'number', required: true }] },
+  { name: 'answer_contains_link', desc: 'Check that the response contains a URL/link', args: [] },
+  { name: 'sql_query_valid', desc: 'Check that generated SQL is valid', args: [] },
+  { name: 'token_usage_reasonable', desc: 'Check token usage is within bounds', args: [{ key: 'max_tokens', label: 'Max Tokens', type: 'number' }] },
+]
+
+// Test Case Wizard - guided flow for creating test YAML files
+function TestCaseWizard({ onComplete, onCancel }) {
+  const [wizardData, setWizardData] = useState({
+    // Step 1: File info
+    filename: '',
+    // Step 2: Tools (optional - for context)
+    discoveredTools: [],
+    loadingTools: false,
+    selectedTools: [],
+    // Step 3: Tests
+    tests: [{ name: '', prompt: '', evaluators: [{ type: 'execution_successful', args: {} }] }],
+    // Step 4: Preview
+    yamlPreview: '',
+  })
+
+  // Generate YAML from wizard data
+  const generateYaml = (data) => {
+    let yaml = 'version: "1.0"\ntests:\n'
+    for (const test of data.tests) {
+      if (!test.name.trim() || !test.prompt.trim()) continue
+      yaml += `  - name: ${test.name}\n`
+      yaml += `    prompt: "${test.prompt.replace(/"/g, '\\"')}"\n`
+      if (test.evaluators.length > 0) {
+        yaml += `    evaluators:\n`
+        for (const ev of test.evaluators) {
+          yaml += `      - name: ${ev.type}\n`
+          const evalType = EVALUATOR_TYPES.find(e => e.name === ev.type)
+          if (evalType && evalType.args.length > 0) {
+            const hasArgs = Object.entries(ev.args || {}).some(([, v]) => v !== '' && v !== undefined)
+            if (hasArgs) {
+              yaml += `        args:\n`
+              for (const [key, value] of Object.entries(ev.args || {})) {
+                if (value !== '' && value !== undefined) {
+                  // Handle different types
+                  if (typeof value === 'number' || value === 'true' || value === 'false') {
+                    yaml += `          ${key}: ${value}\n`
+                  } else {
+                    yaml += `          ${key}: "${value}"\n`
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    return yaml
+  }
+
+  const steps = [
+    {
+      label: 'Setup',
+      validate: (data) => {
+        if (!data.filename.trim()) return 'File name is required'
+        return true
+      },
+      component: ({ data, setData }) => (
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-1">Test File Name</label>
+            <input
+              type="text"
+              value={data.filename}
+              onChange={(e) => setData(prev => ({ ...prev, filename: e.target.value }))}
+              className="input w-full"
+              placeholder="e.g., my_tool_tests.yaml"
+              autoFocus
+            />
+            <p className="text-text-tertiary text-xs mt-1">.yaml extension will be added automatically if missing</p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      label: 'Write Tests',
+      validate: (data) => {
+        const validTests = data.tests.filter(t => t.name.trim() && t.prompt.trim())
+        if (validTests.length === 0) return 'Add at least one test with a name and prompt'
+        return true
+      },
+      component: ({ data, setData }) => (
+        <div className="space-y-4">
+          <p className="text-sm text-text-secondary">
+            Define your test cases. Each test needs a name, a prompt for the LLM, and evaluators to check the result.
+          </p>
+
+          {data.tests.map((test, testIdx) => (
+            <div key={testIdx} className="bg-surface rounded-lg p-4 border border-border space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-text-tertiary">Test {testIdx + 1}</span>
+                {data.tests.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setData(prev => ({
+                        ...prev,
+                        tests: prev.tests.filter((_, i) => i !== testIdx)
+                      }))
+                    }}
+                    className="p-1 hover:bg-error/20 rounded text-error"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1">Test Name</label>
+                <input
+                  type="text"
+                  value={test.name}
+                  onChange={(e) => {
+                    const newTests = [...data.tests]
+                    newTests[testIdx] = { ...test, name: e.target.value }
+                    setData(prev => ({ ...prev, tests: newTests }))
+                  }}
+                  className="input w-full text-sm"
+                  placeholder="e.g., list_dashboards_basic"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1">Prompt</label>
+                <textarea
+                  value={test.prompt}
+                  onChange={(e) => {
+                    const newTests = [...data.tests]
+                    newTests[testIdx] = { ...test, prompt: e.target.value }
+                    setData(prev => ({ ...prev, tests: newTests }))
+                  }}
+                  className="input w-full text-sm"
+                  rows={2}
+                  placeholder="e.g., List all dashboards and show their titles"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1">Evaluators</label>
+                <div className="space-y-2">
+                  {test.evaluators.map((ev, evIdx) => (
+                    <div key={evIdx} className="flex items-start gap-2">
+                      <select
+                        value={ev.type}
+                        onChange={(e) => {
+                          const newTests = [...data.tests]
+                          newTests[testIdx].evaluators[evIdx] = { type: e.target.value, args: {} }
+                          setData(prev => ({ ...prev, tests: newTests }))
+                        }}
+                        className="input text-xs flex-1"
+                      >
+                        {EVALUATOR_TYPES.map(et => (
+                          <option key={et.name} value={et.name}>{et.name}</option>
+                        ))}
+                      </select>
+
+                      {/* Show args for evaluators that need them */}
+                      {EVALUATOR_TYPES.find(et => et.name === ev.type)?.args.map(arg => (
+                        <input
+                          key={arg.key}
+                          type={arg.type === 'number' ? 'number' : 'text'}
+                          value={ev.args?.[arg.key] || ''}
+                          onChange={(e) => {
+                            const newTests = [...data.tests]
+                            newTests[testIdx].evaluators[evIdx] = {
+                              ...ev,
+                              args: { ...ev.args, [arg.key]: e.target.value }
+                            }
+                            setData(prev => ({ ...prev, tests: newTests }))
+                          }}
+                          className="input text-xs w-32"
+                          placeholder={arg.label}
+                        />
+                      ))}
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newTests = [...data.tests]
+                          newTests[testIdx].evaluators = test.evaluators.filter((_, i) => i !== evIdx)
+                          setData(prev => ({ ...prev, tests: newTests }))
+                        }}
+                        className="p-1 hover:bg-error/20 rounded text-error flex-shrink-0"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newTests = [...data.tests]
+                      newTests[testIdx].evaluators = [
+                        ...test.evaluators,
+                        { type: 'execution_successful', args: {} }
+                      ]
+                      setData(prev => ({ ...prev, tests: newTests }))
+                    }}
+                    className="text-xs text-primary hover:text-primary/80 flex items-center gap-1"
+                  >
+                    <Plus size={12} /> Add Evaluator
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+
+          <button
+            type="button"
+            onClick={() => {
+              setData(prev => ({
+                ...prev,
+                tests: [
+                  ...prev.tests,
+                  { name: '', prompt: '', evaluators: [{ type: 'execution_successful', args: {} }] }
+                ]
+              }))
+            }}
+            className="w-full p-3 border-2 border-dashed border-border rounded-lg hover:border-primary hover:bg-primary/5 transition-all flex items-center justify-center gap-2 text-text-secondary hover:text-primary text-sm"
+          >
+            <Plus size={14} /> Add Another Test
+          </button>
+        </div>
+      ),
+    },
+    {
+      label: 'Preview & Save',
+      component: ({ data, setData }) => {
+        const yaml = generateYaml(data)
+        return (
+          <div className="space-y-4">
+            <h4 className="text-sm font-medium text-text-secondary">Generated YAML:</h4>
+            <div className="bg-surface rounded-lg border border-border overflow-hidden">
+              <pre className="p-4 text-xs font-mono overflow-auto max-h-[400px] text-text-primary">
+                {yaml}
+              </pre>
+            </div>
+            <p className="text-xs text-text-tertiary">
+              This will create <code className="bg-surface px-1 rounded">{data.filename.endsWith('.yaml') ? data.filename : `${data.filename}.yaml`}</code> in your tests directory.
+              You can edit it afterwards in the editor.
+            </p>
+          </div>
+        )
+      },
+    },
+  ]
+
+  const handleComplete = (data) => {
+    const yaml = generateYaml(data)
+    const filename = data.filename.endsWith('.yaml') ? data.filename : `${data.filename}.yaml`
+    onComplete(filename, yaml)
+  }
+
+  return (
+    <Wizard
+      title="Create Test Case"
+      steps={steps}
+      data={wizardData}
+      setData={setWizardData}
+      onComplete={handleComplete}
+      onCancel={onCancel}
+    />
+  )
+}
+
 function TestManager({ selectedProfiles = [], selectedLlmProfile = null, llmProfiles = [] }) {
   const { monacoTheme } = useEditorTheme()
   // Get test run state from context (persists across navigation)
@@ -120,6 +401,7 @@ function TestManager({ selectedProfiles = [], selectedLlmProfile = null, llmProf
   const [selectedHistoryRun, setSelectedHistoryRun] = useState(null)
   const [bottomPanelTab, setBottomPanelTab] = useState('logs') // 'logs' or 'results'
   const [showFileTree, setShowFileTree] = useState(false)
+  const [showTestWizard, setShowTestWizard] = useState(false)
 
   useEffect(() => {
     loadTestFiles()
@@ -699,13 +981,22 @@ tests:
           <div className="p-4 border-b border-border">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base md:text-lg font-semibold text-text-primary">Test Files</h2>
-              <button
-                onClick={() => setShowNewFileDialog(true)}
-                className="p-2 hover:bg-surface-hover rounded-lg transition-all duration-200 text-text-secondary hover:text-text-primary"
-                title="Create new test file"
-              >
-                <Plus size={20} />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setShowTestWizard(true)}
+                  className="p-2 hover:bg-surface-hover rounded-lg transition-all duration-200 text-primary hover:text-primary/80"
+                  title="Create test (Wizard)"
+                >
+                  <Wand2 size={18} />
+                </button>
+                <button
+                  onClick={() => setShowNewFileDialog(true)}
+                  className="p-2 hover:bg-surface-hover rounded-lg transition-all duration-200 text-text-secondary hover:text-text-primary"
+                  title="Create new test file"
+                >
+                  <Plus size={20} />
+                </button>
+              </div>
             </div>
 
           {showNewFileDialog && (
@@ -1406,6 +1697,28 @@ tests:
         )}
         </div>
       </div>
+
+      {/* Test Case Wizard */}
+      {showTestWizard && (
+        <TestCaseWizard
+          onComplete={async (filename, yamlContent) => {
+            try {
+              await fetch('/api/tests', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filename, content: yamlContent }),
+              })
+              setShowTestWizard(false)
+              loadTestFiles()
+              loadTestFile(filename)
+            } catch (error) {
+              console.error('Failed to create test file:', error)
+              alert('Failed to create test file')
+            }
+          }}
+          onCancel={() => setShowTestWizard(false)}
+        />
+      )}
     </div>
   )
 }
