@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   Lock,
   Play,
@@ -18,7 +18,9 @@ import {
   HelpCircle,
   Loader,
   ArrowRight,
-  Info
+  Info,
+  Eye,
+  Timer
 } from 'lucide-react'
 import ReactJson from '@microlink/react-json-view'
 import { useEditorTheme } from '../hooks/useEditorTheme'
@@ -454,6 +456,248 @@ function StepExplanation({ stepName, visible, onClose }) {
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+// JWT Token Decoder Component
+function JWTDecoder({ jsonTheme }) {
+  const [tokenInput, setTokenInput] = useState('')
+  const [decoded, setDecoded] = useState(null)
+  const [decodeError, setDecodeError] = useState(null)
+
+  const decodeToken = () => {
+    setDecoded(null)
+    setDecodeError(null)
+
+    if (!tokenInput.trim()) {
+      setDecodeError('Please paste a JWT token')
+      return
+    }
+
+    try {
+      const parts = tokenInput.trim().split('.')
+      if (parts.length !== 3) {
+        setDecodeError(`Invalid JWT structure: expected 3 parts, got ${parts.length}`)
+        return
+      }
+
+      // Decode header
+      const headerJson = atob(parts[0].replace(/-/g, '+').replace(/_/g, '/'))
+      const header = JSON.parse(headerJson)
+
+      // Decode payload
+      let payloadB64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+      while (payloadB64.length % 4) payloadB64 += '='
+      const payloadJson = atob(payloadB64)
+      const payload = JSON.parse(payloadJson)
+
+      setDecoded({ header, payload, signature: parts[2].substring(0, 20) + '...' })
+    } catch (e) {
+      setDecodeError(`Failed to decode: ${e.message}`)
+    }
+  }
+
+  return (
+    <div className="bg-surface-elevated rounded-xl border border-border p-6 space-y-4">
+      <h3 className="text-lg font-semibold text-text-primary flex items-center gap-2">
+        <Eye size={20} className="text-primary" />
+        JWT Token Decoder
+      </h3>
+      <div>
+        <textarea
+          value={tokenInput}
+          onChange={(e) => setTokenInput(e.target.value)}
+          placeholder="Paste a JWT token here (eyJhbG...)"
+          rows={3}
+          className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-text-primary placeholder-text-disabled focus:outline-none focus:ring-2 focus:ring-primary font-mono text-sm"
+        />
+        <button
+          onClick={decodeToken}
+          className="mt-2 px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg transition-colors flex items-center gap-2 text-sm"
+        >
+          <Key size={16} />
+          Decode Token
+        </button>
+      </div>
+
+      {decodeError && (
+        <div className="p-3 bg-error/10 border border-error/30 rounded-lg text-sm text-error">
+          {decodeError}
+        </div>
+      )}
+
+      {decoded && (
+        <div className="space-y-3">
+          <div>
+            <div className="text-xs font-semibold text-text-secondary mb-1">Header</div>
+            <div className="bg-background-subtle rounded-lg p-3 border border-border">
+              <ReactJson
+                src={decoded.header}
+                theme={jsonTheme}
+                collapsed={false}
+                displayDataTypes={false}
+                name="header"
+                indentWidth={2}
+                style={{ backgroundColor: 'transparent', fontSize: '12px', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace' }}
+              />
+            </div>
+          </div>
+          <div>
+            <div className="text-xs font-semibold text-text-secondary mb-1">Payload</div>
+            <div className="bg-background-subtle rounded-lg p-3 border border-border">
+              <ReactJson
+                src={decoded.payload}
+                theme={jsonTheme}
+                collapsed={false}
+                displayDataTypes={false}
+                name="payload"
+                indentWidth={2}
+                style={{ backgroundColor: 'transparent', fontSize: '12px', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace' }}
+              />
+            </div>
+          </div>
+
+          {/* Expiry Countdown */}
+          {decoded.payload.exp && (
+            <ExpiryCountdown exp={decoded.payload.exp} />
+          )}
+
+          <div className="text-xs text-text-tertiary">
+            Signature: <span className="font-mono">{decoded.signature}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Live Expiry Countdown Component
+function ExpiryCountdown({ exp }) {
+  const [timeLeft, setTimeLeft] = useState(null)
+  const intervalRef = useRef(null)
+
+  useEffect(() => {
+    const update = () => {
+      const now = Math.floor(Date.now() / 1000)
+      const remaining = exp - now
+      setTimeLeft(remaining)
+    }
+
+    update()
+    intervalRef.current = setInterval(update, 1000)
+    return () => clearInterval(intervalRef.current)
+  }, [exp])
+
+  if (timeLeft === null) return null
+
+  const isExpired = timeLeft <= 0
+  const absTime = Math.abs(timeLeft)
+  const hours = Math.floor(absTime / 3600)
+  const minutes = Math.floor((absTime % 3600) / 60)
+  const seconds = absTime % 60
+
+  const formatted = hours > 0
+    ? `${hours}h ${minutes}m ${seconds}s`
+    : minutes > 0
+      ? `${minutes}m ${seconds}s`
+      : `${seconds}s`
+
+  return (
+    <div className={`flex items-center gap-2 p-3 rounded-lg border ${
+      isExpired
+        ? 'bg-error/10 border-error/30'
+        : timeLeft < 300
+          ? 'bg-yellow-500/10 border-yellow-500/30'
+          : 'bg-success/10 border-success/30'
+    }`}>
+      <Timer size={16} className={isExpired ? 'text-error' : timeLeft < 300 ? 'text-yellow-500' : 'text-success'} />
+      <div>
+        <div className={`text-sm font-medium ${isExpired ? 'text-error' : timeLeft < 300 ? 'text-yellow-500' : 'text-success'}`}>
+          {isExpired ? `Expired ${formatted} ago` : `Expires in ${formatted}`}
+        </div>
+        <div className="text-xs text-text-tertiary">
+          {new Date(exp * 1000).toLocaleString()}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Test Refresh Button Component
+function TestRefreshButton({ tokenUrl, refreshToken, clientId, clientSecret, onNewToken }) {
+  const [refreshing, setRefreshing] = useState(false)
+  const [refreshResult, setRefreshResult] = useState(null)
+
+  const handleTestRefresh = async () => {
+    if (!tokenUrl || !refreshToken) return
+
+    setRefreshing(true)
+    setRefreshResult(null)
+
+    try {
+      const res = await fetch('/api/debug-auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          auth_type: 'oauth',
+          token_url: tokenUrl,
+          client_id: clientId,
+          client_secret: clientSecret,
+          refresh_token: refreshToken,
+        })
+      })
+      const data = await res.json()
+
+      if (data.success) {
+        const tokenStep = data.steps.find(s => s.step.includes('Token Extracted'))
+        const newToken = tokenStep?.data?.access_token
+        setRefreshResult({ success: true, token_preview: newToken ? newToken.substring(0, 30) + '...' : 'token obtained' })
+        if (newToken && onNewToken) onNewToken(newToken)
+      } else {
+        setRefreshResult({ success: false, error: data.error || 'Refresh failed' })
+      }
+    } catch (e) {
+      setRefreshResult({ success: false, error: e.message })
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  if (!tokenUrl || !refreshToken) return null
+
+  return (
+    <div className="space-y-2">
+      <button
+        onClick={handleTestRefresh}
+        disabled={refreshing}
+        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2 text-sm disabled:opacity-50"
+      >
+        {refreshing ? (
+          <>
+            <Loader className="animate-spin" size={16} />
+            Refreshing...
+          </>
+        ) : (
+          <>
+            <RefreshCw size={16} />
+            Test Token Refresh
+          </>
+        )}
+      </button>
+
+      {refreshResult && (
+        <div className={`p-3 rounded-lg border text-sm ${
+          refreshResult.success
+            ? 'bg-success/10 border-success/30 text-success'
+            : 'bg-error/10 border-error/30 text-error'
+        }`}>
+          {refreshResult.success
+            ? `Token refreshed: ${refreshResult.token_preview}`
+            : `Refresh failed: ${refreshResult.error}`
+          }
+        </div>
+      )}
     </div>
   )
 }
@@ -1426,8 +1670,50 @@ function AuthDebugger() {
                 </p>
               </div>
             )}
+
+            {/* Test Refresh Button - shown when OAuth with refresh fields */}
+            {authType === 'oauth' && tokenUrl && (
+              <TestRefreshButton
+                tokenUrl={tokenUrl}
+                refreshToken={bearerToken}
+                clientId={clientId}
+                clientSecret={clientSecret}
+                onNewToken={(token) => setBearerToken(token)}
+              />
+            )}
           </div>
         </div>
+
+        {/* JWT Token Decoder - full width below the two-column layout */}
+        <JWTDecoder jsonTheme={jsonTheme} />
+
+        {/* OAuth Flow Visualization Guide */}
+        {authType === 'oauth' && !debugResult && !loading && (
+          <div className="bg-surface-elevated rounded-xl border border-border p-6">
+            <h3 className="text-lg font-semibold text-text-primary flex items-center gap-2 mb-4">
+              <ArrowRight className="text-primary" size={20} />
+              OAuth Flow Steps
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              {[
+                { step: '1. Authorize', desc: 'Client redirects user to authorization server', color: 'bg-green-500', icon: Lock },
+                { step: '2. Callback', desc: 'Auth server redirects back with authorization code', color: 'bg-blue-500', icon: ArrowRight },
+                { step: '3. Token', desc: 'Client exchanges code for access + refresh tokens', color: 'bg-orange-500', icon: Key },
+                { step: '4. Refresh', desc: 'Use refresh token to get new access tokens', color: 'bg-purple-500', icon: RefreshCw },
+              ].map(({ step, desc, color, icon: Icon }) => (
+                <div key={step} className="p-4 bg-surface rounded-lg border border-border">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className={`p-1.5 ${color} rounded`}>
+                      <Icon size={14} className="text-white" />
+                    </div>
+                    <span className="text-sm font-semibold text-text-primary">{step}</span>
+                  </div>
+                  <p className="text-xs text-text-secondary">{desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
