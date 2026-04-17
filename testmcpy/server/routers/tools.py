@@ -48,6 +48,13 @@ class OptimizeDocsResponse(BaseModel):
     duration: float
 
 
+class SchemaDiffRequest(BaseModel):
+    """Request to compare tool schemas between two MCP profiles."""
+
+    profile1: str  # Format: "profile_id:mcp_name"
+    profile2: str  # Format: "profile_id:mcp_name"
+
+
 class ToolCompareRequest(BaseModel):
     tool_name: str
     profile1: str  # Format: "profile_id:mcp_name"
@@ -135,6 +142,91 @@ async def format_schema(request: FormatSchemaRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/tools/diff")
+async def diff_tool_schemas_endpoint(request: SchemaDiffRequest):
+    """Compare tool schemas between two MCP profiles and return a structured diff.
+
+    Detects added/removed tools, changed parameters (added/removed/type-changed),
+    and description changes.
+    """
+    from testmcpy.src.schema_diff import diff_tool_schemas
+
+    # Parse profile references
+    for label, ref in [("profile1", request.profile1), ("profile2", request.profile2)]:
+        if ":" not in ref:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{label} must be in 'profile_id:mcp_name' format",
+            )
+
+    profile1_id, mcp1_name = request.profile1.split(":", 1)
+    profile2_id, mcp2_name = request.profile2.split(":", 1)
+
+    mcp_clients = get_mcp_clients()
+
+    async def _get_tools(profile_id: str, mcp_name: str, cache_key: str) -> list[dict]:
+        """Get tool schemas from a cached or fresh MCP client."""
+        # Try cached client first
+        client = mcp_clients.get(cache_key)
+        if client:
+            try:
+                tools = await client.list_tools()
+                return [
+                    {
+                        "name": t.name,
+                        "description": t.description,
+                        "inputSchema": t.input_schema,
+                    }
+                    for t in tools
+                ]
+            except Exception:
+                pass  # Fall through to fresh connection
+
+        # Load profile and connect
+        profile = load_profile(profile_id)
+        if not profile:
+            raise HTTPException(status_code=404, detail=f"Profile '{profile_id}' not found")
+
+        mcp_config = next((m for m in profile.mcps if m.name == mcp_name), None)
+        if not mcp_config:
+            raise HTTPException(
+                status_code=404,
+                detail=f"MCP server '{mcp_name}' not found in profile '{profile_id}'",
+            )
+
+        client = MCPClient(base_url=mcp_config.mcp_url, auth=mcp_config.auth.to_dict())
+        try:
+            await client.initialize()
+            tools = await client.list_tools()
+            return [
+                {
+                    "name": t.name,
+                    "description": t.description,
+                    "inputSchema": t.input_schema,
+                }
+                for t in tools
+            ]
+        finally:
+            await client.close()
+
+    try:
+        tools1 = await _get_tools(profile1_id, mcp1_name, request.profile1)
+        tools2 = await _get_tools(profile2_id, mcp2_name, request.profile2)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch tool schemas: {str(e)}")
+
+    diff = diff_tool_schemas(tools1, tools2)
+    return {
+        "profile1": request.profile1,
+        "profile2": request.profile2,
+        "profile1_tool_count": len(tools1),
+        "profile2_tool_count": len(tools2),
+        **diff.to_dict(),
+    }
 
 
 @router.post("/mcp/optimize-docs", response_model=OptimizeDocsResponse)
