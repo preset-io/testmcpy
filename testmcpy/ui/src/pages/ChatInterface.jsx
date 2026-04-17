@@ -1018,8 +1018,8 @@ ${evaluators}
                     )
                   )}
 
-                  {/* Eval and Test Actions for Assistant Messages */}
-                  {message.role === 'assistant' && !message.error && (
+                  {/* Eval and Test Actions for Assistant Messages — hidden while streaming */}
+                  {message.role === 'assistant' && !message.error && !message.streaming && (
                     <div className="mt-4 pt-4 border-t border-border flex gap-2">
                       <button
                         onClick={() => runEval(idx)}
