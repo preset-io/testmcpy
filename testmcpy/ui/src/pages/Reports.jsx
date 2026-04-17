@@ -176,9 +176,124 @@ function ToolCallDisplay({ call, index }) {
   )
 }
 
+// Re-run modal for editing and re-running a test case
+function RerunModal({ result, onClose }) {
+  const [prompt, setPrompt] = useState(result.prompt || result.test_prompt || '')
+  const [running, setRunning] = useState(false)
+  const [rerunResult, setRerunResult] = useState(null)
+  const [error, setError] = useState(null)
+
+  const handleRerun = async () => {
+    if (!prompt.trim()) return
+    setRunning(true)
+    setError(null)
+    setRerunResult(null)
+
+    try {
+      const res = await fetch('/api/tests/run-single', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: prompt.trim(),
+          evaluators: (result.evaluations || []).map(e => ({
+            name: e.evaluator || e.name || 'execution_successful',
+            args: e.args || {},
+          })),
+        }),
+      })
+
+      const data = await res.json()
+      if (data.error) {
+        setError(data.error)
+      } else {
+        setRerunResult(data.result || data)
+      }
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-2xl max-h-[80vh] bg-surface-elevated border border-border rounded-xl shadow-strong overflow-hidden flex flex-col">
+        <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+          <h3 className="font-semibold text-text-primary">Edit & Re-run: {result.test_name}</h3>
+          <button onClick={onClose} className="p-1 hover:bg-surface-hover rounded text-text-tertiary">
+            <XCircle size={18} />
+          </button>
+        </div>
+        <div className="flex-1 overflow-auto p-4 space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-text-secondary mb-1">Prompt</label>
+            <textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              className="input w-full text-sm"
+              rows={4}
+              placeholder="Enter test prompt..."
+            />
+          </div>
+
+          <button
+            onClick={handleRerun}
+            disabled={running || !prompt.trim()}
+            className="btn btn-primary text-sm"
+          >
+            {running ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+            <span>{running ? 'Running...' : 'Re-run Test'}</span>
+          </button>
+
+          {error && (
+            <div className="p-3 bg-error/10 border border-error/30 rounded-lg text-sm text-error">
+              {error}
+            </div>
+          )}
+
+          {/* Side-by-side comparison */}
+          {rerunResult && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-3 rounded-lg border border-border bg-surface">
+                <h4 className="text-xs font-semibold text-text-tertiary uppercase mb-2">Original</h4>
+                <div className="flex items-center gap-2 mb-2">
+                  {result.passed ? (
+                    <span className="flex items-center gap-1 text-xs text-success"><CheckCircle size={12} /> PASS</span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-xs text-error"><XCircle size={12} /> FAIL</span>
+                  )}
+                  <span className="text-xs text-text-tertiary font-mono">{(result.score ?? (result.passed ? 1 : 0)).toFixed(2)}</span>
+                </div>
+                {result.error && <p className="text-xs text-error">{result.error}</p>}
+              </div>
+              <div className="p-3 rounded-lg border border-border bg-surface">
+                <h4 className="text-xs font-semibold text-text-tertiary uppercase mb-2">Re-run</h4>
+                <div className="flex items-center gap-2 mb-2">
+                  {rerunResult.passed ? (
+                    <span className="flex items-center gap-1 text-xs text-success"><CheckCircle size={12} /> PASS</span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-xs text-error"><XCircle size={12} /> FAIL</span>
+                  )}
+                  <span className="text-xs text-text-tertiary font-mono">{(rerunResult.score ?? (rerunResult.passed ? 1 : 0)).toFixed(2)}</span>
+                </div>
+                {rerunResult.error && <p className="text-xs text-error">{rerunResult.error}</p>}
+                {rerunResult.duration && (
+                  <p className="text-xs text-text-tertiary">{formatDuration(rerunResult.duration)}</p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Per-test expandable card
 function TestResultCard({ result }) {
   const [expanded, setExpanded] = useState(!result.passed)
+  const [showRerun, setShowRerun] = useState(false)
   const passRate = result.score !== undefined ? result.score : (result.passed ? 1.0 : 0.0)
   const toolCalls = result.tool_calls || []
   const evaluations = result.evaluations || []
@@ -219,8 +334,16 @@ function TestResultCard({ result }) {
           {result.cost > 0 && <span className="font-mono">{formatCost(result.cost)}</span>}
           {tokenUsage && <span className="font-mono">{formatTokens(tokenUsage)}</span>}
           <span>{formatDuration(result.duration)}</span>
+          <button
+            onClick={(e) => { e.stopPropagation(); setShowRerun(true) }}
+            className="px-2 py-0.5 rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors text-[10px] font-medium"
+            title="Edit & Re-run"
+          >
+            Re-run
+          </button>
         </div>
       </div>
+      {showRerun && <RerunModal result={result} onClose={() => setShowRerun(false)} />}
 
       {/* Expanded content */}
       {expanded && (
