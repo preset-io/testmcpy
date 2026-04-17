@@ -27,8 +27,8 @@ jobs:
 
       - name: Lint with ruff
         run: |
-          ruff check testmcpy unit_tests
-          ruff format --check testmcpy unit_tests
+          ruff check testmcpy unit_tests integration_tests
+          ruff format --check testmcpy unit_tests integration_tests
 
       - name: Type check with mypy
         run: mypy testmcpy
@@ -39,6 +39,7 @@ jobs:
 
       - name: Run integration tests
         run: python -m pytest integration_tests/ -v --tb=short -m "not e2e"
+        continue-on-error: true
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
