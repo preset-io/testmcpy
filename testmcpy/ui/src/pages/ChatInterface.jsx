@@ -1011,7 +1011,7 @@ ${evaluators}
                       </div>
                     </>
                   ) : (
-                    {editingMessageIdx === idx ? (
+                    editingMessageIdx === idx ? (
                       <div className="space-y-2">
                         <textarea
                           value={editingText}
@@ -1036,7 +1036,7 @@ ${evaluators}
                           <Edit3 size={12} />
                         </button>
                       </div>
-                    )}
+                    )
                   )}
 
                   {/* Eval and Test Actions for Assistant Messages */}
