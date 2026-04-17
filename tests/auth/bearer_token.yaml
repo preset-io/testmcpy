@@ -1,0 +1,65 @@
+version: "1.0"
+name: "Bearer Token Authentication Tests"
+description: >
+  Tests for Bearer token authentication (RFC 6750).
+  Validates token acceptance, format, and error handling.
+
+# Required environment variables:
+#   BEARER_TOKEN
+#
+# Run with: testmcpy run tests/auth/bearer_token.yaml --mcp-url <url> --verbose
+
+tests:
+  # ============================================================================
+  # Happy Path Tests
+  # ============================================================================
+
+  - name: "test_bearer_valid_token"
+    description: "Verify bearer token authentication succeeds"
+    auth_only: true
+    auth:
+      type: bearer
+      token: ${BEARER_TOKEN}
+    evaluators:
+      - name: "auth_successful"
+      - name: "token_valid"
+        args:
+          min_length: 10
+
+  - name: "test_bearer_token_format"
+    description: "Validate bearer token uses token68 character set (RFC 6750 Section 2.1)"
+    auth_only: true
+    auth:
+      type: bearer
+      token: ${BEARER_TOKEN}
+    evaluators:
+      - name: "auth_successful"
+      - name: "token_valid"
+        args:
+          format: "bearer"
+
+  # ============================================================================
+  # Error Handling Tests
+  # ============================================================================
+
+  - name: "test_bearer_empty_token"
+    description: "Verify error handling for empty bearer token"
+    auth_only: true
+    auth:
+      type: bearer
+      token: ""
+    evaluators:
+      - name: "auth_error_handling"
+        args:
+          min_length: 5
+
+  - name: "test_bearer_min_length"
+    description: "Test token length validation with very short token"
+    auth_only: true
+    auth:
+      type: bearer
+      token: "ab"
+    evaluators:
+      - name: "token_valid"
+        args:
+          min_length: 10

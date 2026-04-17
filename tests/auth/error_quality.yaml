@@ -1,0 +1,50 @@
+version: "1.0"
+name: "Auth Error Quality Tests"
+description: >
+  Cross-cutting tests that validate the quality and informativeness of
+  authentication error messages across all auth types.
+
+# Required environment variables:
+#   OAUTH_TOKEN_URL, JWT_API_URL
+#
+# Run with: testmcpy run tests/auth/error_quality.yaml --mcp-url <url> --verbose
+
+tests:
+  - name: "test_oauth_error_is_informative"
+    description: "Verify OAuth error messages are informative, not generic"
+    auth_only: true
+    auth:
+      type: oauth
+      client_id: "invalid-client-id-error-quality-test"
+      client_secret: "invalid-secret-error-quality-test"
+      token_url: ${OAUTH_TOKEN_URL}
+    evaluators:
+      - name: "auth_error_handling"
+        args:
+          min_length: 20
+
+  - name: "test_jwt_error_is_informative"
+    description: "Verify JWT error messages are informative, not generic"
+    auth_only: true
+    auth:
+      type: jwt
+      api_url: ${JWT_API_URL}
+      api_token: "invalid-token-error-quality-test"
+      api_secret: "invalid-secret-error-quality-test"
+    evaluators:
+      - name: "auth_error_handling"
+        args:
+          min_length: 15
+
+  - name: "test_error_not_generic"
+    description: "Verify error from completely invalid auth config is still informative"
+    auth_only: true
+    auth:
+      type: oauth
+      client_id: ""
+      client_secret: ""
+      token_url: "https://localhost:1/nonexistent"
+    evaluators:
+      - name: "auth_error_handling"
+        args:
+          min_length: 5

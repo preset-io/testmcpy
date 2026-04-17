@@ -1,0 +1,133 @@
+version: "1.0"
+name: "JWT Token Fetch Tests"
+description: >
+  Tests for JWT token fetch authentication (Preset/Superset-specific).
+  Validates token acquisition, JWT structure, header security, and error handling.
+
+# Required environment variables:
+#   JWT_API_URL, JWT_API_TOKEN, JWT_API_SECRET
+#
+# Run with: testmcpy run tests/auth/jwt_token_fetch.yaml --mcp-url <url> --verbose
+
+tests:
+  # ============================================================================
+  # Happy Path Tests
+  # ============================================================================
+
+  - name: "test_jwt_valid_fetch"
+    description: "Verify JWT token fetch succeeds with valid credentials"
+    auth_only: true
+    auth:
+      type: jwt
+      api_url: ${JWT_API_URL}
+      api_token: ${JWT_API_TOKEN}
+      api_secret: ${JWT_API_SECRET}
+    evaluators:
+      - name: "auth_successful"
+      - name: "token_valid"
+        args:
+          format: "jwt"
+          min_length: 100
+
+  - name: "test_jwt_token_structure"
+    description: "Validate fetched token has proper 3-part JWT structure"
+    auth_only: true
+    auth:
+      type: jwt
+      api_url: ${JWT_API_URL}
+      api_token: ${JWT_API_TOKEN}
+      api_secret: ${JWT_API_SECRET}
+    evaluators:
+      - name: "auth_successful"
+      - name: "token_valid"
+        args:
+          format: "jwt"
+
+  - name: "test_jwt_header_has_alg"
+    description: "Validate JWT header contains alg claim and alg is not 'none' (RFC 7519)"
+    auth_only: true
+    auth:
+      type: jwt
+      api_url: ${JWT_API_URL}
+      api_token: ${JWT_API_TOKEN}
+      api_secret: ${JWT_API_SECRET}
+    evaluators:
+      - name: "auth_successful"
+      - name: "jwt_claims_valid"
+        args:
+          check_header: true
+          check_exp: false
+
+  - name: "test_jwt_payload_claims"
+    description: "Validate JWT payload contains standard claims (exp, iat)"
+    auth_only: true
+    auth:
+      type: jwt
+      api_url: ${JWT_API_URL}
+      api_token: ${JWT_API_TOKEN}
+      api_secret: ${JWT_API_SECRET}
+    evaluators:
+      - name: "auth_successful"
+      - name: "jwt_claims_valid"
+        args:
+          check_exp: true
+          check_iat: true
+
+  - name: "test_jwt_not_expired"
+    description: "Verify freshly fetched JWT token is not expired"
+    auth_only: true
+    auth:
+      type: jwt
+      api_url: ${JWT_API_URL}
+      api_token: ${JWT_API_TOKEN}
+      api_secret: ${JWT_API_SECRET}
+    evaluators:
+      - name: "auth_successful"
+      - name: "token_valid"
+        args:
+          format: "jwt"
+          check_expiration: true
+
+  # ============================================================================
+  # Error Handling Tests
+  # ============================================================================
+
+  - name: "test_jwt_invalid_credentials"
+    description: "Verify proper error handling for invalid JWT API credentials"
+    auth_only: true
+    auth:
+      type: jwt
+      api_url: ${JWT_API_URL}
+      api_token: "invalid-token-00000"
+      api_secret: "invalid-secret-00000"
+    evaluators:
+      - name: "auth_error_handling"
+        args:
+          min_length: 10
+
+  - name: "test_jwt_malformed_api_url"
+    description: "Test error handling for malformed JWT API URL"
+    auth_only: true
+    auth:
+      type: jwt
+      api_url: "not-a-valid-url"
+      api_token: ${JWT_API_TOKEN}
+      api_secret: ${JWT_API_SECRET}
+    evaluators:
+      - name: "auth_error_handling"
+        args:
+          min_length: 5
+
+  - name: "test_jwt_unreachable_api_url"
+    description: "Test timeout handling for unreachable JWT API URL"
+    auth_only: true
+    timeout: 30
+    auth:
+      type: jwt
+      api_url: "https://192.0.2.1/api/v1/security/login"
+      api_token: ${JWT_API_TOKEN}
+      api_secret: ${JWT_API_SECRET}
+    evaluators:
+      - name: "auth_error_handling"
+        args:
+          min_length: 5
