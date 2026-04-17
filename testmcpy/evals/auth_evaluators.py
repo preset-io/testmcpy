@@ -731,3 +731,117 @@ class JWTClaimsValidEvaluator(BaseEvaluator):
             reason=f"All JWT claims valid ({len(passed_claims)} checked)",
             details=details,
         )
+
+
+class OAuthDiscoveryEvaluator(BaseEvaluator):
+    """
+    Evaluate OAuth discovery metadata against RFC 8414.
+
+    Fetches the well-known OAuth authorization server metadata and validates
+    that required fields are present and contain expected values.
+
+    Args:
+        args: Configuration dict with optional keys:
+            - required_fields: List of fields that must be present
+              (default: ["issuer", "token_endpoint"])
+            - expected_grant_types: List of grant types that must be supported
+            - require_pkce: Whether code_challenge_methods_supported must include "S256"
+    """
+
+    def __init__(self, args: dict[str, Any] | None = None):
+        self.args = args or {}
+
+    @property
+    def name(self) -> str:
+        return "oauth_discovery_valid"
+
+    @property
+    def description(self) -> str:
+        return "Validates OAuth discovery metadata (RFC 8414)"
+
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
+        # This evaluator needs async; delegate to aevaluate
+        raise NotImplementedError("Use aevaluate() for OAuthDiscoveryEvaluator")
+
+    async def aevaluate(self, context: dict[str, Any]) -> EvalResult:
+        from testmcpy.auth_debugger import discover_oauth_endpoints
+
+        metadata = context.get("metadata", {})
+        mcp_url = metadata.get("mcp_url")
+
+        if not mcp_url:
+            # Try to get from mcp_client
+            mcp_client = context.get("mcp_client")
+            if mcp_client and hasattr(mcp_client, "url"):
+                mcp_url = mcp_client.url
+
+        if not mcp_url:
+            return EvalResult(
+                passed=False,
+                score=0.0,
+                reason="No MCP URL available for OAuth discovery",
+            )
+
+        try:
+            discovery_metadata = await discover_oauth_endpoints(mcp_url)
+        except Exception as e:
+            return EvalResult(
+                passed=False,
+                score=0.0,
+                reason=f"OAuth discovery failed: {e}",
+                details={"error": str(e)},
+            )
+
+        # Validate required fields
+        required_fields = self.args.get("required_fields", ["issuer", "token_endpoint"])
+        missing_fields = []
+        present_fields = []
+
+        for field in required_fields:
+            if field in discovery_metadata and discovery_metadata[field]:
+                present_fields.append(field)
+            else:
+                missing_fields.append(field)
+
+        details = {
+            "present_fields": present_fields,
+            "missing_fields": missing_fields,
+            "metadata_keys": list(discovery_metadata.keys()),
+        }
+
+        # Validate expected grant types
+        expected_grant_types = self.args.get("expected_grant_types")
+        if expected_grant_types:
+            supported = discovery_metadata.get("grant_types_supported", [])
+            missing_grants = [g for g in expected_grant_types if g not in supported]
+            if missing_grants:
+                details["missing_grant_types"] = missing_grants
+                missing_fields.append(f"grant_types({', '.join(missing_grants)})")
+
+        # Validate PKCE support
+        if self.args.get("require_pkce"):
+            challenge_methods = discovery_metadata.get("code_challenge_methods_supported", [])
+            if "S256" not in challenge_methods:
+                details["code_challenge_methods"] = challenge_methods
+                missing_fields.append("PKCE S256 support")
+
+        if missing_fields:
+            total = (
+                len(required_fields)
+                + (1 if expected_grant_types else 0)
+                + (1 if self.args.get("require_pkce") else 0)
+            )
+            score = len(present_fields) / total if total > 0 else 0.0
+            return EvalResult(
+                passed=False,
+                score=score,
+                reason=f"OAuth discovery missing: {', '.join(missing_fields)}",
+                details=details,
+            )
+
+        return EvalResult(
+            passed=True,
+            score=1.0,
+            reason=f"OAuth discovery valid ({len(present_fields)} fields verified)",
+            details=details,
+        )
