@@ -129,8 +129,11 @@ function MCPExplorer({ selectedProfiles = [] }) {
     }
   }
 
+  const [loadingPhase, setLoadingPhase] = useState('connecting')
+
   const loadData = async () => {
     setLoading(true)
+    setLoadingPhase('connecting')
     setError(null)
     try {
       // Only use the first selected profile for Explorer (single MCP at a time)
@@ -140,12 +143,18 @@ function MCPExplorer({ selectedProfiles = [] }) {
       }
       const queryString = params.toString() ? `?${params.toString()}` : ''
 
+      // Show auth hint after a short delay — if we're still loading after
+      // 3s, the server is probably waiting for an OAuth browser flow.
+      const authTimer = setTimeout(() => setLoadingPhase('authenticating'), 3000)
+
       const [toolsRes, resourcesRes, promptsRes] = await Promise.all([
         fetchWithRetry(`/api/mcp/tools${queryString}`),
         fetchWithRetry(`/api/mcp/resources${queryString}`),
         fetchWithRetry(`/api/mcp/prompts${queryString}`),
       ])
+      clearTimeout(authTimer)
 
+      setLoadingPhase('loaded')
       setTools(await toolsRes.json())
       setResources(await resourcesRes.json())
       setPrompts(await promptsRes.json())
@@ -536,13 +545,27 @@ function MCPExplorer({ selectedProfiles = [] }) {
   }
 
   if (loading) {
+    const phaseMessages = {
+      connecting: 'Connecting to MCP server...',
+      authenticating: 'Waiting for authentication — check your browser for an OAuth prompt',
+      loaded: 'Loading tools...',
+    }
     return (
       <div className="h-full flex flex-col">
         <div className="p-4 border-b border-border bg-surface-elevated">
           <h1 className="text-2xl font-bold">Explorer</h1>
-          <p className="text-text-secondary mt-1 text-base">
-            Loading MCP data...
-          </p>
+          <div className="flex items-center gap-2 mt-1">
+            <LoadingSpinner size={16} />
+            <p className="text-text-secondary text-base">
+              {phaseMessages[loadingPhase] || 'Loading MCP data...'}
+            </p>
+          </div>
+          {loadingPhase === 'authenticating' && (
+            <p className="text-xs text-text-tertiary mt-1">
+              If no browser window appeared, your session may have expired.
+              Try testing the connection from the MCP Profiles page first.
+            </p>
+          )}
         </div>
         <div className="flex-1 overflow-auto p-4 bg-background-subtle">
           <div className="max-w-5xl mx-auto space-y-4">
