@@ -222,9 +222,6 @@ class TokenValidEvaluator(BaseEvaluator):
 
         # Try to decode JWT (without signature verification)
         try:
-            import base64
-            import json
-
             # Decode payload (second part)
             # Add padding if needed
             payload_part = parts[1]
@@ -273,7 +270,7 @@ class TokenValidEvaluator(BaseEvaluator):
                 details=details,
             )
 
-        except Exception as e:
+        except (ValueError, json.JSONDecodeError, UnicodeDecodeError) as e:
             return EvalResult(
                 passed=False,
                 score=0.4,
@@ -643,7 +640,7 @@ class JWTClaimsValidEvaluator(BaseEvaluator):
         # Decode JWT
         try:
             payload = self.decode_jwt_payload(token)
-        except (ValueError, json.JSONDecodeError, Exception) as e:
+        except (ValueError, json.JSONDecodeError, UnicodeDecodeError) as e:
             return EvalResult(
                 passed=False,
                 score=0.1,

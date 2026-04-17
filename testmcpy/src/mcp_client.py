@@ -6,8 +6,11 @@ specifically designed for testing LLM tool calling capabilities.
 """
 
 import asyncio
+import json
 import logging
+import os
 import sys
+import time
 import warnings
 from dataclasses import dataclass
 from typing import Any
@@ -141,6 +144,8 @@ def create_mtls_httpx_factory(
 logging.getLogger("root").setLevel(logging.ERROR)
 warnings.filterwarnings("ignore", message="Failed to validate notification")
 
+logger = logging.getLogger(__name__)
+
 # Default timeout for MCP operations (30 seconds)
 DEFAULT_TIMEOUT = 30.0
 MAX_RETRIES = 3
@@ -200,6 +205,8 @@ async def retry_with_backoff(
                 delay = RETRY_DELAY * (BACKOFF_FACTOR**attempt)
                 await asyncio.sleep(delay)
         except Exception as e:
+            if isinstance(e, (TypeError, NameError, AttributeError)):
+                raise
             last_exception = e
             if attempt < max_retries - 1:
                 delay = RETRY_DELAY * (BACKOFF_FACTOR**attempt)
@@ -319,7 +326,7 @@ class MCPClient:
         request_data = {
             "api_url": api_url,
             "name": api_token,
-            "secret": api_secret,
+            "secret": "***",
         }
         debugger.log_step("1. JWT Request Prepared", request_data)
 
@@ -385,7 +392,7 @@ class MCPClient:
                     "4. Token Extracted",
                     {
                         "token_length": len(token),
-                        "token_preview": token[:20] + "..." if len(token) > 20 else token,
+                        "token_preview": f"***...{token[-4:]}" if len(token) > 4 else "***",
                         "response_structure": "payload.access_token"
                         if "payload" in data
                         else "access_token",
@@ -417,7 +424,7 @@ class MCPClient:
             debugger.log_step("ERROR: HTTP Request Failed", error_info, success=False)
             debugger.summarize()
             raise MCPError(f"Failed to fetch JWT token: {e}")
-        except Exception as e:
+        except (KeyError, json.JSONDecodeError, TypeError, ValueError) as e:
             debugger.log_step("ERROR: JWT Token Fetch Failed", {"error": str(e)}, success=False)
             debugger.summarize()
             raise MCPError(f"JWT token fetch error: {e}")
@@ -456,7 +463,7 @@ class MCPClient:
         request_data = {
             "grant_type": "client_credentials",
             "client_id": client_id,
-            "client_secret": client_secret,
+            "client_secret": "***",
             "scope": " ".join(scopes) if scopes else "",
         }
         debugger.log_step("1. OAuth Request Prepared", request_data)
@@ -518,7 +525,7 @@ class MCPClient:
                     "4. Token Extracted",
                     {
                         "token_length": len(token),
-                        "token_preview": token[:20] + "..." if len(token) > 20 else token,
+                        "token_preview": f"***...{token[-4:]}" if len(token) > 4 else "***",
                         "expires_in": data.get("expires_in", "unknown"),
                         "scope": data.get("scope", "unknown"),
                         "token_type": data.get("token_type", "unknown"),
@@ -550,7 +557,7 @@ class MCPClient:
             debugger.log_step("ERROR: HTTP Request Failed", error_info, success=False)
             debugger.summarize()
             raise MCPError(f"Failed to fetch OAuth token: {e}")
-        except Exception as e:
+        except (KeyError, json.JSONDecodeError, TypeError, ValueError) as e:
             debugger.log_step("ERROR: OAuth Token Fetch Failed", {"error": str(e)}, success=False)
             debugger.summarize()
             raise MCPError(f"OAuth token fetch error: {e}")
@@ -582,8 +589,6 @@ class MCPClient:
                     raise MCPError("Bearer auth requires 'token' field")
 
                 print("  [Auth] Using bearer token from parameter", file=sys.stderr)
-                token_preview = token[:20] + "..." + token[-8:] if len(token) > 28 else token
-                print(f"  [Auth] Token: {token_preview}", file=sys.stderr)
                 return BearerAuth(token=token)
 
             elif auth_type == "jwt":
@@ -1081,7 +1086,7 @@ class MCPClient:
                         return await self.call_tool(tool_call, timeout)
                     finally:
                         self._token_manager = saved_manager
-                except (TokenRefreshError, Exception) as refresh_err:
+                except (TokenRefreshError, httpx.HTTPError) as refresh_err:
                     return MCPToolResult(
                         tool_call_id=tool_call.id or "unknown",
                         content=None,
@@ -1257,7 +1262,14 @@ class StdioMCPClient:
 
         # Read response lines until we get a JSON-RPC response matching our id
         async with self._read_lock:
+            loop_start = time.monotonic()
             while True:
+                elapsed = time.monotonic() - loop_start
+                if elapsed > DEFAULT_TIMEOUT:
+                    raise MCPTimeoutError(
+                        f"Total elapsed time {elapsed:.1f}s exceeded timeout "
+                        f"{DEFAULT_TIMEOUT}s waiting for response to {method}"
+                    )
                 line = await asyncio.wait_for(
                     self._process.stdout.readline(),
                     timeout=DEFAULT_TIMEOUT,
@@ -1294,7 +1306,9 @@ class StdioMCPClient:
         if resolved is None:
             raise MCPConnectionError(f"Command not found: {self.command}")
 
-        env = {**dict(__import__("os").environ), **(self.env or {})}
+        logger.info("Spawning stdio MCP server: %s %s", resolved, self.args)
+
+        env = {**dict(os.environ), **(self.env or {})}
         self._process = await asyncio.create_subprocess_exec(
             resolved,
             *self.args,

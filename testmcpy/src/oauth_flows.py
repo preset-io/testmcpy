@@ -201,7 +201,7 @@ class PKCEFlow:
                 return response.json()
         except httpx.HTTPStatusError as e:
             raise OAuthFlowError(
-                f"Token exchange failed with status {e.response.status_code}: {e.response.text}"
+                f"Token exchange failed with status {e.response.status_code}: {e.response.text[:100]}"
             )
         except httpx.HTTPError as e:
             raise OAuthFlowError(f"Token exchange HTTP error: {e}")
@@ -292,7 +292,7 @@ class TokenIntrospection:
         except httpx.HTTPStatusError as e:
             raise OAuthFlowError(
                 f"Token introspection failed with status {e.response.status_code}: "
-                f"{e.response.text}"
+                f"{e.response.text[:100]}"
             )
         except httpx.HTTPError as e:
             raise OAuthFlowError(f"Token introspection HTTP error: {e}")

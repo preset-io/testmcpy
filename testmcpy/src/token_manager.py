@@ -180,7 +180,7 @@ class TokenManager:
                     result = response.json()
             except httpx.HTTPStatusError as e:
                 raise TokenRefreshError(
-                    f"Token refresh failed with status {e.response.status_code}: {e.response.text}"
+                    f"Token refresh failed with status {e.response.status_code}: {e.response.text[:100]}"
                 )
             except httpx.HTTPError as e:
                 raise TokenRefreshError(f"Token refresh HTTP error: {e}")
