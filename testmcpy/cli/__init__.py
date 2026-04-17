@@ -16,6 +16,7 @@ from testmcpy.cli.commands import (
     server,  # noqa: F401
     tools,  # noqa: F401
     tui,  # noqa: F401
+    wizard,  # noqa: F401
 )
 
 __all__ = ["app", "console"]
