@@ -39,6 +39,7 @@ import MCPHealth from './pages/MCPHealth'
 import SecurityDashboard from './pages/SecurityDashboard'
 import { TestRunProvider } from './contexts/TestRunContext'
 import { ThemeProvider, useTheme } from './contexts/ThemeContext'
+import { NotificationProvider } from './components/NotificationProvider'
 
 function ThemeSwitcher({ collapsed }) {
   const { theme, setTheme } = useTheme()
@@ -629,9 +630,11 @@ function App() {
   return (
     <Router>
       <ThemeProvider>
-        <TestRunProvider>
-          <AppContent />
-        </TestRunProvider>
+        <NotificationProvider>
+          <TestRunProvider>
+            <AppContent />
+          </TestRunProvider>
+        </NotificationProvider>
       </ThemeProvider>
     </Router>
   )
