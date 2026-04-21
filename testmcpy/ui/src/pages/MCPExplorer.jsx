@@ -115,20 +115,30 @@ function MCPExplorer({ selectedProfiles = [] }) {
     return () => window.removeEventListener('keydown', handleKeyPress)
   }, [showShortcuts, searchQuery])
 
-  const fetchWithRetry = async (url, retries = 3, delay = 1000) => {
+  const fetchWithRetry = async (url, retries = 10, delay = 2000) => {
+    let needsAuth = false
     for (let i = 0; i < retries; i++) {
       try {
         const response = await fetch(url)
         if (response.status === 401 || response.status === 403) {
-          setLoadingPhase('authenticating')
+          if (!needsAuth) {
+            needsAuth = true
+            setLoadingPhase('authenticating')
+          }
           throw new Error(`HTTP ${response.status}`)
         }
         if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        // Auth succeeded — clear auth phase
+        if (needsAuth) {
+          setLoadingPhase('loaded')
+        }
         return response
       } catch (error) {
         if (i === retries - 1) throw error
-        console.log(`Retry ${i + 1}/${retries} for ${url}...`)
-        await new Promise(resolve => setTimeout(resolve, delay))
+        // Longer delay during auth (OAuth popup takes time)
+        const waitTime = needsAuth ? 3000 : delay
+        console.log(`Retry ${i + 1}/${retries} for ${url} (${needsAuth ? 'auth' : 'connect'})...`)
+        await new Promise(resolve => setTimeout(resolve, waitTime))
       }
     }
   }
@@ -556,8 +566,8 @@ function MCPExplorer({ selectedProfiles = [] }) {
   if (loading) {
     const phaseMessages = {
       connecting: 'Connecting to MCP server...',
-      authenticating: 'Waiting for authentication — check your browser for an OAuth prompt',
-      loaded: 'Parsing response...',
+      authenticating: 'Authenticating — a browser window may open for OAuth',
+      loaded: 'Loading tools...',
     }
     return (
       <div className="h-full flex flex-col">
@@ -568,15 +578,14 @@ function MCPExplorer({ selectedProfiles = [] }) {
             <p className="text-text-secondary text-sm md:text-base">
               {phaseMessages[loadingPhase] || 'Loading MCP data...'}
             </p>
-            {loadingElapsed > 0 && loadingPhase !== 'authenticating' && (
+            {loadingElapsed > 0 && (
               <span className="text-xs text-text-disabled">{loadingElapsed}s</span>
             )}
           </div>
           {loadingPhase === 'authenticating' && (
-            <p className="text-xs text-text-tertiary mt-1">
-              If no browser window appeared, your session may have expired.
-              Try testing the connection from the MCP Profiles page first.
-            </p>
+            <div className="mt-2 p-2 rounded bg-amber-500/10 border border-amber-500/20 text-xs text-amber-400">
+              OAuth authentication in progress. Complete the sign-in in your browser, then this page will load automatically.
+            </div>
           )}
         </div>
         <div className="flex-1 overflow-auto p-4 bg-background-subtle">
