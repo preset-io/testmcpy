@@ -407,7 +407,12 @@ function TestManager({ selectedProfiles = [], selectedLlmProfile = null, llmProf
     const saved = localStorage.getItem('testManagerPanelHeight')
     return saved ? Number(saved) : 280
   })
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const saved = localStorage.getItem('testManagerSidebarWidth')
+    return saved ? Number(saved) : 300
+  })
   const isDraggingRef = useRef(false)
+  const isSidebarDraggingRef = useRef(false)
   const containerRef = useRef(null)
 
   // Drag handler for resizable bottom panel
@@ -436,6 +441,36 @@ function TestManager({ selectedProfiles = [], selectedLlmProfile = null, llmProf
       setBottomPanelHeight(h => {
         localStorage.setItem('testManagerPanelHeight', String(h))
         return h
+      })
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+  }, [])
+
+  // Drag handler for resizable sidebar
+  const handleSidebarDragStart = useCallback((e) => {
+    e.preventDefault()
+    isSidebarDraggingRef.current = true
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+
+    const handleMouseMove = (e) => {
+      if (!isSidebarDraggingRef.current) return
+      const newWidth = e.clientX - (containerRef.current?.getBoundingClientRect().left || 0)
+      const clamped = Math.min(Math.max(newWidth, 180), 600)
+      setSidebarWidth(clamped)
+    }
+
+    const handleMouseUp = () => {
+      isSidebarDraggingRef.current = false
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+      setSidebarWidth(w => {
+        localStorage.setItem('testManagerSidebarWidth', String(w))
+        return w
       })
     }
 
@@ -1015,9 +1050,12 @@ tests:
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
-        {/* File List Sidebar */}
-        <div className={`w-full md:w-80 flex-shrink-0 border-b md:border-b-0 md:border-r border-border ${showFileTree ? 'flex flex-col' : 'hidden'} md:flex md:flex-col bg-surface-elevated overflow-hidden max-h-[40vh] md:max-h-none`}>
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0" ref={containerRef}>
+        {/* File List Sidebar — resizable */}
+        <div
+          className={`flex-shrink-0 border-b md:border-b-0 md:border-r border-border ${showFileTree ? 'flex flex-col' : 'hidden'} md:flex md:flex-col bg-surface-elevated overflow-hidden max-h-[40vh] md:max-h-none`}
+          style={{ width: typeof window !== 'undefined' && window.innerWidth >= 768 ? sidebarWidth : '100%' }}
+        >
           <div className="p-4 border-b border-border">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base md:text-lg font-semibold text-text-primary">Test Files</h2>
@@ -1073,7 +1111,9 @@ tests:
 
         <div className="flex-1 overflow-auto">
           {/* Root files */}
-          {testData.files && testData.files.map((file) => (
+          {testData.files && [...testData.files].sort((a, b) =>
+            (a.filename || a.relative_path || '').localeCompare(b.filename || b.relative_path || '', undefined, { numeric: true })
+          ).map((file) => (
             <div
               key={file.relative_path}
               className={`p-4 border-b border-border cursor-pointer transition-all duration-200 group ${
@@ -1116,7 +1156,9 @@ tests:
           ))}
 
           {/* Folders */}
-          {testData.folders && Object.entries(testData.folders).sort().map(([folderName, files]) => (
+          {testData.folders && Object.entries(testData.folders)
+            .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
+            .map(([folderName, files]) => (
             <div key={folderName} className="border-b border-border">
               {/* Folder Header */}
               <div
@@ -1134,7 +1176,9 @@ tests:
               </div>
 
               {/* Folder Files */}
-              {expandedFolders.has(folderName) && files.map((file) => (
+              {expandedFolders.has(folderName) && [...files].sort((a, b) =>
+                (a.filename || '').localeCompare(b.filename || '', undefined, { numeric: true })
+              ).map((file) => (
                 <div
                   key={file.relative_path}
                   className={`pl-12 pr-4 py-3 border-t border-border cursor-pointer transition-all duration-200 group ${
@@ -1188,6 +1232,15 @@ tests:
           )}
         </div>
         </div>  {/* End sidebar */}
+
+        {/* Sidebar resize handle */}
+        <div
+          className="hidden md:flex w-1.5 flex-shrink-0 cursor-col-resize bg-transparent hover:bg-primary/30 active:bg-primary/50 transition-colors items-center justify-center group"
+          onMouseDown={handleSidebarDragStart}
+          title="Drag to resize"
+        >
+          <div className="w-0.5 h-8 bg-border group-hover:bg-primary/50 rounded-full transition-colors" />
+        </div>
 
         {/* Mobile file tree toggle */}
         <button onClick={() => setShowFileTree(!showFileTree)} className="md:hidden flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover border-b border-border w-full">
