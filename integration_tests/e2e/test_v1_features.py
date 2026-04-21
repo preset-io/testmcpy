@@ -268,13 +268,13 @@ class TestThemeToggle:
         page.wait_for_load_state("networkidle")
         # Get initial background color
         initial_bg = page.evaluate("window.getComputedStyle(document.body).backgroundColor")
-        # Find and click theme toggle
+        # Find and click theme toggle (may be in collapsed sidebar, use force)
         theme_btn = page.locator(
             "button[title*='theme'], button[title*='Theme'], "
             "button[aria-label*='theme'], [class*='theme-toggle']"
         )
         if theme_btn.count() > 0:
-            theme_btn.first.click()
+            theme_btn.first.dispatch_event("click")
             page.wait_for_timeout(500)
             new_bg = page.evaluate("window.getComputedStyle(document.body).backgroundColor")
             # Background should change (light <-> dark)
