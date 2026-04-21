@@ -28,6 +28,7 @@ import TestResultPanel from '../components/TestResultPanel'
 import { useKeyboardShortcuts, useAnnounce } from '../hooks/useKeyboardShortcuts'
 import { useTestRun } from '../contexts/TestRunContext'
 import { useEditorTheme } from '../hooks/useEditorTheme'
+import StreamingLogViewer from '../components/StreamingLogViewer'
 
 // Parse YAML content to find test locations (line numbers)
 function parseTestLocations(content) {
@@ -1452,32 +1453,7 @@ tests:
                       </div>
                     ) : (
                       /* Logs Content */
-                      <div className="h-full overflow-auto p-3 font-mono text-xs bg-surface">
-                        {streamingLogs.length === 0 ? (
-                          <div className="text-text-tertiary text-center py-4">
-                            Waiting for test execution...
-                          </div>
-                        ) : (
-                          streamingLogs.map((log, idx) => (
-                            <div
-                              key={idx}
-                              className={`py-0.5 leading-relaxed ${
-                                log.includes('Error') || log.includes('❌') || log.includes('FAILED') ? 'text-red-400' :
-                                log.includes('Tool call') || log.includes('🔧') ? 'text-cyan-400' :
-                                log.includes('✅') || log.includes('PASSED') ? 'text-green-400' :
-                                log.includes('⏱️') || log.includes('Running') || log.includes('🧪') ? 'text-yellow-400' :
-                                log.includes('📁') || log.includes('📋') || log.includes('🤖') || log.includes('🔌') ? 'text-blue-400' :
-                                log.includes('===') || log.includes('---') ? 'text-text-disabled' :
-                                log.includes('💰') || log.includes('📊') ? 'text-purple-400' :
-                                'text-text-secondary'
-                              }`}
-                            >
-                              {log}
-                            </div>
-                          ))
-                        )}
-                        <div ref={logsEndRef} />
-                      </div>
+                      <StreamingLogViewer logs={streamingLogs} running={running} />
                     )}
                   </div>
                 </div>
