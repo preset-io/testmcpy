@@ -21,9 +21,11 @@ import pytest
 
 
 def _screenshot(page, screenshots_dir, cls, name):
+    """Take a screenshot and return the path for further analysis."""
     screenshots_dir.mkdir(exist_ok=True)
     path = screenshots_dir / f"{cls}_{name}.png"
     page.screenshot(path=str(path), full_page=True)
+    return path
 
 
 def _no_errors(content):
@@ -39,6 +41,40 @@ def _no_errors(content):
         assert err not in content, f"Found error: {err}"
 
 
+def _verify_page_rendered(page, screenshots_dir, cls, name, min_height=100):
+    """Take screenshot and verify the page rendered meaningful content.
+
+    Checks:
+    - Page has visible content (not blank)
+    - No error overlay/modal covering the page
+    - Page body has reasonable height (not collapsed)
+    - No loading spinners stuck indefinitely
+    """
+    path = _screenshot(page, screenshots_dir, cls, name)
+    content = page.text_content("body") or ""
+
+    # 1. Page should have non-trivial content
+    assert len(content.strip()) > 20, f"Page appears blank — only {len(content)} chars"
+
+    # 2. No error overlays
+    _no_errors(content)
+
+    # 3. Check page height — collapsed pages indicate render failure
+    body_height = page.evaluate("document.body.scrollHeight")
+    assert body_height >= min_height, (
+        f"Page body too short ({body_height}px) — likely render failure"
+    )
+
+    # 4. No stuck loading spinners (check for common loading patterns)
+    stuck_indicators = page.locator("[class*='spinner'], [class*='loading']")
+    # Allow loading indicators to exist briefly, but not dominant
+    if stuck_indicators.count() > 0:
+        # If there are loaders, make sure there's also real content alongside
+        assert len(content.strip()) > 50, "Page stuck in loading state"
+
+    return path
+
+
 # ---------------------------------------------------------------------------
 # 1. Metrics Dashboard (SC-103119)
 # ---------------------------------------------------------------------------
@@ -50,7 +86,7 @@ class TestMetricsDashboard:
         page.wait_for_load_state("networkidle")
         content = page.text_content("body") or ""
         _no_errors(content)
-        _screenshot(page, screenshots_dir, "MetricsDashboard", "loads")
+        _verify_page_rendered(page, screenshots_dir, "MetricsDashboard", "loads")
 
     def test_has_summary_cards(self, page, server_url, screenshots_dir):
         """Metrics page shows summary stat cards."""
@@ -87,7 +123,7 @@ class TestRunComparison:
         page.wait_for_load_state("networkidle")
         content = page.text_content("body") or ""
         _no_errors(content)
-        _screenshot(page, screenshots_dir, "RunComparison", "loads")
+        _verify_page_rendered(page, screenshots_dir, "RunComparison", "loads")
 
     def test_has_comparison_ui(self, page, server_url, screenshots_dir):
         """Comparison page shows selection UI or empty state."""
@@ -112,7 +148,7 @@ class TestMCPHealth:
         page.wait_for_load_state("networkidle")
         content = page.text_content("body") or ""
         _no_errors(content)
-        _screenshot(page, screenshots_dir, "MCPHealth", "loads")
+        _verify_page_rendered(page, screenshots_dir, "MCPHealth", "loads")
 
     def test_shows_health_status(self, page, server_url, screenshots_dir):
         """MCP Health page shows server status indicators."""
@@ -152,7 +188,7 @@ class TestSecurityDashboard:
         page.wait_for_load_state("networkidle")
         content = page.text_content("body") or ""
         _no_errors(content)
-        _screenshot(page, screenshots_dir, "SecurityDashboard", "loads")
+        _verify_page_rendered(page, screenshots_dir, "SecurityDashboard", "loads")
 
     def test_shows_severity_levels(self, page, server_url, screenshots_dir):
         """Security page shows severity breakdown labels."""
@@ -178,7 +214,7 @@ class TestCompatibilityMatrix:
         page.wait_for_load_state("networkidle")
         content = page.text_content("body") or ""
         _no_errors(content)
-        _screenshot(page, screenshots_dir, "CompatibilityMatrix", "loads")
+        _verify_page_rendered(page, screenshots_dir, "CompatibilityMatrix", "loads")
 
     def test_has_matrix_or_empty_state(self, page, server_url, screenshots_dir):
         """Compatibility page shows matrix or meaningful empty state."""
