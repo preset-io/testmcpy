@@ -602,16 +602,16 @@ function TestManager({ selectedProfiles = [], selectedLlmProfile = null, llmProf
   // Get model and provider from selected LLM provider
   const getLlmConfig = () => {
     if (!selectedLlmProfile || llmProfiles.length === 0) {
-      return { model: 'claude-sonnet-4-20250514', provider: 'anthropic' }
+      return { model: 'claude-sonnet-4-20250514', provider: 'claude-sdk' }
     }
     const profile = llmProfiles.find(p => p.profile_id === selectedLlmProfile)
     if (!profile || !profile.providers || profile.providers.length === 0) {
-      return { model: 'claude-sonnet-4-20250514', provider: 'anthropic' }
+      return { model: 'claude-sonnet-4-20250514', provider: 'claude-sdk' }
     }
     const defaultProvider = profile.providers.find(p => p.default) || profile.providers[0]
     return {
       model: defaultProvider.model || 'claude-sonnet-4-20250514',
-      provider: defaultProvider.provider || 'anthropic'
+      provider: defaultProvider.provider || 'claude-sdk'
     }
   }
 
