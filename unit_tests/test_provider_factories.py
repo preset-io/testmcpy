@@ -90,19 +90,15 @@ class TestCodexCLIProviderFactory:
         try:
             p = create_llm_provider("codex-cli", "codex")
             assert isinstance(p, CodexCLIProvider)
-        except (FileNotFoundError, Exception) as e:
-            if "not found" in str(e).lower():
-                pytest.skip("Codex CLI not installed")
-            raise
+        except (FileNotFoundError, OSError):
+            pytest.skip("Codex CLI not installed")
 
     def test_codex_alias(self):
         try:
             p = create_llm_provider("codex", "codex")
             assert isinstance(p, CodexCLIProvider)
-        except (FileNotFoundError, Exception) as e:
-            if "not found" in str(e).lower():
-                pytest.skip("Codex CLI not installed")
-            raise
+        except (FileNotFoundError, OSError):
+            pytest.skip("Codex CLI not installed")
 
 
 class TestGeminiCLIProviderFactory:
@@ -110,10 +106,8 @@ class TestGeminiCLIProviderFactory:
         try:
             p = create_llm_provider("gemini-cli", "gemini-2.5-pro")
             assert isinstance(p, GeminiCLIProvider)
-        except (FileNotFoundError, Exception) as e:
-            if "not found" in str(e).lower():
-                pytest.skip("Gemini CLI not installed")
-            raise
+        except (FileNotFoundError, OSError):
+            pytest.skip("Gemini CLI not installed")
 
 
 class TestLocalModelProviderFactory:

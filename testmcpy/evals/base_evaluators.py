@@ -4,6 +4,7 @@ Base evaluation functions for testmcpy.
 These evaluators can be used to validate LLM responses and tool calling behavior.
 """
 
+import json
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -2531,11 +2532,11 @@ class UnnecessaryToolCalls(BaseEvaluator):
                 continue
 
             if self.check_args:
-                # Include args in the signature (sorted for consistency)
+                # Canonical serialization for stable duplicate detection
                 args = tc.get("arguments", {})
                 try:
-                    args_key = str(sorted(args.items())) if isinstance(args, dict) else str(args)
-                except TypeError:
+                    args_key = json.dumps(args, sort_keys=True, default=str)
+                except (TypeError, ValueError):
                     args_key = str(args)
                 sig = f"{tool_name}({args_key})"
             else:
@@ -2560,11 +2561,18 @@ class UnnecessaryToolCalls(BaseEvaluator):
         total_calls = len(tool_calls)
         score = max(0.0, 1.0 - (total_excess / total_calls))
 
+        # Truncate signatures in reason to avoid leaking large args
+        short_sigs = []
+        for sig, count in duplicates.items():
+            if len(sig) > 80:
+                sig = sig[:77] + "..."
+            short_sigs.append(f"{sig} ({count}x)")
+
         return EvalResult(
             passed=False,
             score=score,
             reason=f"Found {len(duplicates)} duplicate tool call pattern(s): "
-            + ", ".join(f"{sig} ({count}x)" for sig, count in duplicates.items()),
+            + ", ".join(short_sigs),
             details={
                 "duplicates": duplicates,
                 "total_excess_calls": total_excess,

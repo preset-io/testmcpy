@@ -287,7 +287,7 @@ class TestLLMJudgeHelpers:
     def test_extract_score_no_match(self):
         judge = self._make_judge()
         score = judge._extract_score("This is great work!")
-        assert score == 0.5 or score is not None  # Falls back to default
+        assert score == pytest.approx(0.0, abs=0.01)  # No score found, returns 0.0
 
     def test_default_rubric(self):
         judge = self._make_judge()
@@ -307,7 +307,7 @@ class TestLLMJudgeHelpers:
     def test_format_tool_results_empty(self):
         judge = self._make_judge()
         formatted = judge._format_tool_results([])
-        assert formatted == "" or "no tool" in formatted.lower() or formatted is not None
+        assert formatted is not None  # Returns "None" string for empty results
 
 
 # ── MCPToolResultMatches (sync fallback) ─────────────────────────────────────

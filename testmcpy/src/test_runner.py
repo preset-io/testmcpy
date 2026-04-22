@@ -419,21 +419,6 @@ class TestRunner:
             # Ensure initialized
             await self.initialize()
 
-            # Run setup hooks (MCP tool calls before test)
-            if test_case.setup:
-                for setup_call in test_case.setup:
-                    tool_name = setup_call.get("tool", "")
-                    tool_args = setup_call.get("args", {})
-                    if tool_name and self.mcp_client:
-                        try:
-                            mcp_call = MCPToolCall(name=tool_name, arguments=tool_args)
-                            await self.mcp_client.call_tool(mcp_call)
-                            if self.verbose:
-                                self._log(f"  Setup: {tool_name}({tool_args})")
-                        except Exception as setup_err:
-                            if self.verbose:
-                                self._log(f"  Setup failed: {tool_name}: {setup_err}")
-
             # If test has auth config, create a temporary MCP client with that auth
             test_mcp_client = self.mcp_client
             if test_case.auth:
@@ -483,6 +468,17 @@ class TestRunner:
                     auth_error_message = str(auth_exc)
                     if self.verbose:
                         print(f"  Authentication failed: {auth_error}")
+
+            # Run setup hooks against the resolved MCP client (after auth)
+            if test_case.setup:
+                for setup_call in test_case.setup:
+                    tool_name = setup_call.get("tool", "")
+                    tool_args = setup_call.get("args", {})
+                    if tool_name and test_mcp_client:
+                        mcp_call = MCPToolCall(name=tool_name, arguments=tool_args)
+                        await test_mcp_client.call_tool(mcp_call)
+                        if self.verbose:
+                            self._log(f"  Setup: {tool_name}({tool_args})")
 
             # Get available MCP tools
             mcp_tools = await test_mcp_client.list_tools()
@@ -729,15 +725,16 @@ class TestRunner:
             )
 
         finally:
-            # Run teardown hooks (MCP tool calls after test)
-            if test_case.teardown and self.mcp_client:
+            # Run teardown hooks against the same client used for the test
+            teardown_client = test_mcp_client if "test_mcp_client" in locals() else self.mcp_client
+            if test_case.teardown and teardown_client:
                 for teardown_call in test_case.teardown:
                     tool_name = teardown_call.get("tool", "")
                     tool_args = teardown_call.get("args", {})
                     if tool_name:
                         try:
                             mcp_call = MCPToolCall(name=tool_name, arguments=tool_args)
-                            await self.mcp_client.call_tool(mcp_call)
+                            await teardown_client.call_tool(mcp_call)
                             if self.verbose:
                                 self._log(f"  Teardown: {tool_name}({tool_args})")
                         except Exception as teardown_err:
