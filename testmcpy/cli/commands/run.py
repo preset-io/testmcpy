@@ -210,6 +210,16 @@ def run(
     report_title: Optional[str] = typer.Option(
         None, "--report-title", help="Title for the eval report"
     ),
+    system_prompt: Optional[str] = typer.Option(
+        None,
+        "--system-prompt",
+        help="System prompt to inject into all test cases (for harness imitation)",
+    ),
+    system_prompt_file: Optional[Path] = typer.Option(
+        None,
+        "--system-prompt-file",
+        help="File containing the system prompt text",
+    ),
 ):
     """
     Run test cases against MCP service.
@@ -271,8 +281,15 @@ def run(
                 suite_provider_config = data.get("provider_config", {})
                 suite_model = data.get("model")
 
+                # Suite-level system prompt (config.system_prompt or top-level)
+                config_block = data.get("config", {})
+                suite_system_prompt = config_block.get("system_prompt") or data.get("system_prompt")
+
                 if "tests" in data:
                     for test_data in data["tests"]:
+                        # Inherit suite-level system prompt if test doesn't define its own
+                        if suite_system_prompt and "system_prompt" not in test_data:
+                            test_data["system_prompt"] = suite_system_prompt
                         test_cases.append(TestCase.from_dict(test_data))
                 else:
                     test_cases.append(TestCase.from_dict(data))
@@ -299,6 +316,20 @@ def run(
                         elif "prompt" in data or data.get("auth_only"):
                             # Handle single test case files (including auth-only)
                             test_cases.append(TestCase.from_dict(data))
+
+        # Apply CLI-level system prompt override
+        # Priority: test-level > suite-level > CLI --system-prompt > --system-prompt-file
+        cli_system_prompt = system_prompt
+        if not cli_system_prompt and system_prompt_file and system_prompt_file.exists():
+            cli_system_prompt = system_prompt_file.read_text().strip()
+        if cli_system_prompt:
+            for tc in test_cases:
+                if not tc.system_prompt:
+                    tc.system_prompt = cli_system_prompt
+            if verbose:
+                console.print(
+                    f"[yellow]System prompt applied:[/yellow] {cli_system_prompt[:80]}..."
+                )
 
         # Apply suite-level provider override (suite YAML takes precedence over CLI args)
         effective_provider = suite_provider or provider.value
