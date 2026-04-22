@@ -73,6 +73,7 @@ def migrate_results(storage: TestStorage, results_dir: Path) -> int:
                     duration_ms=int(r.get("duration", 0) * 1000),
                     evaluations=r.get("evaluations"),
                     error=r.get("error"),
+                    cost_usd=r.get("cost", r.get("cost_usd", 0.0)),
                 )
 
             # Complete run

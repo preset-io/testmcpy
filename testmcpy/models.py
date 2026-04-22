@@ -178,6 +178,7 @@ class QuestionResultModel(Base):
     score: Mapped[float] = mapped_column(Float, default=0.0)
     passed: Mapped[bool] = mapped_column(Boolean, nullable=False)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)  # Per-eval cost in USD
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
     )

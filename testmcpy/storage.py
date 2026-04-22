@@ -692,6 +692,7 @@ class TestStorage:
         duration_ms: int = 0,
         evaluations: list | None = None,
         error: str | None = None,
+        cost_usd: float = 0.0,
     ) -> None:
         with self._session() as session:
             result = QuestionResultModel(
@@ -708,6 +709,7 @@ class TestStorage:
                 score=score,
                 passed=passed,
                 error=error,
+                cost_usd=cost_usd,
                 created_at=datetime.now(timezone.utc),
             )
             session.add(result)
@@ -740,6 +742,7 @@ class TestStorage:
                     "score": q.score,
                     "passed": bool(q.passed),
                     "error": q.error,
+                    "cost_usd": getattr(q, "cost_usd", 0.0) or 0.0,
                 }
                 for q in questions
             ]
@@ -769,6 +772,7 @@ class TestStorage:
                         q["tokens_input"] + q["tokens_output"] for q in question_results
                     ),
                     "total_duration_ms": sum(q["duration_ms"] for q in question_results),
+                    "total_cost_usd": sum(q["cost_usd"] for q in question_results),
                 },
             }
 
