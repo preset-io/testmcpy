@@ -22,6 +22,7 @@ class Provider(str, Enum):
     GEMINI = "gemini"  # Alias for google
     GEMINI_CLI = "gemini-cli"  # Gemini CLI tool
     OLLAMA = "ollama"
+    BEDROCK = "bedrock"  # AWS Bedrock (Anthropic models via AWS)
     CLAUDE_SDK = "claude-sdk"  # Claude Agent SDK (also handles claude-cli/claude-code)
     OPENROUTER = "openrouter"  # OpenRouter gateway to 100+ models
     XAI = "xai"  # xAI (Grok models) — OpenAI-compatible API
