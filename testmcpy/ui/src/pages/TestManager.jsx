@@ -411,6 +411,7 @@ function TestManager({ selectedProfiles = [], selectedLlmProfile = null, llmProf
     const saved = localStorage.getItem('testManagerSidebarWidth')
     return saved ? Number(saved) : 300
   })
+  const [isDraggingAny, setIsDraggingAny] = useState(false)
   const isDraggingRef = useRef(false)
   const isSidebarDraggingRef = useRef(false)
   const containerRef = useRef(null)
@@ -419,6 +420,7 @@ function TestManager({ selectedProfiles = [], selectedLlmProfile = null, llmProf
   const handleDragStart = useCallback((e) => {
     e.preventDefault()
     isDraggingRef.current = true
+    setIsDraggingAny(true)
     document.body.style.cursor = 'row-resize'
     document.body.style.userSelect = 'none'
 
@@ -433,6 +435,7 @@ function TestManager({ selectedProfiles = [], selectedLlmProfile = null, llmProf
 
     const handleMouseUp = () => {
       isDraggingRef.current = false
+      setIsDraggingAny(false)
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
       document.removeEventListener('mousemove', handleMouseMove)
@@ -452,6 +455,7 @@ function TestManager({ selectedProfiles = [], selectedLlmProfile = null, llmProf
   const handleSidebarDragStart = useCallback((e) => {
     e.preventDefault()
     isSidebarDraggingRef.current = true
+    setIsDraggingAny(true)
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
 
@@ -464,6 +468,7 @@ function TestManager({ selectedProfiles = [], selectedLlmProfile = null, llmProf
 
     const handleMouseUp = () => {
       isSidebarDraggingRef.current = false
+      setIsDraggingAny(false)
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
       document.removeEventListener('mousemove', handleMouseMove)
@@ -1050,7 +1055,9 @@ tests:
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0" ref={containerRef}>
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0 relative" ref={containerRef}>
+        {/* Transparent overlay during drag to prevent Monaco from stealing mouse events */}
+        {isDraggingAny && <div className="absolute inset-0 z-20" />}
         {/* File List Sidebar — resizable */}
         <div
           className={`flex-shrink-0 border-b md:border-b-0 md:border-r border-border ${showFileTree ? 'flex flex-col' : 'hidden'} md:flex md:flex-col bg-surface-elevated overflow-hidden max-h-[40vh] md:max-h-none`}

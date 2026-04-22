@@ -1,3 +1,4 @@
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -15,7 +16,24 @@ def screenshots_dir():
 
 @pytest.fixture(scope="session")
 def server_url():
-    """Start testmcpy server for E2E tests."""
+    """Start testmcpy server for E2E tests.
+
+    If TESTMCPY_E2E_SERVER_URL is set, use that external server instead
+    of starting a new one. This lets you run E2E tests against a server
+    rooted in a specific directory (e.g. preset-mcp-tests).
+    """
+    external_url = os.environ.get("TESTMCPY_E2E_SERVER_URL")
+    if external_url:
+        # Verify external server is reachable
+        try:
+            resp = httpx.get(f"{external_url}/api/health", timeout=5)
+            if resp.status_code == 200:
+                yield external_url
+                return
+        except (httpx.ConnectError, httpx.ReadTimeout):
+            pytest.skip(f"External server at {external_url} not reachable")
+            return
+
     port = 18765
     proc = subprocess.Popen(
         ["testmcpy", "serve", "--port", str(port)],
