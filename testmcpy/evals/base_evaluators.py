@@ -2483,6 +2483,96 @@ class MCPVerifySideEffect(BaseEvaluator):
         return str(content)
 
 
+class UnnecessaryToolCalls(BaseEvaluator):
+    """Detect duplicate or unnecessary tool calls that waste tokens/cost.
+
+    Flags when the same tool is called multiple times with identical arguments,
+    which indicates the LLM is making redundant API calls. This is a common
+    issue that significantly increases costs (e.g., calling get_dashboard_info
+    3 times with the same ID).
+    """
+
+    def __init__(
+        self,
+        max_duplicates: int = 1,
+        check_args: bool = True,
+        ignore_tools: list[str] | None = None,
+    ):
+        """
+        Args:
+            max_duplicates: Max times the same call (tool+args) is allowed (default 1)
+            check_args: If True, same tool with different args is OK. If False,
+                        any repeat of the same tool name counts as duplicate.
+            ignore_tools: Tool names to skip when checking for duplicates
+                         (e.g., search_tools is often called multiple times legitimately)
+        """
+        self.max_duplicates = max_duplicates
+        self.check_args = check_args
+        self.ignore_tools = set(ignore_tools or [])
+
+    @property
+    def name(self) -> str:
+        return "unnecessary_tool_calls"
+
+    @property
+    def description(self) -> str:
+        return f"Checks for duplicate tool calls (max {self.max_duplicates} per unique call)"
+
+    def evaluate(self, context: dict[str, Any]) -> EvalResult:
+        tool_calls = context.get("tool_calls", [])
+        if not tool_calls:
+            return EvalResult(passed=True, score=1.0, reason="No tool calls to check")
+
+        # Group calls by signature
+        call_counts: dict[str, int] = {}
+        for tc in tool_calls:
+            tool_name = tc.get("name", "")
+            if tool_name in self.ignore_tools:
+                continue
+
+            if self.check_args:
+                # Include args in the signature (sorted for consistency)
+                args = tc.get("arguments", {})
+                try:
+                    args_key = str(sorted(args.items())) if isinstance(args, dict) else str(args)
+                except TypeError:
+                    args_key = str(args)
+                sig = f"{tool_name}({args_key})"
+            else:
+                sig = tool_name
+
+            call_counts[sig] = call_counts.get(sig, 0) + 1
+
+        # Find duplicates
+        duplicates = {
+            sig: count for sig, count in call_counts.items() if count > self.max_duplicates
+        }
+
+        if not duplicates:
+            return EvalResult(
+                passed=True,
+                score=1.0,
+                reason="No unnecessary duplicate tool calls",
+                details={"unique_calls": len(call_counts), "total_calls": len(tool_calls)},
+            )
+
+        total_excess = sum(count - self.max_duplicates for count in duplicates.values())
+        total_calls = len(tool_calls)
+        score = max(0.0, 1.0 - (total_excess / total_calls))
+
+        return EvalResult(
+            passed=False,
+            score=score,
+            reason=f"Found {len(duplicates)} duplicate tool call pattern(s): "
+            + ", ".join(f"{sig} ({count}x)" for sig, count in duplicates.items()),
+            details={
+                "duplicates": duplicates,
+                "total_excess_calls": total_excess,
+                "total_calls": total_calls,
+            },
+        )
+
+
 # Factory function for creating evaluators
 
 
@@ -2550,6 +2640,8 @@ def create_evaluator(name: str, **kwargs) -> BaseEvaluator:
         "mcp_tool_result_matches": MCPToolResultMatches,
         "mcp_verify_response_data": MCPVerifyResponseData,
         "mcp_verify_side_effect": MCPVerifySideEffect,
+        # Cost optimization evaluators
+        "unnecessary_tool_calls": UnnecessaryToolCalls,
     }
 
     if name not in evaluators:
