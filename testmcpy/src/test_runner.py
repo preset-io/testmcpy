@@ -125,6 +125,8 @@ class TestCase:
     steps: list[TestStep] | None = None  # For multi-turn tests
     load_test: dict[str, Any] | None = None  # For load/burst tests
     auth_only: bool = False  # For auth-only tests (skip LLM call)
+    system_prompt: str | None = None  # Optional system prompt for harness imitation
+    category: str | None = None  # Eval category tag (e.g., dashboard_mgmt, sql_query)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "TestCase":
@@ -156,6 +158,8 @@ class TestCase:
             steps=steps,
             load_test=data.get("load_test"),
             auth_only=data.get("auth_only", False),
+            system_prompt=data.get("system_prompt"),
+            category=data.get("category"),
         )
 
     @property
@@ -488,9 +492,17 @@ class TestRunner:
                 if self.verbose and effective_timeout > test_case.timeout:
                     self._log(f"  Using extended timeout {effective_timeout}s for CLI provider")
 
+            # Build messages with optional system prompt
+            llm_kwargs: dict[str, Any] = {}
+            if test_case.system_prompt:
+                llm_kwargs["messages"] = [{"role": "system", "content": test_case.system_prompt}]
+
             # Get LLM response with tool calls (with rate limiting)
             llm_result = await self._call_llm_with_rate_limiting(
-                prompt=test_case.prompt, tools=formatted_tools, timeout=effective_timeout
+                prompt=test_case.prompt,
+                tools=formatted_tools,
+                timeout=effective_timeout,
+                **llm_kwargs,
             )
 
             # Show requested tool calls before executing them
@@ -920,12 +932,17 @@ class TestRunner:
                 ):
                     effective_timeout = max(step.timeout, 120.0)
 
+                # Build messages — inject system prompt on first step
+                step_messages = list(conversation_history) if conversation_history else []
+                if test_case.system_prompt and step_idx == 0 and not step_messages:
+                    step_messages.insert(0, {"role": "system", "content": test_case.system_prompt})
+
                 # Call LLM with conversation history
                 llm_result = await self._call_llm_with_rate_limiting(
                     prompt=step.prompt,
                     tools=formatted_tools,
                     timeout=effective_timeout,
-                    messages=conversation_history if conversation_history else None,
+                    messages=step_messages if step_messages else None,
                 )
 
                 # Execute tool calls (skip if already executed by provider like Claude CLI)

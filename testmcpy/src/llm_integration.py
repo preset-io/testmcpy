@@ -638,6 +638,32 @@ class OpenRouterProvider(OpenAIProvider):
             )
 
 
+class XAIProvider(OpenAIProvider):
+    """xAI (Grok) API provider — OpenAI-compatible API at api.x.ai.
+
+    Uses the same OpenAI chat/completions format but routes through
+    https://api.x.ai/v1 with an xAI API key.
+    """
+
+    def __init__(self, model: str, api_key: str | None = None):
+        resolved_key = api_key or os.environ.get("XAI_API_KEY", "")
+        super().__init__(
+            model=model,
+            api_key=resolved_key,
+            base_url="https://api.x.ai/v1",
+        )
+
+    async def initialize(self):
+        """Validate that an API key is available."""
+        if not self.api_key:
+            config = get_config()
+            self.api_key = config.get("XAI_API_KEY", "")
+        if not self.api_key:
+            raise ValueError(
+                "xAI API key not provided. Set XAI_API_KEY in ~/.testmcpy or environment."
+            )
+
+
 class LocalModelProvider(LLMProvider):
     """Provider for local models using transformers or llama.cpp."""
 
@@ -1107,6 +1133,229 @@ class AnthropicProvider(LLMProvider):
         """Close connections."""
         await self.tool_discovery.close()
         await self.client.aclose()
+
+
+_bedrock_logger = logging.getLogger(__name__ + ".BedrockProvider")
+
+
+class BedrockProvider(LLMProvider):
+    """AWS Bedrock provider using the Anthropic SDK's built-in Bedrock client.
+
+    Uses AsyncAnthropicBedrock which handles SigV4 signing automatically.
+    AWS credentials are read from the environment (AWS_ACCESS_KEY_ID,
+    AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN) — typically set by OIDC
+    role assumption in CI.
+
+    Requires: pip install testmcpy[bedrock]  (adds boto3)
+    """
+
+    def __init__(
+        self,
+        model: str,
+        aws_region: str = "us-west-2",
+        mcp_url: str | None = None,
+    ):
+        self.model = model
+        self.aws_region = aws_region
+        self.client = None  # Initialized lazily in initialize()
+
+        # Use config system for MCP URL if not provided
+        config = get_config()
+        if mcp_url is None:
+            mcp_url = config.get_mcp_url()
+        # Get auth from default MCP server
+        auth = None
+        default_mcp = config.get_default_mcp_server()
+        if default_mcp and default_mcp.auth:
+            auth = default_mcp.auth.to_dict()
+        self.tool_discovery = ToolDiscoveryService(mcp_url, auth=auth)
+
+    async def initialize(self):
+        """Initialize Bedrock provider with lazy boto3/anthropic import."""
+        try:
+            from anthropic import AsyncAnthropicBedrock
+        except ImportError as e:
+            raise ImportError(
+                "AWS Bedrock support requires boto3. Install with: pip install testmcpy[bedrock]"
+            ) from e
+
+        self.client = AsyncAnthropicBedrock(aws_region=self.aws_region)
+        _bedrock_logger.info(
+            "[Bedrock] Initialized client for region=%s model=%s", self.aws_region, self.model
+        )
+
+        # Try to pre-discover tools
+        try:
+            await self.tool_discovery.discover_tools()
+            _bedrock_logger.info(
+                "[Bedrock] Connected to MCP service at %s", self.tool_discovery.mcp_url
+            )
+        except Exception as e:
+            _bedrock_logger.warning("[Bedrock] Failed to initialize MCP tools: %s", e)
+            print(f"⚠️  Warning: Failed to initialize MCP tools: {e}")
+            print("   The provider will work without MCP tools (direct API calls only)")
+
+    async def generate_with_tools(
+        self,
+        prompt: str,
+        tools: list[dict[str, Any]],
+        timeout: float = 30.0,
+        messages: list[dict[str, Any]] | None = None,
+    ) -> LLMResult:
+        """Generate response with tool calling via Bedrock."""
+        start_time = time.time()
+
+        try:
+            if self.client is None:
+                raise RuntimeError("BedrockProvider not initialized. Call initialize() first.")
+
+            # CRITICAL: Validate NO MCP URLs in request
+            request_data = {"prompt": prompt, "tools": tools}
+            if not MCPURLFilter.validate_request_data(request_data):
+                raise Exception("SECURITY VIOLATION: MCP URLs detected in request data")
+
+            # Convert tool schemas to Anthropic format
+            anthropic_tools = []
+            for tool in tools:
+                if "function" in tool:
+                    func = tool["function"]
+                    tool_dict = {
+                        "name": func.get("name", ""),
+                        "description": func.get("description", ""),
+                        "parameters": func.get("parameters", {}),
+                    }
+                else:
+                    tool_dict = tool
+
+                sanitized_tool = MCPURLFilter.sanitize_tool_schema(tool_dict)
+                input_schema = sanitized_tool.get(
+                    "inputSchema", sanitized_tool.get("parameters", {})
+                )
+                if "type" not in input_schema:
+                    input_schema["type"] = "object"
+
+                anthropic_tools.append(
+                    {
+                        "name": sanitized_tool.get("name", ""),
+                        "description": sanitized_tool.get("description", ""),
+                        "input_schema": input_schema,
+                    }
+                )
+
+            # Build messages
+            if messages:
+                api_messages = [
+                    msg
+                    for msg in messages
+                    if msg.get("content") and str(msg.get("content")).strip()
+                ]
+                if not api_messages or api_messages[-1].get("content") != prompt:
+                    api_messages.append({"role": "user", "content": prompt})
+            else:
+                api_messages = [{"role": "user", "content": prompt}]
+
+            # Check thinking support
+            supports_thinking = "claude-sonnet-4" in self.model or "claude-opus-4" in self.model
+            max_tokens = 16000 if supports_thinking else 4096
+
+            # Build SDK call kwargs
+            kwargs: dict[str, Any] = {
+                "model": self.model,
+                "max_tokens": max_tokens,
+                "messages": api_messages,
+            }
+
+            if supports_thinking:
+                kwargs["thinking"] = {"type": "enabled", "budget_tokens": 10000}
+
+            if anthropic_tools:
+                kwargs["tools"] = anthropic_tools
+                kwargs["tool_choice"] = {"type": "auto"}
+
+            # Final security check
+            if not MCPURLFilter.validate_request_data(kwargs):
+                raise Exception("SECURITY VIOLATION: MCP URLs in final API request")
+
+            # Call Bedrock via SDK (handles SigV4 signing)
+            response = await self.client.messages.create(**kwargs)
+
+            # Parse SDK response objects
+            response_text = ""
+            thinking_text = ""
+            tool_calls = []
+
+            for block in response.content:
+                if block.type == "thinking":
+                    thinking_text += block.thinking
+                elif block.type == "text":
+                    response_text += block.text
+                elif block.type == "tool_use":
+                    tool_calls.append(
+                        {
+                            "id": block.id,
+                            "name": block.name,
+                            "arguments": block.input,
+                        }
+                    )
+
+            # Execute tool calls locally
+            for tool_call in tool_calls:
+                try:
+                    await self.tool_discovery.execute_tool_call(tool_call)
+                except Exception:
+                    pass
+
+            # Calculate usage and cost
+            usage = response.usage
+            token_usage = {
+                "prompt": usage.input_tokens,
+                "completion": usage.output_tokens,
+                "total": usage.input_tokens + usage.output_tokens,
+            }
+
+            # Bedrock pricing (Sonnet 4.5: $3/$15 per 1M tokens)
+            cost = (token_usage["prompt"] * 0.003 + token_usage["completion"] * 0.015) / 1000
+
+            duration = time.time() - start_time
+            tti_ms = int(duration * 1000)
+
+            return LLMResult(
+                response=response_text,
+                tool_calls=tool_calls,
+                thinking=thinking_text if thinking_text else None,
+                token_usage=token_usage,
+                cost=cost,
+                duration=duration,
+                tti_ms=tti_ms,
+                raw_response=response.model_dump() if hasattr(response, "model_dump") else None,
+            )
+
+        except Exception as e:
+            error_type = type(e).__name__
+            error_msg = str(e)
+            error_details = f"Error Type: {error_type}\nError Message: {error_msg}"
+
+            if hasattr(e, "response"):
+                try:
+                    error_details += f"\nHTTP Status: {e.response.status_code}"
+                    error_details += f"\nHTTP Response: {e.response.text}"
+                except (AttributeError, TypeError):
+                    pass
+
+            if "timeout" in error_msg.lower():
+                error_details += "\nThis appears to be a timeout error."
+            if "rate" in error_msg.lower() or "429" in error_msg:
+                error_details += "\nThis appears to be a rate limiting error."
+
+            return LLMResult(
+                response=f"Error: {error_details}", tool_calls=[], duration=time.time() - start_time
+            )
+
+    async def close(self):
+        """Close connections."""
+        await self.tool_discovery.close()
+        if self.client:
+            await self.client.close()
 
 
 _claude_sdk_logger = logging.getLogger(__name__ + ".ClaudeSDKProvider")
@@ -2564,7 +2813,7 @@ def create_llm_provider(provider: str, model: str, **kwargs) -> LLMProvider:
     Create an LLM provider instance.
 
     Args:
-        provider: Provider name (ollama, openai, openrouter, local, anthropic, claude-sdk, claude-cli, claude-code, assistant, chatbot, codex-cli, gemini-cli)
+        provider: Provider name (ollama, openai, openrouter, local, anthropic, bedrock, claude-sdk, claude-cli, claude-code, assistant, chatbot, codex-cli, gemini-cli)
         model: Model name/path
         **kwargs: Additional provider-specific arguments
 
@@ -2577,6 +2826,8 @@ def create_llm_provider(provider: str, model: str, **kwargs) -> LLMProvider:
         "openrouter": OpenRouterProvider,
         "local": LocalModelProvider,
         "anthropic": AnthropicProvider,
+        "bedrock": BedrockProvider,
+        "aws-bedrock": BedrockProvider,  # Alias
         "gemini": GeminiProvider,
         "google": GeminiProvider,  # Alias
         "claude-sdk": ClaudeSDKProvider,  # Claude Agent SDK (uses Claude CLI)
@@ -2587,6 +2838,8 @@ def create_llm_provider(provider: str, model: str, **kwargs) -> LLMProvider:
         "codex-cli": CodexCLIProvider,
         "codex": CodexCLIProvider,  # Alias
         "gemini-cli": GeminiCLIProvider,
+        "xai": XAIProvider,  # xAI (Grok models)
+        "grok": XAIProvider,  # Alias → xai
     }
 
     if provider not in providers:

@@ -22,7 +22,10 @@ class Provider(str, Enum):
     GEMINI = "gemini"  # Alias for google
     GEMINI_CLI = "gemini-cli"  # Gemini CLI tool
     OLLAMA = "ollama"
+    BEDROCK = "bedrock"  # AWS Bedrock (Anthropic models via AWS)
     CLAUDE_SDK = "claude-sdk"  # Claude Agent SDK (also handles claude-cli/claude-code)
+    OPENROUTER = "openrouter"  # OpenRouter gateway to 100+ models
+    XAI = "xai"  # xAI (Grok models) — OpenAI-compatible API
 
 
 class ModelCapability(str, Enum):
@@ -79,10 +82,48 @@ class ModelInfo:
 
 CLAUDE_MODELS: list[ModelInfo] = [
     ModelInfo(
+        id="claude-sonnet-4-6-20260401",
+        name="Claude Sonnet 4.6",
+        provider=Provider.ANTHROPIC,
+        description="Latest Sonnet — fast, capable, best price/performance",
+        context_window=1_000_000,
+        max_output_tokens=16384,
+        input_price_per_1m=3.00,
+        output_price_per_1m=15.00,
+        capabilities=[
+            ModelCapability.TOOL_CALLING,
+            ModelCapability.STREAMING,
+            ModelCapability.VISION,
+            ModelCapability.LONG_CONTEXT,
+        ],
+        family="claude-4.6",
+        is_default=True,
+        aliases=["claude-sonnet-4-6", "claude-sonnet-4.6", "sonnet-4.6", "sonnet"],
+    ),
+    ModelInfo(
+        id="claude-opus-4-7-20260401",
+        name="Claude Opus 4.7",
+        provider=Provider.ANTHROPIC,
+        description="Most capable Claude model — deep reasoning and analysis",
+        context_window=1_000_000,
+        max_output_tokens=16384,
+        input_price_per_1m=15.00,
+        output_price_per_1m=75.00,
+        capabilities=[
+            ModelCapability.TOOL_CALLING,
+            ModelCapability.STREAMING,
+            ModelCapability.VISION,
+            ModelCapability.LONG_CONTEXT,
+            ModelCapability.REASONING,
+        ],
+        family="claude-4.7",
+        aliases=["claude-opus-4-7", "claude-opus-4.7", "opus-4.7", "opus"],
+    ),
+    ModelInfo(
         id="claude-sonnet-4-20250514",
         name="Claude Sonnet 4",
         provider=Provider.ANTHROPIC,
-        description="Best balance of speed and intelligence for most tasks",
+        description="Previous generation Sonnet",
         context_window=200_000,
         max_output_tokens=8192,
         input_price_per_1m=3.00,
@@ -94,14 +135,13 @@ CLAUDE_MODELS: list[ModelInfo] = [
             ModelCapability.LONG_CONTEXT,
         ],
         family="claude-4",
-        is_default=True,
-        aliases=["claude-sonnet-4", "claude-4-sonnet", "sonnet"],
+        aliases=["claude-sonnet-4", "claude-4-sonnet"],
     ),
     ModelInfo(
         id="claude-opus-4-20250514",
         name="Claude Opus 4",
         provider=Provider.ANTHROPIC,
-        description="Most capable model for complex reasoning and analysis",
+        description="Previous generation Opus",
         context_window=200_000,
         max_output_tokens=8192,
         input_price_per_1m=15.00,
@@ -114,7 +154,7 @@ CLAUDE_MODELS: list[ModelInfo] = [
             ModelCapability.REASONING,
         ],
         family="claude-4",
-        aliases=["claude-opus-4", "claude-4-opus", "opus"],
+        aliases=["claude-opus-4", "claude-4-opus"],
     ),
     ModelInfo(
         id="claude-3-5-haiku-20241022",
@@ -161,10 +201,49 @@ CLAUDE_MODELS: list[ModelInfo] = [
 
 OPENAI_MODELS: list[ModelInfo] = [
     ModelInfo(
+        id="gpt-5.4",
+        name="GPT-5.4",
+        provider=Provider.OPENAI,
+        description="Latest GPT model — strong tool-calling and reasoning",
+        context_window=256_000,
+        max_output_tokens=32768,
+        input_price_per_1m=2.50,
+        output_price_per_1m=10.00,
+        capabilities=[
+            ModelCapability.TOOL_CALLING,
+            ModelCapability.STREAMING,
+            ModelCapability.VISION,
+            ModelCapability.LONG_CONTEXT,
+            ModelCapability.REASONING,
+        ],
+        family="gpt-5",
+        is_default=True,
+        aliases=["gpt-5.4", "gpt5.4", "gpt5"],
+    ),
+    ModelInfo(
+        id="gpt-5.4-pro",
+        name="GPT-5.4 Pro",
+        provider=Provider.OPENAI,
+        description="GPT-5.4 Pro — benchmark ceiling model",
+        context_window=256_000,
+        max_output_tokens=32768,
+        input_price_per_1m=15.00,
+        output_price_per_1m=60.00,
+        capabilities=[
+            ModelCapability.TOOL_CALLING,
+            ModelCapability.STREAMING,
+            ModelCapability.VISION,
+            ModelCapability.LONG_CONTEXT,
+            ModelCapability.REASONING,
+        ],
+        family="gpt-5",
+        aliases=["gpt-5.4-pro", "gpt5.4-pro"],
+    ),
+    ModelInfo(
         id="gpt-4o",
         name="GPT-4o",
         provider=Provider.OPENAI,
-        description="Most capable GPT-4 model with vision",
+        description="Previous generation GPT-4 model with vision",
         context_window=128_000,
         max_output_tokens=16384,
         input_price_per_1m=2.50,
@@ -176,7 +255,6 @@ OPENAI_MODELS: list[ModelInfo] = [
             ModelCapability.LONG_CONTEXT,
         ],
         family="gpt-4o",
-        is_default=True,
         aliases=["gpt4o"],
     ),
     ModelInfo(
@@ -255,10 +333,65 @@ OPENAI_MODELS: list[ModelInfo] = [
 
 GEMINI_MODELS: list[ModelInfo] = [
     ModelInfo(
+        id="gemini-3.1-pro",
+        name="Gemini 3.1 Pro",
+        provider=Provider.GOOGLE,
+        description="Latest Gemini Pro — strong reasoning and tool-calling",
+        context_window=2_000_000,
+        max_output_tokens=65536,
+        input_price_per_1m=1.25,
+        output_price_per_1m=10.00,
+        capabilities=[
+            ModelCapability.TOOL_CALLING,
+            ModelCapability.STREAMING,
+            ModelCapability.VISION,
+            ModelCapability.LONG_CONTEXT,
+            ModelCapability.REASONING,
+        ],
+        family="gemini-3.1",
+        is_default=True,
+        aliases=["gemini-3.1-pro", "gemini-3-pro"],
+    ),
+    ModelInfo(
+        id="gemini-3-flash",
+        name="Gemini 3 Flash",
+        provider=Provider.GOOGLE,
+        description="Fast and efficient latest-gen Gemini",
+        context_window=1_000_000,
+        max_output_tokens=65536,
+        input_price_per_1m=0.15,
+        output_price_per_1m=0.60,
+        capabilities=[
+            ModelCapability.TOOL_CALLING,
+            ModelCapability.STREAMING,
+            ModelCapability.VISION,
+            ModelCapability.LONG_CONTEXT,
+        ],
+        family="gemini-3",
+        aliases=["gemini-3-flash", "gemini-flash-3"],
+    ),
+    ModelInfo(
+        id="gemini-3.1-flash-lite",
+        name="Gemini 3.1 Flash Lite",
+        provider=Provider.GOOGLE,
+        description="Cheapest Gemini for high-throughput workloads",
+        context_window=1_000_000,
+        max_output_tokens=32768,
+        input_price_per_1m=0.04,
+        output_price_per_1m=0.15,
+        capabilities=[
+            ModelCapability.TOOL_CALLING,
+            ModelCapability.STREAMING,
+            ModelCapability.LONG_CONTEXT,
+        ],
+        family="gemini-3.1",
+        aliases=["gemini-3.1-flash-lite", "gemini-flash-lite"],
+    ),
+    ModelInfo(
         id="gemini-2.5-pro",
         name="Gemini 2.5 Pro",
         provider=Provider.GOOGLE,
-        description="Most capable Gemini model with extended thinking",
+        description="Previous generation Gemini Pro with extended thinking",
         context_window=1_000_000,
         max_output_tokens=65536,
         input_price_per_1m=1.25,
@@ -271,14 +404,13 @@ GEMINI_MODELS: list[ModelInfo] = [
             ModelCapability.REASONING,
         ],
         family="gemini-2.5",
-        is_default=True,
         aliases=["gemini-2.5-pro-preview"],
     ),
     ModelInfo(
         id="gemini-2.5-flash",
         name="Gemini 2.5 Flash",
         provider=Provider.GOOGLE,
-        description="Fast and efficient with extended thinking",
+        description="Previous generation fast Gemini",
         context_window=1_000_000,
         max_output_tokens=65536,
         input_price_per_1m=0.15,
@@ -415,11 +547,137 @@ GEMINI_CLI_MODELS: list[ModelInfo] = [
 ]
 
 # ============================================================
+# xAI Grok Models
+# ============================================================
+
+GROK_MODELS: list[ModelInfo] = [
+    ModelInfo(
+        id="grok-4-0709",
+        name="Grok 4",
+        provider=Provider.XAI,
+        description="xAI flagship model with strong tool-calling",
+        context_window=131_072,
+        max_output_tokens=16384,
+        input_price_per_1m=3.00,
+        output_price_per_1m=15.00,
+        capabilities=[
+            ModelCapability.TOOL_CALLING,
+            ModelCapability.STREAMING,
+            ModelCapability.LONG_CONTEXT,
+            ModelCapability.REASONING,
+        ],
+        family="grok-4",
+        is_default=True,
+        aliases=["grok-4", "grok-4.20", "grok4"],
+    ),
+    ModelInfo(
+        id="grok-3-fast",
+        name="Grok 3 Fast",
+        provider=Provider.XAI,
+        description="xAI fast inference model",
+        context_window=131_072,
+        max_output_tokens=16384,
+        input_price_per_1m=0.60,
+        output_price_per_1m=3.00,
+        capabilities=[
+            ModelCapability.TOOL_CALLING,
+            ModelCapability.STREAMING,
+            ModelCapability.LONG_CONTEXT,
+        ],
+        family="grok-3",
+        aliases=["grok-3-fast", "grok-4.1-fast", "grok-fast"],
+    ),
+]
+
+# ============================================================
+# OpenRouter Models (DeepSeek, Kimi, GLM, Qwen, etc.)
+# ============================================================
+
+OPENROUTER_MODELS: list[ModelInfo] = [
+    ModelInfo(
+        id="deepseek/deepseek-chat-v3",
+        name="DeepSeek V3",
+        provider=Provider.OPENROUTER,
+        description="DeepSeek V3 chat model via OpenRouter",
+        context_window=128_000,
+        max_output_tokens=8192,
+        input_price_per_1m=0.27,
+        output_price_per_1m=1.10,
+        capabilities=[
+            ModelCapability.TOOL_CALLING,
+            ModelCapability.STREAMING,
+            ModelCapability.LONG_CONTEXT,
+        ],
+        family="deepseek-v3",
+        is_default=True,
+        aliases=["deepseek-v3", "deepseek-v3.2", "deepseek-chat"],
+    ),
+    ModelInfo(
+        id="moonshotai/kimi-k2",
+        name="Kimi K2",
+        provider=Provider.OPENROUTER,
+        description="Moonshot AI Kimi K2 via OpenRouter",
+        context_window=131_072,
+        max_output_tokens=8192,
+        input_price_per_1m=0.60,
+        output_price_per_1m=2.40,
+        capabilities=[
+            ModelCapability.TOOL_CALLING,
+            ModelCapability.STREAMING,
+            ModelCapability.LONG_CONTEXT,
+        ],
+        family="kimi",
+        aliases=["kimi-k2", "kimi-k2.5"],
+    ),
+    ModelInfo(
+        id="zhipu/glm-4-plus",
+        name="GLM-4 Plus",
+        provider=Provider.OPENROUTER,
+        description="Zhipu GLM-4 Plus via OpenRouter",
+        context_window=128_000,
+        max_output_tokens=4096,
+        input_price_per_1m=1.40,
+        output_price_per_1m=1.40,
+        capabilities=[
+            ModelCapability.TOOL_CALLING,
+            ModelCapability.STREAMING,
+            ModelCapability.LONG_CONTEXT,
+        ],
+        family="glm",
+        aliases=["glm-4", "glm-5.1"],
+    ),
+    ModelInfo(
+        id="qwen/qwen3-coder",
+        name="Qwen3 Coder",
+        provider=Provider.OPENROUTER,
+        description="Alibaba Qwen3 Coder via OpenRouter",
+        context_window=131_072,
+        max_output_tokens=8192,
+        input_price_per_1m=0.30,
+        output_price_per_1m=1.20,
+        capabilities=[
+            ModelCapability.TOOL_CALLING,
+            ModelCapability.STREAMING,
+            ModelCapability.LONG_CONTEXT,
+            ModelCapability.CODE_EXECUTION,
+        ],
+        family="qwen3",
+        aliases=["qwen3-coder", "qwen3-coder-480b"],
+    ),
+]
+
+# ============================================================
 # Model Registry
 # ============================================================
 
 ALL_MODELS: list[ModelInfo] = (
-    CLAUDE_MODELS + OPENAI_MODELS + GEMINI_MODELS + CLAUDE_SDK_MODELS + GEMINI_CLI_MODELS
+    CLAUDE_MODELS
+    + OPENAI_MODELS
+    + GEMINI_MODELS
+    + CLAUDE_SDK_MODELS
+    + GEMINI_CLI_MODELS
+    + GROK_MODELS
+    + OPENROUTER_MODELS
 )
 
 # Build lookup dictionaries

@@ -210,6 +210,16 @@ def run(
     report_title: Optional[str] = typer.Option(
         None, "--report-title", help="Title for the eval report"
     ),
+    system_prompt: Optional[str] = typer.Option(
+        None,
+        "--system-prompt",
+        help="System prompt to inject into all test cases (for harness imitation)",
+    ),
+    system_prompt_file: Optional[Path] = typer.Option(
+        None,
+        "--system-prompt-file",
+        help="File containing the system prompt text",
+    ),
 ):
     """
     Run test cases against MCP service.
@@ -271,8 +281,15 @@ def run(
                 suite_provider_config = data.get("provider_config", {})
                 suite_model = data.get("model")
 
+                # Suite-level system prompt (config.system_prompt or top-level)
+                config_block = data.get("config", {})
+                suite_system_prompt = config_block.get("system_prompt") or data.get("system_prompt")
+
                 if "tests" in data:
                     for test_data in data["tests"]:
+                        # Inherit suite-level system prompt if test doesn't define its own
+                        if suite_system_prompt and "system_prompt" not in test_data:
+                            test_data["system_prompt"] = suite_system_prompt
                         test_cases.append(TestCase.from_dict(test_data))
                 else:
                     test_cases.append(TestCase.from_dict(data))
@@ -299,6 +316,20 @@ def run(
                         elif "prompt" in data or data.get("auth_only"):
                             # Handle single test case files (including auth-only)
                             test_cases.append(TestCase.from_dict(data))
+
+        # Apply CLI-level system prompt override
+        # Priority: test-level > suite-level > CLI --system-prompt > --system-prompt-file
+        cli_system_prompt = system_prompt
+        if not cli_system_prompt and system_prompt_file and system_prompt_file.exists():
+            cli_system_prompt = system_prompt_file.read_text().strip()
+        if cli_system_prompt:
+            for tc in test_cases:
+                if not tc.system_prompt:
+                    tc.system_prompt = cli_system_prompt
+            if verbose:
+                console.print(
+                    f"[yellow]System prompt applied:[/yellow] {cli_system_prompt[:80]}..."
+                )
 
         # Apply suite-level provider override (suite YAML takes precedence over CLI args)
         effective_provider = suite_provider or provider.value
@@ -1182,10 +1213,15 @@ def coverage(
 @app.command()
 def compare(
     test_path: Path = typer.Argument(..., help="Path to test file or directory"),
-    models: str = typer.Option(
-        ...,
+    models: Optional[str] = typer.Option(
+        None,
         "--models",
-        help="Comma-separated list of provider:model pairs (e.g. 'anthropic:claude-sonnet-4-20250514,openai:gpt-4o')",
+        help="Comma-separated list of provider:model pairs (e.g. 'anthropic:claude-sonnet-4-6,openai:gpt-5.4')",
+    ),
+    models_file: Optional[Path] = typer.Option(
+        None,
+        "--models-file",
+        help="YAML file with model list (versioned alongside test suite)",
     ),
     mcp_url: Optional[str] = typer.Option(
         None, "--mcp-url", help="MCP service URL (overrides profile)"
@@ -1194,6 +1230,9 @@ def compare(
         None, "--profile", help="MCP service profile from .mcp_services.yaml"
     ),
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output file for results"),
+    output_csv: Optional[Path] = typer.Option(
+        None, "--output-csv", help="Export results as CSV (Max's dataset spec)"
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
 ):
     """
@@ -1207,18 +1246,27 @@ def compare(
     """
     from testmcpy.src.comparison_runner import ComparisonRunner, ModelConfig
 
-    # Parse model specs
-    model_specs = [s.strip() for s in models.split(",") if s.strip()]
+    # Parse model specs from --models or --models-file
+    model_specs: list[str] = []
+    if models_file and models_file.exists():
+        models_data = yaml.safe_load(models_file.read_text())
+        if isinstance(models_data, dict) and "models" in models_data:
+            model_specs = [f"{m['provider']}:{m['model']}" for m in models_data["models"]]
+        elif isinstance(models_data, list):
+            model_specs = [str(m) for m in models_data]
+        if verbose:
+            console.print(f"[yellow]Loaded {len(model_specs)} models from {models_file}[/yellow]")
+    elif models:
+        model_specs = [s.strip() for s in models.split(",") if s.strip()]
+
     if len(model_specs) < 2:
-        console.print(
-            "[red]Error: --models requires at least 2 comma-separated provider:model pairs[/red]"
-        )
+        console.print("[red]Error: Need at least 2 models. Use --models or --models-file.[/red]")
         raise typer.Exit(code=1)
 
     try:
         model_configs = [ModelConfig.from_string(spec) for spec in model_specs]
     except ValueError as e:
-        console.print(f"[red]Error parsing --models: {e}[/red]")
+        console.print(f"[red]Error parsing models: {e}[/red]")
         raise typer.Exit(code=1)
 
     # Load config with profile if specified
@@ -1347,5 +1395,12 @@ def compare(
                 output.parent.mkdir(parents=True, exist_ok=True)
                 output.write_text(report_md)
             console.print(f"\n[green]Comparison report saved to {output}[/green]")
+
+        # CSV export
+        if output_csv:
+            output_csv.parent.mkdir(parents=True, exist_ok=True)
+            csv_str = runner.to_csv(results, test_cases)
+            output_csv.write_text(csv_str)
+            console.print(f"[green]CSV dataset saved to {output_csv}[/green]")
 
     asyncio.run(run_comparison())

@@ -1,0 +1,10 @@
+#!/bin/sh
+# Reject commits containing Claude Code or Anthropic credits.
+# Install: git config core.hooksPath .githooks
+
+MSG_FILE="$1"
+if grep -qi "co-authored-by.*anthropic\|co-authored-by.*claude\|noreply@anthropic\|Generated with.*Claude Code" "$MSG_FILE"; then
+    echo "ERROR: Commit message contains Claude/Anthropic credits."
+    echo "Remove any Co-Authored-By or 'Generated with Claude Code' lines."
+    exit 1
+fi

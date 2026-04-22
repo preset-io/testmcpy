@@ -104,6 +104,7 @@ def save_test_run_to_file(data: dict[str, Any]) -> dict[str, Any]:
             duration_ms=int(r.get("duration", 0) * 1000),
             evaluations=r.get("evaluations"),
             error=r.get("error"),
+            cost_usd=r.get("cost", r.get("cost_usd", 0.0)),
         )
 
     # Complete the run

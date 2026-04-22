@@ -211,6 +211,30 @@ class ComparisonRunner:
         duration_cells = [f"**{cr.total_duration:.0f}s**" for cr in results]
         lines.append("| **Duration** | " + " | ".join(duration_cells) + " |")
 
+        # Avg cost per eval row
+        avg_cost_cells = [
+            f"**${cr.total_cost / cr.total_tests:.4f}**" if cr.total_tests > 0 else "N/A"
+            for cr in results
+        ]
+        lines.append("| **Avg Cost/Eval** | " + " | ".join(avg_cost_cells) + " |")
+
+        # Avg duration per eval row
+        avg_dur_cells = [
+            f"**{cr.total_duration / cr.total_tests:.1f}s**" if cr.total_tests > 0 else "N/A"
+            for cr in results
+        ]
+        lines.append("| **Avg Time/Eval** | " + " | ".join(avg_dur_cells) + " |")
+
+        # Performance/cost ratio row (higher = better value)
+        perf_cost_cells = []
+        for cr in results:
+            if cr.total_cost > 0 and cr.total_tests > 0:
+                ratio = cr.avg_score / cr.total_cost
+                perf_cost_cells.append(f"**{ratio:.0f}**")
+            else:
+                perf_cost_cells.append("N/A")
+        lines.append("| **Score/Cost** | " + " | ".join(perf_cost_cells) + " |")
+
         lines.append("")
         return "\n".join(lines)
 
@@ -228,6 +252,126 @@ class ComparisonRunner:
             ],
             "results": [cr.to_dict() for cr in self._comparison_results],
         }
+
+    def to_csv(
+        self,
+        results: list[ComparisonResult] | None = None,
+        test_cases: list[TestCase] | None = None,
+    ) -> str:
+        """Export comparison results as CSV matching Max's dataset spec.
+
+        Columns: suite_id, eval_id, category, model, provider, duration, success, score, cost_usd
+        """
+        comparison = results or self._comparison_results
+        if not comparison:
+            return "suite_id,eval_id,category,model,provider,duration,success,score,cost_usd\n"
+
+        # Build category map from test cases if available
+        category_map: dict[str, str] = {}
+        if test_cases:
+            for tc in test_cases:
+                category_map[tc.name] = tc.category or ""
+
+        lines = ["suite_id,eval_id,category,model,provider,duration,success,score,cost_usd"]
+        for cr in comparison:
+            for tr in cr.results:
+                cat = category_map.get(tr.test_name, "")
+                duration = f"{tr.duration:.3f}"
+                success = "true" if tr.passed else "false"
+                score = f"{tr.score:.4f}"
+                cost = f"{tr.cost:.6f}"
+                lines.append(
+                    f"benchmark,{tr.test_name},{cat},{cr.model.model},{cr.model.provider},"
+                    f"{duration},{success},{score},{cost}"
+                )
+        return "\n".join(lines) + "\n"
+
+    def generate_category_breakdown(
+        self,
+        results: list[ComparisonResult],
+        test_cases: list[TestCase],
+    ) -> dict[str, dict[str, dict[str, Any]]]:
+        """Generate per-category-per-model score breakdown.
+
+        Returns a dict: {category: {model_name: {passed, failed, score, cost}}}
+        Answers: "why does GPT struggle at dashboards?"
+        """
+        # Build test_name -> category mapping
+        category_map: dict[str, str] = {}
+        for tc in test_cases:
+            cat = tc.category or "uncategorized"
+            category_map[tc.name] = cat
+
+        breakdown: dict[str, dict[str, dict[str, Any]]] = {}
+
+        for cr in results:
+            for tr in cr.results:
+                cat = category_map.get(tr.test_name, "uncategorized")
+                if cat not in breakdown:
+                    breakdown[cat] = {}
+                if cr.model.name not in breakdown[cat]:
+                    breakdown[cat][cr.model.name] = {
+                        "passed": 0,
+                        "failed": 0,
+                        "total": 0,
+                        "total_score": 0.0,
+                        "total_cost": 0.0,
+                        "total_duration": 0.0,
+                    }
+
+                entry = breakdown[cat][cr.model.name]
+                entry["total"] += 1
+                entry["total_score"] += tr.score
+                entry["total_cost"] += tr.cost
+                entry["total_duration"] += tr.duration
+                if tr.passed:
+                    entry["passed"] += 1
+                else:
+                    entry["failed"] += 1
+
+        # Compute averages
+        for cat in breakdown:
+            for model_name in breakdown[cat]:
+                entry = breakdown[cat][model_name]
+                total = entry["total"]
+                if total > 0:
+                    entry["avg_score"] = entry["total_score"] / total
+                    entry["pass_rate"] = entry["passed"] / total
+                    entry["avg_cost"] = entry["total_cost"] / total
+                    entry["avg_duration"] = entry["total_duration"] / total
+                else:
+                    entry["avg_score"] = 0.0
+                    entry["pass_rate"] = 0.0
+                    entry["avg_cost"] = 0.0
+                    entry["avg_duration"] = 0.0
+
+        return breakdown
+
+    def format_category_breakdown(
+        self,
+        breakdown: dict[str, dict[str, dict[str, Any]]],
+    ) -> str:
+        """Format category breakdown as a markdown report."""
+        if not breakdown:
+            return "## Category Breakdown\n\nNo category data available.\n"
+
+        lines = ["## Category Breakdown", ""]
+        for cat, models in sorted(breakdown.items()):
+            lines.append(f"### {cat}")
+            lines.append("")
+            header = "| Model | Pass Rate | Avg Score | Avg Cost | Avg Duration |"
+            sep = "|-------|-----------|-----------|----------|--------------|"
+            lines.append(header)
+            lines.append(sep)
+            for model_name, data in sorted(models.items()):
+                pr = f"{data['pass_rate'] * 100:.0f}%"
+                sc = f"{data['avg_score'] * 100:.0f}%"
+                co = f"${data['avg_cost']:.4f}"
+                du = f"{data['avg_duration']:.1f}s"
+                lines.append(f"| {model_name} | {pr} | {sc} | {co} | {du} |")
+            lines.append("")
+
+        return "\n".join(lines)
 
 
 def _format_tokens(tokens: int) -> str:
