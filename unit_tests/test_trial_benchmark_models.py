@@ -16,10 +16,8 @@ from testmcpy.src.model_registry import (
     estimate_cost,
     get_default_model,
     get_model,
-    get_models_by_provider,
     list_providers,
 )
-
 
 # ── Must-test models (from Max's list) ───────────────────────────────────────
 
