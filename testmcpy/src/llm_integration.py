@@ -638,6 +638,32 @@ class OpenRouterProvider(OpenAIProvider):
             )
 
 
+class XAIProvider(OpenAIProvider):
+    """xAI (Grok) API provider — OpenAI-compatible API at api.x.ai.
+
+    Uses the same OpenAI chat/completions format but routes through
+    https://api.x.ai/v1 with an xAI API key.
+    """
+
+    def __init__(self, model: str, api_key: str | None = None):
+        resolved_key = api_key or os.environ.get("XAI_API_KEY", "")
+        super().__init__(
+            model=model,
+            api_key=resolved_key,
+            base_url="https://api.x.ai/v1",
+        )
+
+    async def initialize(self):
+        """Validate that an API key is available."""
+        if not self.api_key:
+            config = get_config()
+            self.api_key = config.get("XAI_API_KEY", "")
+        if not self.api_key:
+            raise ValueError(
+                "xAI API key not provided. Set XAI_API_KEY in ~/.testmcpy or environment."
+            )
+
+
 class LocalModelProvider(LLMProvider):
     """Provider for local models using transformers or llama.cpp."""
 
@@ -2587,6 +2613,8 @@ def create_llm_provider(provider: str, model: str, **kwargs) -> LLMProvider:
         "codex-cli": CodexCLIProvider,
         "codex": CodexCLIProvider,  # Alias
         "gemini-cli": GeminiCLIProvider,
+        "xai": XAIProvider,  # xAI (Grok models)
+        "grok": XAIProvider,  # Alias → xai
     }
 
     if provider not in providers:
