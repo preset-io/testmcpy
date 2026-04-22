@@ -127,6 +127,10 @@ class TestCase:
     auth_only: bool = False  # For auth-only tests (skip LLM call)
     system_prompt: str | None = None  # Optional system prompt for harness imitation
     category: str | None = None  # Eval category tag (e.g., dashboard_mgmt, sql_query)
+    include_tools: list[str] | None = None  # Only expose these tools to the LLM
+    exclude_tools: list[str] | None = None  # Hide these tools from the LLM
+    setup: list[dict[str, Any]] | None = None  # MCP tool calls to run before test
+    teardown: list[dict[str, Any]] | None = None  # MCP tool calls to run after test
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "TestCase":
@@ -160,6 +164,10 @@ class TestCase:
             auth_only=data.get("auth_only", False),
             system_prompt=data.get("system_prompt"),
             category=data.get("category"),
+            include_tools=data.get("include_tools"),
+            exclude_tools=data.get("exclude_tools"),
+            setup=data.get("setup"),
+            teardown=data.get("teardown"),
         )
 
     @property
@@ -411,6 +419,21 @@ class TestRunner:
             # Ensure initialized
             await self.initialize()
 
+            # Run setup hooks (MCP tool calls before test)
+            if test_case.setup:
+                for setup_call in test_case.setup:
+                    tool_name = setup_call.get("tool", "")
+                    tool_args = setup_call.get("args", {})
+                    if tool_name and self.mcp_client:
+                        try:
+                            mcp_call = MCPToolCall(name=tool_name, arguments=tool_args)
+                            await self.mcp_client.call_tool(mcp_call)
+                            if self.verbose:
+                                self._log(f"  Setup: {tool_name}({tool_args})")
+                        except Exception as setup_err:
+                            if self.verbose:
+                                self._log(f"  Setup failed: {tool_name}: {setup_err}")
+
             # If test has auth config, create a temporary MCP client with that auth
             test_mcp_client = self.mcp_client
             if test_case.auth:
@@ -463,6 +486,14 @@ class TestRunner:
 
             # Get available MCP tools
             mcp_tools = await test_mcp_client.list_tools()
+
+            # Apply tool filtering (include_tools / exclude_tools)
+            if test_case.include_tools:
+                include_set = {t.lower() for t in test_case.include_tools}
+                mcp_tools = [t for t in mcp_tools if t.name.lower() in include_set]
+            if test_case.exclude_tools:
+                exclude_set = {t.lower() for t in test_case.exclude_tools}
+                mcp_tools = [t for t in mcp_tools if t.name.lower() not in exclude_set]
 
             # Format tools for LLM
             formatted_tools = [
@@ -698,6 +729,21 @@ class TestRunner:
             )
 
         finally:
+            # Run teardown hooks (MCP tool calls after test)
+            if test_case.teardown and self.mcp_client:
+                for teardown_call in test_case.teardown:
+                    tool_name = teardown_call.get("tool", "")
+                    tool_args = teardown_call.get("args", {})
+                    if tool_name:
+                        try:
+                            mcp_call = MCPToolCall(name=tool_name, arguments=tool_args)
+                            await self.mcp_client.call_tool(mcp_call)
+                            if self.verbose:
+                                self._log(f"  Teardown: {tool_name}({tool_args})")
+                        except Exception as teardown_err:
+                            if self.verbose:
+                                self._log(f"  Teardown failed: {tool_name}: {teardown_err}")
+
             # Clean up test-specific MCP client if one was created
             if (
                 test_case.auth
