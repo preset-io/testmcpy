@@ -1213,10 +1213,15 @@ def coverage(
 @app.command()
 def compare(
     test_path: Path = typer.Argument(..., help="Path to test file or directory"),
-    models: str = typer.Option(
-        ...,
+    models: Optional[str] = typer.Option(
+        None,
         "--models",
-        help="Comma-separated list of provider:model pairs (e.g. 'anthropic:claude-sonnet-4-20250514,openai:gpt-4o')",
+        help="Comma-separated list of provider:model pairs (e.g. 'anthropic:claude-sonnet-4-6,openai:gpt-5.4')",
+    ),
+    models_file: Optional[Path] = typer.Option(
+        None,
+        "--models-file",
+        help="YAML file with model list (versioned alongside test suite)",
     ),
     mcp_url: Optional[str] = typer.Option(
         None, "--mcp-url", help="MCP service URL (overrides profile)"
@@ -1225,6 +1230,9 @@ def compare(
         None, "--profile", help="MCP service profile from .mcp_services.yaml"
     ),
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output file for results"),
+    output_csv: Optional[Path] = typer.Option(
+        None, "--output-csv", help="Export results as CSV (Max's dataset spec)"
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
 ):
     """
@@ -1238,18 +1246,27 @@ def compare(
     """
     from testmcpy.src.comparison_runner import ComparisonRunner, ModelConfig
 
-    # Parse model specs
-    model_specs = [s.strip() for s in models.split(",") if s.strip()]
+    # Parse model specs from --models or --models-file
+    model_specs: list[str] = []
+    if models_file and models_file.exists():
+        models_data = yaml.safe_load(models_file.read_text())
+        if isinstance(models_data, dict) and "models" in models_data:
+            model_specs = [f"{m['provider']}:{m['model']}" for m in models_data["models"]]
+        elif isinstance(models_data, list):
+            model_specs = [str(m) for m in models_data]
+        if verbose:
+            console.print(f"[yellow]Loaded {len(model_specs)} models from {models_file}[/yellow]")
+    elif models:
+        model_specs = [s.strip() for s in models.split(",") if s.strip()]
+
     if len(model_specs) < 2:
-        console.print(
-            "[red]Error: --models requires at least 2 comma-separated provider:model pairs[/red]"
-        )
+        console.print("[red]Error: Need at least 2 models. Use --models or --models-file.[/red]")
         raise typer.Exit(code=1)
 
     try:
         model_configs = [ModelConfig.from_string(spec) for spec in model_specs]
     except ValueError as e:
-        console.print(f"[red]Error parsing --models: {e}[/red]")
+        console.print(f"[red]Error parsing models: {e}[/red]")
         raise typer.Exit(code=1)
 
     # Load config with profile if specified
@@ -1378,5 +1395,12 @@ def compare(
                 output.parent.mkdir(parents=True, exist_ok=True)
                 output.write_text(report_md)
             console.print(f"\n[green]Comparison report saved to {output}[/green]")
+
+        # CSV export
+        if output_csv:
+            output_csv.parent.mkdir(parents=True, exist_ok=True)
+            csv_str = runner.to_csv(results, test_cases)
+            output_csv.write_text(csv_str)
+            console.print(f"[green]CSV dataset saved to {output_csv}[/green]")
 
     asyncio.run(run_comparison())
