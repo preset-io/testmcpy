@@ -126,6 +126,7 @@ class TestCase:
     load_test: dict[str, Any] | None = None  # For load/burst tests
     auth_only: bool = False  # For auth-only tests (skip LLM call)
     system_prompt: str | None = None  # Optional system prompt for harness imitation
+    category: str | None = None  # Eval category tag (e.g., dashboard_mgmt, sql_query)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "TestCase":
@@ -158,6 +159,7 @@ class TestCase:
             load_test=data.get("load_test"),
             auth_only=data.get("auth_only", False),
             system_prompt=data.get("system_prompt"),
+            category=data.get("category"),
         )
 
     @property
