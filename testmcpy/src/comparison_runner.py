@@ -211,6 +211,30 @@ class ComparisonRunner:
         duration_cells = [f"**{cr.total_duration:.0f}s**" for cr in results]
         lines.append("| **Duration** | " + " | ".join(duration_cells) + " |")
 
+        # Avg cost per eval row
+        avg_cost_cells = [
+            f"**${cr.total_cost / cr.total_tests:.4f}**" if cr.total_tests > 0 else "N/A"
+            for cr in results
+        ]
+        lines.append("| **Avg Cost/Eval** | " + " | ".join(avg_cost_cells) + " |")
+
+        # Avg duration per eval row
+        avg_dur_cells = [
+            f"**{cr.total_duration / cr.total_tests:.1f}s**" if cr.total_tests > 0 else "N/A"
+            for cr in results
+        ]
+        lines.append("| **Avg Time/Eval** | " + " | ".join(avg_dur_cells) + " |")
+
+        # Performance/cost ratio row (higher = better value)
+        perf_cost_cells = []
+        for cr in results:
+            if cr.total_cost > 0 and cr.total_tests > 0:
+                ratio = cr.avg_score / cr.total_cost
+                perf_cost_cells.append(f"**{ratio:.0f}**")
+            else:
+                perf_cost_cells.append("N/A")
+        lines.append("| **Score/Cost** | " + " | ".join(perf_cost_cells) + " |")
+
         lines.append("")
         return "\n".join(lines)
 
@@ -228,6 +252,28 @@ class ComparisonRunner:
             ],
             "results": [cr.to_dict() for cr in self._comparison_results],
         }
+
+    def to_csv(self, results: list[ComparisonResult] | None = None) -> str:
+        """Export comparison results as CSV matching Max's dataset spec.
+
+        Columns: suite_id, eval_id, model, provider, duration, success, score, cost_usd
+        """
+        comparison = results or self._comparison_results
+        if not comparison:
+            return "suite_id,eval_id,model,provider,duration,success,score,cost_usd\n"
+
+        lines = ["suite_id,eval_id,model,provider,duration,success,score,cost_usd"]
+        for cr in comparison:
+            for tr in cr.results:
+                duration = f"{tr.duration:.3f}"
+                success = "true" if tr.passed else "false"
+                score = f"{tr.score:.4f}"
+                cost = f"{tr.cost:.6f}"
+                lines.append(
+                    f"benchmark,{tr.test_name},{cr.model.model},{cr.model.provider},"
+                    f"{duration},{success},{score},{cost}"
+                )
+        return "\n".join(lines) + "\n"
 
 
 def _format_tokens(tokens: int) -> str:
