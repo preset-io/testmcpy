@@ -3,7 +3,7 @@ services:
     build: .
     image: testmcpy:latest
     ports:
-      - "${PORT:-8100}:8000"
+      - "${PORT:-7100}:8000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
