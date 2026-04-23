@@ -8,8 +8,6 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - testmcpy-data:/app/.testmcpy
-      - ./mcp_services.yaml:/app/.mcp_services.yaml:ro
-      - ./llm_providers.yaml:/app/.llm_providers.yaml:ro
     environment:
       - TESTMCPY_DB_PATH=/app/.testmcpy/storage.db
       - MCP_SERVER_URL=${MCP_SERVER_URL:-http://host.docker.internal:5100/api/mcp/}

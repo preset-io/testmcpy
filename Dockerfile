@@ -21,6 +21,11 @@ COPY testmcpy/ testmcpy/
 COPY --from=frontend /app/testmcpy/ui/dist testmcpy/ui/dist
 RUN pip install --no-cache-dir ".[server]"
 
+# Bake in default configs — the web UI can edit these freely at runtime.
+# On rebuild they reset to the committed versions.
+COPY mcp_services.yaml /app/.mcp_services.yaml
+COPY llm_providers.yaml /app/.llm_providers.yaml
+
 # Create data directory for persistent storage
 RUN mkdir -p /app/.testmcpy
 
