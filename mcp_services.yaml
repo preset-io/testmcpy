@@ -16,6 +16,7 @@ profiles:
         auth:
           type: none
 
+  # Replace 'your-workspace' with your actual Preset workspace subdomain.
   sandbox:
     name: Preset Sandbox
     mcps:
@@ -27,6 +28,7 @@ profiles:
           api_token: ${SANDBOX_API_TOKEN}
           api_secret: ${SANDBOX_API_SECRET}
 
+  # Replace 'your-workspace' with your actual Preset workspace subdomain.
   staging:
     name: Preset Staging
     mcps:

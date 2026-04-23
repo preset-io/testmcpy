@@ -15,6 +15,7 @@ services:
       - MCP_SERVER_URL=${MCP_SERVER_URL:-http://host.docker.internal:5100/api/mcp/}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      # Cloud Preset profiles — only needed if using sandbox/staging profiles in mcp_services.yaml
       - SANDBOX_API_TOKEN=${SANDBOX_API_TOKEN:-}
       - SANDBOX_API_SECRET=${SANDBOX_API_SECRET:-}
       - STAGING_API_TOKEN=${STAGING_API_TOKEN:-}
