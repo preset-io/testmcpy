@@ -93,7 +93,7 @@ testmcpy = [
 
 [project]
 name = "testmcpy"
-version = "0.3.0"
+version = "0.3.1"
 description = "A comprehensive testing framework for validating LLM tool calling capabilities with MCP services"
 authors = [{name = "Amin Ghadersohi"}]
 license = "Apache-2.0"
