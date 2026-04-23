@@ -1,0 +1,27 @@
+# LLM Provider Configuration — minimal Agor subset of .llm_providers.yaml.example
+# See .llm_providers.yaml.example for the full provider list (Codex CLI, GPT-4o Mini, o1, Opus, etc.)
+# API keys use ${VAR} substitution — safe to commit.
+# Set ANTHROPIC_API_KEY (or OPENAI_API_KEY) in Agor worktree environment config.
+
+default: default
+
+profiles:
+  default:
+    name: Default
+    providers:
+      - name: Claude Sonnet 4
+        provider: anthropic
+        model: claude-sonnet-4-20250514
+        api_key: ${ANTHROPIC_API_KEY}
+        timeout: 60
+        default: true
+      - name: Claude 3.5 Haiku
+        provider: anthropic
+        model: claude-3-5-haiku-20241022
+        api_key: ${ANTHROPIC_API_KEY}
+        timeout: 30
+      - name: GPT-4o
+        provider: openai
+        model: gpt-4o
+        api_key: ${OPENAI_API_KEY}
+        timeout: 60

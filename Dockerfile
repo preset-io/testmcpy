@@ -17,10 +17,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf 
 # Install Python dependencies
 COPY pyproject.toml .
 COPY testmcpy/ testmcpy/
-RUN pip install --no-cache-dir ".[server]"
-
-# Copy built frontend from stage 1
+# Copy built frontend before pip install so it's included in package data
 COPY --from=frontend /app/testmcpy/ui/dist testmcpy/ui/dist
+RUN pip install --no-cache-dir ".[server]"
 
 # Create data directory for persistent storage
 RUN mkdir -p /app/.testmcpy
@@ -33,7 +32,7 @@ VOLUME /app/.testmcpy
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 CMD ["testmcpy", "serve", "--host", "0.0.0.0", "--port", "8000", "--no-browser"]
