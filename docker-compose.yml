@@ -1,0 +1,31 @@
+services:
+  testmcpy:
+    build: .
+    image: testmcpy:latest
+    ports:
+      - "${PORT:-8100}:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - testmcpy-data:/app/.testmcpy
+      - ./mcp_services.yaml:/app/.mcp_services.yaml:ro
+      - ./llm_providers.yaml:/app/.llm_providers.yaml:ro
+    environment:
+      - TESTMCPY_DB_PATH=/app/.testmcpy/storage.db
+      - MCP_SERVER_URL=${MCP_SERVER_URL:-http://host.docker.internal:5100/api/mcp/}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - SANDBOX_API_TOKEN=${SANDBOX_API_TOKEN:-}
+      - SANDBOX_API_SECRET=${SANDBOX_API_SECRET:-}
+      - STAGING_API_TOKEN=${STAGING_API_TOKEN:-}
+      - STAGING_API_SECRET=${STAGING_API_SECRET:-}
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  testmcpy-data:

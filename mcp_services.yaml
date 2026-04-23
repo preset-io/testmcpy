@@ -1,0 +1,44 @@
+# MCP Service Configuration for Agor + Preset environments
+# Credentials use ${VAR} substitution — safe to commit.
+# Set env vars via Agor worktree environment config or .env (gitignored).
+
+default: local
+
+profiles:
+  # Local Agor worktree — points at MCP_SERVER_URL env var.
+  # For superset-shell worktree N: MCP_SERVER_URL=http://host.docker.internal:510N/api/mcp/
+  # For apache/superset with-mcp worktree N: MCP_SERVER_URL=http://host.docker.internal:920N/api/mcp/
+  local:
+    name: Local Agor MCP
+    mcps:
+      - name: Local Agor MCP Server
+        mcp_url: ${MCP_SERVER_URL}
+        auth:
+          type: none
+
+  sandbox:
+    name: Preset Sandbox
+    mcps:
+      - name: Preset Sandbox
+        mcp_url: https://your-workspace.us1a.app-sdx.preset.io/mcp
+        auth:
+          type: jwt
+          api_url: https://api.app-sdx.preset.io/v1/auth/
+          api_token: ${SANDBOX_API_TOKEN}
+          api_secret: ${SANDBOX_API_SECRET}
+
+  staging:
+    name: Preset Staging
+    mcps:
+      - name: Preset Staging
+        mcp_url: https://your-workspace.us1a.app-stg.preset.io/mcp
+        auth:
+          type: jwt
+          api_url: https://api.app-stg.preset.io/v1/auth/
+          api_token: ${STAGING_API_TOKEN}
+          api_secret: ${STAGING_API_SECRET}
+
+global:
+  timeout: 30
+  rate_limit:
+    requests_per_minute: 60

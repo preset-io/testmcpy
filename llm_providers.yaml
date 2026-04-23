@@ -1,0 +1,26 @@
+# LLM Provider Configuration
+# API keys use ${VAR} substitution — safe to commit.
+# Set ANTHROPIC_API_KEY (or OPENAI_API_KEY) in Agor worktree environment config.
+
+default: default
+
+profiles:
+  default:
+    name: Default
+    providers:
+      - name: Claude Sonnet
+        provider: anthropic
+        model: claude-sonnet-4-6
+        api_key_env: ANTHROPIC_API_KEY
+        timeout: 60
+        default: true
+      - name: Claude Haiku
+        provider: anthropic
+        model: claude-haiku-4-5
+        api_key_env: ANTHROPIC_API_KEY
+        timeout: 30
+      - name: GPT-4o
+        provider: openai
+        model: gpt-4o
+        api_key_env: OPENAI_API_KEY
+        timeout: 60
