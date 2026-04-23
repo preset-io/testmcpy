@@ -17,10 +17,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf 
 # Install Python dependencies
 COPY pyproject.toml .
 COPY testmcpy/ testmcpy/
-RUN pip install --no-cache-dir ".[server]"
-
-# Copy built frontend from stage 1
+# Copy built frontend before pip install so it's included in package data
 COPY --from=frontend /app/testmcpy/ui/dist testmcpy/ui/dist
+RUN pip install --no-cache-dir ".[server]"
 
 # Create data directory for persistent storage
 RUN mkdir -p /app/.testmcpy
