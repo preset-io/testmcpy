@@ -1862,11 +1862,12 @@ class AssistantProvider(LLMProvider):
     profile auth settings (in that order).
     """
 
-    # Default environments map to manager API URLs
+    # Default environments map to manager API URLs.
+    # Override via ASSISTANT_API_URL env var or api_url kwarg.
     _ENV_API_URLS: dict[str, str] = {
-        "staging": "https://manage.app.staging.preset.zone/api/v1/auth/",
-        "production": "https://manage.app.preset.io/api/v1/auth/",
-        "local": "http://manager.local.preset.zone/api/v1/auth/",
+        "staging": "",
+        "production": "",
+        "local": "",
     }
 
     def __init__(
@@ -1895,35 +1896,18 @@ class AssistantProvider(LLMProvider):
         if default_mcp and default_mcp.auth:
             auth_cfg = default_mcp.auth.to_dict()
 
-        self.workspace_hash = (
-            workspace_hash
-            or os.environ.get("ASSISTANT_WORKSPACE_HASH")
-            or os.environ.get("PRESET_WORKSPACE_HASH", "")
-        )
-        self.domain = (
-            domain or os.environ.get("ASSISTANT_DOMAIN") or os.environ.get("PRESET_DOMAIN", "")
-        )
-        self.environment = (
-            environment
-            or os.environ.get("ASSISTANT_ENVIRONMENT")
-            or os.environ.get("PRESET_ENVIRONMENT", "staging")
-        )
+        self.workspace_hash = workspace_hash or os.environ.get("ASSISTANT_WORKSPACE_HASH", "")
+        self.domain = domain or os.environ.get("ASSISTANT_DOMAIN", "")
+        self.environment = environment or os.environ.get("ASSISTANT_ENVIRONMENT", "staging")
         self.api_token = (
-            api_token
-            or os.environ.get("ASSISTANT_API_TOKEN")
-            or os.environ.get("PRESET_API_TOKEN")
-            or auth_cfg.get("api_token", "")
+            api_token or os.environ.get("ASSISTANT_API_TOKEN") or auth_cfg.get("api_token", "")
         )
         self.api_secret = (
-            api_secret
-            or os.environ.get("ASSISTANT_API_SECRET")
-            or os.environ.get("PRESET_API_SECRET")
-            or auth_cfg.get("api_secret", "")
+            api_secret or os.environ.get("ASSISTANT_API_SECRET") or auth_cfg.get("api_secret", "")
         )
         self.api_url = (
             api_url
             or os.environ.get("ASSISTANT_API_URL")
-            or os.environ.get("PRESET_API_URL")
             or auth_cfg.get("api_url", "")
             or self._ENV_API_URLS.get(self.environment, "")
         )
@@ -1932,14 +1916,18 @@ class AssistantProvider(LLMProvider):
         if self.workspace_hash and self.domain:
             self.base_url = f"https://{self.workspace_hash}.{self.domain}"
         elif self.workspace_hash and self.environment:
-            # Derive domain from environment
+            # Derive domain from environment — set via ASSISTANT_DOMAIN
+            # or override env_domains in a subclass.
             env_domains = {
-                "staging": "app.staging.preset.zone",
-                "production": "app.preset.io",
-                "local": "local.preset.zone",
+                "staging": "",
+                "production": "",
+                "local": "",
             }
-            d = env_domains.get(self.environment, "app.staging.preset.zone")
-            self.base_url = f"https://{self.workspace_hash}.{d}"
+            d = env_domains.get(self.environment, "")
+            if d:
+                self.base_url = f"https://{self.workspace_hash}.{d}"
+            else:
+                self.base_url = ""
         else:
             self.base_url = ""
 

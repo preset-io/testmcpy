@@ -309,10 +309,10 @@ class TestJWTClaimsValidEvaluator:
 
     def test_custom_claims_pass(self):
         """Passes when custom claims match."""
-        token = make_jwt({"role": "admin", "org": "preset", "exp": int(time.time()) + 3600})
+        token = make_jwt({"role": "admin", "org": "acme", "exp": int(time.time()) + 3600})
         evaluator = JWTClaimsValidEvaluator(
             args={
-                "custom_claims": {"role": "admin", "org": "preset"},
+                "custom_claims": {"role": "admin", "org": "acme"},
                 "check_exp": True,
             }
         )
@@ -546,11 +546,11 @@ class TestAPIKeyAuth:
 
         config = AuthConfig(
             auth_type="custom_headers",
-            headers={"X-Org": "preset", "X-Token": "abc123"},
+            headers={"X-Org": "acme", "X-Token": "abc123"},
         )
         d = config.to_dict()
         assert d["type"] == "custom_headers"
-        assert d["headers"]["X-Org"] == "preset"
+        assert d["headers"]["X-Org"] == "acme"
         assert d["headers"]["X-Token"] == "abc123"
 
 

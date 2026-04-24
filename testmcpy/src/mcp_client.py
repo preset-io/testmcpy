@@ -24,22 +24,19 @@ from mcp.types import Tool as MCPToolDef
 from testmcpy.auth_debugger import AuthDebugger
 
 
-class PresetOAuth(_FastMCPOAuth):
-    """fastmcp OAuth provider patched for use against superset-shell MCP
-    servers (Preset production, staging, and local dev).
+class MCPOAuth(_FastMCPOAuth):
+    """fastmcp OAuth provider patched for MCP servers that validate the
+    full resource URL.
 
     Two fixes over the upstream ``fastmcp.client.auth.oauth.OAuth``:
 
     1. The RFC 8707 ``resource`` indicator is set to the **full** MCP URL
-       (e.g. ``https://workspace.us1a.app.preset.io/mcp``) instead of just
-       scheme+host. Upstream ``OAuth.__init__`` strips the path when
-       building ``server_url``; superset-shell's OAuth server validates
-       the resource path and rejects the shorter form with
-       ``invalid_request: Resource URL domain does not match this
-       server``. mcp-remote (the reference Node client) sends the full
-       URL, which is why Claude Desktop works. We match that by patching
-       ``self.context.server_url`` post-init — every other consumer of
-       ``context.server_url`` runs it through
+       instead of just scheme+host. Upstream ``OAuth.__init__`` strips
+       the path when building ``server_url``; some OAuth servers validate
+       the resource path and reject the shorter form. mcp-remote (the
+       reference Node client) sends the full URL. We match that by
+       patching ``self.context.server_url`` post-init — every other
+       consumer of ``context.server_url`` runs it through
        ``get_authorization_base_url()`` which strips the path, so this
        only affects the resource indicator.
 
@@ -84,8 +81,9 @@ class PresetOAuth(_FastMCPOAuth):
         webbrowser.open(authorization_url)
 
 
-# Back-compat alias (was named InsecureOAuth in earlier iteration).
-InsecureOAuth = PresetOAuth
+# Back-compat aliases.
+PresetOAuth = MCPOAuth
+InsecureOAuth = MCPOAuth
 
 
 def create_insecure_httpx_factory():
@@ -731,14 +729,13 @@ class MCPClient:
                 client_key = self.auth_config.get("client_key") if self.auth_config else None
                 ca_bundle = self.auth_config.get("ca_bundle") if self.auth_config else None
 
-                # For OAuth auto-discovery, always use our PresetOAuth subclass
+                # For OAuth auto-discovery, always use our MCPOAuth subclass
                 # (not fastmcp's upstream OAuth) so the RFC 8707 resource
-                # indicator includes the /mcp path. Otherwise superset-shell
-                # rejects the authorize request with "Resource URL domain does
-                # not match this server".
+                # indicator includes the /mcp path. Otherwise some OAuth
+                # servers reject the authorize request.
                 transport_auth: Any = self.auth
                 if transport_auth == "oauth":
-                    transport_auth = PresetOAuth(self.base_url, insecure=insecure)
+                    transport_auth = MCPOAuth(self.base_url, insecure=insecure)
 
                 # Determine the httpx client factory based on SSL config
                 httpx_factory = None

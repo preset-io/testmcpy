@@ -17,7 +17,7 @@ def push(
         None,
         "--server",
         "-s",
-        help="Remote testmcpy server URL (e.g. https://testmcpy.sandbox.preset.io)",
+        help="Remote testmcpy server URL (e.g. https://testmcpy.example.com)",
     ),
     api_key: Optional[str] = typer.Option(
         None,
@@ -66,7 +66,7 @@ def push(
             Panel(
                 "[red]No server URL specified.[/red]\n\n"
                 "Provide the remote testmcpy server URL via:\n"
-                "  [cyan]--server https://testmcpy.sandbox.preset.io[/cyan]\n"
+                "  [cyan]--server https://testmcpy.example.com[/cyan]\n"
                 "  or\n"
                 "  [cyan]export TESTMCPY_SERVER_URL=https://...[/cyan]",
                 title="Missing Server",

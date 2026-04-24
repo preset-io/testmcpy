@@ -285,7 +285,7 @@ Validates that token usage and cost remain within acceptable limits.
 
 ## Domain-Specific Evaluators
 
-### Superset/Preset Evaluators
+### Superset Evaluators
 
 #### `was_superset_chart_created`
 

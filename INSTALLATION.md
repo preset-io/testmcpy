@@ -110,11 +110,11 @@ profiles:
     name: "Production"
     description: "Production MCP service"
     mcps:
-      - name: "Preset Superset"
-        mcp_url: "https://your-workspace.preset.io/mcp"
+      - name: "My MCP Server"
+        mcp_url: "https://your-server.example.com/mcp"
         auth:
           auth_type: "jwt"  # or "bearer" or "none"
-          api_url: "https://api.app.preset.io/v1/auth/"
+          api_url: "https://your-server.example.com/v1/auth/"
           api_token: "your-api-token"
           api_secret: "your-api-secret"
         timeout: 30
