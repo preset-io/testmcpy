@@ -479,4 +479,4 @@ Apache License 2.0 — See [LICENSE](LICENSE) for details.
 
 ---
 
-**Built by [@aminghadersohi](https://github.com/aminghadersohi)** ([Apache Superset](https://github.com/apache/superset)).
+**Built by [@aminghadersohi](https://github.com/aminghadersohi)** at [Preset](https://preset.io).

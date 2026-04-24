@@ -3,7 +3,7 @@
 ## Slide 1: Title
 - TestMCPy is an open-source evaluation framework for LLM + MCP tool calling
 - Apache 2.0 licensed, available at `preset-io/testmcpy`
-- Built to solve a real problem: ensuring MCP tools work correctly across models
+- Built at Preset to solve a real problem: ensuring our MCP tools work correctly across models
 
 ## Slide 2: The Problem
 - **Model updates break things silently.** A new Claude/GPT release can change tool selection behavior. Without evals, regressions go unnoticed until users report them.
@@ -48,7 +48,7 @@
 - **Multi-Model Comparison**: one command to compare accuracy, cost, latency across models side-by-side
 - **Regression Detection**: save baselines, fingerprint failures, distinguish new vs known issues in CI
 - **Reusable GitHub Action**: any repo can run MCP evals with `uses: preset-io/testmcpy-action@v1`
-- **Hosted Instance**: deploy your own for browsing results and running tests
+- **Hosted at Preset**: `testmcpy.sandbox.preset.io` for browsing results and running tests
 
 ## Slide 9: Mutation Example (Deep Dive)
 - Walk through the example: "List the first 5 datasets" fails
