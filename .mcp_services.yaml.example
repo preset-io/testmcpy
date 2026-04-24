@@ -22,36 +22,36 @@ profiles:
     name: Local Development
     description: Local MCP servers for development
     mcps:
-    - name: Local MCP
-      mcp_url: http://localhost:8088/mcp
-      auth:
-        type: none
+      - name: Local MCP
+        mcp_url: http://localhost:8088/mcp
+        auth:
+          type: none
 
   # Staging environment
   staging:
     name: Staging Environment
     description: Staging servers for integration testing
     mcps:
-    - name: Staging MCP
-      mcp_url: https://your-staging-server.example.com/mcp
-      auth:
-        type: jwt
-        api_url: https://your-staging-server.example.com/v1/auth/
-        api_token: ${STAGING_API_TOKEN}
-        api_secret: ${STAGING_API_SECRET}
+      - name: Staging MCP
+        mcp_url: https://your-staging-server.example.com/mcp
+        auth:
+          type: jwt
+          api_url: https://your-staging-server.example.com/v1/auth/
+          api_token: ${STAGING_API_TOKEN}
+          api_secret: ${STAGING_API_SECRET}
 
   # Production environment
   prod:
     name: Production
     description: Production MCP servers
     mcps:
-    - name: Production MCP
-      mcp_url: https://your-production-server.example.com/mcp
-      auth:
-        type: jwt
-        api_url: https://your-production-server.example.com/v1/auth/
-        api_token: ${PROD_API_TOKEN}
-        api_secret: ${PROD_API_SECRET}
+      - name: Production MCP
+        mcp_url: https://your-production-server.example.com/mcp
+        auth:
+          type: jwt
+          api_url: https://your-production-server.example.com/v1/auth/
+          api_token: ${PROD_API_TOKEN}
+          api_secret: ${PROD_API_SECRET}
 
 global:
   timeout: 30

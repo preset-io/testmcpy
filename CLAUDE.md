@@ -52,4 +52,3 @@ Exceptions (OK to keep):
 - GitHub repo URLs (`github.com/preset-io/testmcpy`)
 - NOTICE/LICENSE copyright ("Preset, Inc.")
 - docs/presentation.html and docs/talking_points.md (internal presentation materials)
-- README.md attribution line

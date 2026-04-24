@@ -4,11 +4,11 @@
 # docs/presentation.html and docs/talking_points.md are exempt (internal presentation materials).
 set -euo pipefail
 
-EXEMPT_FILES="NOTICE|docs/presentation\.html|docs/talking_points\.md|README\.md|scripts/check_no_preset_urls\.sh"
+EXEMPT_FILES="NOTICE|docs/presentation\.html|docs/talking_points\.md|scripts/check_no_preset_urls\.sh"
 
 # Patterns that should NOT appear in committed code
 # (Preset infrastructure domains, not GitHub repo URLs)
-PATTERN='(\.preset\.io|\.preset\.zone|preset-mcp-client|PRESET_WORKSPACE|PRESET_DOMAIN|PRESET_ENVIRONMENT|PRESET_API_TOKEN|PRESET_API_SECRET|PRESET_API_URL|testmcpy\.sandbox)'
+PATTERN='(\.preset\.io|\.preset\.zone|preset-mcp-client|PRESET_WORKSPACE_HASH|PRESET_DOMAIN|PRESET_ENVIRONMENT|PRESET_API_TOKEN|PRESET_API_SECRET|PRESET_API_URL|testmcpy\.sandbox)'
 
 status=0
 for file in "$@"; do

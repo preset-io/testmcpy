@@ -1943,6 +1943,11 @@ class AssistantProvider(LLMProvider):
                 "AssistantProvider requires workspace_hash + domain (or environment). "
                 "Set ASSISTANT_WORKSPACE_HASH and ASSISTANT_DOMAIN env vars, or pass them as kwargs."
             )
+        if not self.api_url or not str(self.api_url).strip():
+            raise ValueError(
+                "AssistantProvider requires a non-empty api_url. "
+                "Set the api_url argument, ASSISTANT_API_URL, or configure api_url in the MCP profile."
+            )
         if not self.api_token or not self.api_secret:
             raise ValueError(
                 "AssistantProvider requires api_token and api_secret for JWT auth. "

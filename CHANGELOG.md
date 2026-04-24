@@ -17,7 +17,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Renamed `PresetOAuth` to `MCPOAuth` (back-compat alias preserved)
 - Genericized `.mcp_services.yaml.example` with `example.com` placeholder URLs
 - `AssistantProvider` domain mappings are now empty by default (set via env vars)
-- Dockerfile `start_period` aligned to 15s (matches docker-compose)
 
 ### Removed
 - Preset infrastructure URLs from code and config (`preset.io`, `preset.zone`)
