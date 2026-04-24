@@ -411,110 +411,84 @@ function TestManager({ selectedProfiles = [], selectedLlmProfile = null, llmProf
     const saved = localStorage.getItem('testManagerSidebarWidth')
     return saved ? Number(saved) : 300
   })
-  const [isDraggingAny, setIsDraggingAny] = useState(false)
-  const isDraggingRef = useRef(false)
-  const isSidebarDraggingRef = useRef(false)
   const containerRef = useRef(null)
+  const overlayRef = useRef(null)
+  const rafRef = useRef(null)
 
-  // Drag handler for resizable bottom panel — uses refs to avoid re-renders during drag
-  const panelHeightRef = useRef(bottomPanelHeight)
-  const panelRafRef = useRef(null)
-  const panelElRef = useRef(null)
+  // Show/hide the drag overlay via DOM — zero React re-renders
+  const showOverlay = (cursor) => {
+    if (overlayRef.current) {
+      overlayRef.current.style.display = 'block'
+      overlayRef.current.style.cursor = cursor
+    }
+    document.body.style.cursor = cursor
+    document.body.style.userSelect = 'none'
+  }
+  const hideOverlay = () => {
+    if (overlayRef.current) overlayRef.current.style.display = 'none'
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+  }
 
+  // Bottom panel drag — pure DOM, no setState during drag
   const handleDragStart = useCallback((e) => {
     e.preventDefault()
-    isDraggingRef.current = true
-    panelHeightRef.current = bottomPanelHeight
-    setIsDraggingAny(true)
-    document.body.style.cursor = 'row-resize'
-    document.body.style.userSelect = 'none'
-
-    // Cache the panel element for direct DOM manipulation
+    showOverlay('row-resize')
     const panelEl = containerRef.current?.querySelector('[data-bottom-panel]')
-    panelElRef.current = panelEl
+    let currentHeight = bottomPanelHeight
 
-    const handleMouseMove = (e) => {
-      if (!isDraggingRef.current || !containerRef.current) return
-      if (panelRafRef.current) cancelAnimationFrame(panelRafRef.current)
-      panelRafRef.current = requestAnimationFrame(() => {
-        const containerRect = containerRef.current.getBoundingClientRect()
-        const newHeight = containerRect.bottom - e.clientY
-        const maxHeight = containerRect.height * 0.8
-        const clamped = Math.min(Math.max(newHeight, 120), maxHeight)
-        panelHeightRef.current = clamped
-        // Direct DOM update — no React re-render during drag
-        if (panelElRef.current) {
-          panelElRef.current.style.height = `${clamped}px`
-        }
+    const onMove = (e) => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      rafRef.current = requestAnimationFrame(() => {
+        if (!containerRef.current) return
+        const rect = containerRef.current.getBoundingClientRect()
+        const h = Math.min(Math.max(rect.bottom - e.clientY, 120), rect.height * 0.8)
+        currentHeight = h
+        if (panelEl) panelEl.style.height = `${h}px`
       })
     }
 
-    const handleMouseUp = () => {
-      isDraggingRef.current = false
-      if (panelRafRef.current) cancelAnimationFrame(panelRafRef.current)
-      setIsDraggingAny(false)
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseup', handleMouseUp)
-      // Sync React state once on release
-      const finalHeight = panelHeightRef.current
-      setBottomPanelHeight(finalHeight)
-      localStorage.setItem('testManagerPanelHeight', String(finalHeight))
+    const onUp = () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      hideOverlay()
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      setBottomPanelHeight(currentHeight)
+      localStorage.setItem('testManagerPanelHeight', String(currentHeight))
     }
 
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseup', handleMouseUp)
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
   }, [bottomPanelHeight])
 
-  // Drag handler for resizable sidebar — uses refs to avoid re-renders during drag
-  const sidebarWidthRef = useRef(sidebarWidth)
-  const rafRef = useRef(null)
-  const sidebarElRef = useRef(null)
-
+  // Sidebar drag — pure DOM, no setState during drag
   const handleSidebarDragStart = useCallback((e) => {
     e.preventDefault()
-    isSidebarDraggingRef.current = true
-    sidebarWidthRef.current = sidebarWidth
-    setIsDraggingAny(true)
-    document.body.style.cursor = 'col-resize'
-    document.body.style.userSelect = 'none'
-
-    // Cache the sidebar element for direct DOM manipulation during drag
+    showOverlay('col-resize')
     const sidebarEl = containerRef.current?.querySelector('[data-sidebar]')
-    sidebarElRef.current = sidebarEl
+    let currentWidth = sidebarWidth
 
-    const handleMouseMove = (e) => {
-      if (!isSidebarDraggingRef.current) return
-      // Cancel any pending rAF to avoid stacking
+    const onMove = (e) => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
       rafRef.current = requestAnimationFrame(() => {
         const left = containerRef.current?.getBoundingClientRect().left || 0
-        const newWidth = Math.min(Math.max(e.clientX - left, 180), 600)
-        sidebarWidthRef.current = newWidth
-        // Direct DOM update — no React re-render during drag
-        if (sidebarElRef.current) {
-          sidebarElRef.current.style.width = `${newWidth}px`
-        }
+        const w = Math.min(Math.max(e.clientX - left, 180), 600)
+        currentWidth = w
+        if (sidebarEl) sidebarEl.style.width = `${w}px`
       })
     }
 
-    const handleMouseUp = () => {
-      isSidebarDraggingRef.current = false
+    const onUp = () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
-      setIsDraggingAny(false)
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseup', handleMouseUp)
-      // Sync React state once on release
-      const finalWidth = sidebarWidthRef.current
-      setSidebarWidth(finalWidth)
-      localStorage.setItem('testManagerSidebarWidth', String(finalWidth))
+      hideOverlay()
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      setSidebarWidth(currentWidth)
+      localStorage.setItem('testManagerSidebarWidth', String(currentWidth))
     }
 
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseup', handleMouseUp)
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
   }, [sidebarWidth])
 
   useEffect(() => {
@@ -1090,8 +1064,8 @@ tests:
   return (
     <div className="h-full flex flex-col">
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0 relative" ref={containerRef}>
-        {/* Transparent overlay during drag to prevent Monaco from stealing mouse events */}
-        {isDraggingAny && <div className="absolute inset-0 z-30" style={{ cursor: isSidebarDraggingRef.current ? 'col-resize' : 'row-resize' }} />}
+        {/* Permanent overlay — shown/hidden via ref during drag to prevent Monaco from stealing mouse events. Never triggers React re-render. */}
+        <div ref={overlayRef} className="absolute inset-0 z-30" style={{ display: 'none' }} />
         {/* File List Sidebar — resizable */}
         <div
           data-sidebar
