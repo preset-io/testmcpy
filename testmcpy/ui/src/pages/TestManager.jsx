@@ -416,72 +416,106 @@ function TestManager({ selectedProfiles = [], selectedLlmProfile = null, llmProf
   const isSidebarDraggingRef = useRef(false)
   const containerRef = useRef(null)
 
-  // Drag handler for resizable bottom panel
+  // Drag handler for resizable bottom panel — uses refs to avoid re-renders during drag
+  const panelHeightRef = useRef(bottomPanelHeight)
+  const panelRafRef = useRef(null)
+  const panelElRef = useRef(null)
+
   const handleDragStart = useCallback((e) => {
     e.preventDefault()
     isDraggingRef.current = true
+    panelHeightRef.current = bottomPanelHeight
     setIsDraggingAny(true)
     document.body.style.cursor = 'row-resize'
     document.body.style.userSelect = 'none'
 
+    // Cache the panel element for direct DOM manipulation
+    const panelEl = containerRef.current?.querySelector('[data-bottom-panel]')
+    panelElRef.current = panelEl
+
     const handleMouseMove = (e) => {
       if (!isDraggingRef.current || !containerRef.current) return
-      const containerRect = containerRef.current.getBoundingClientRect()
-      const newHeight = containerRect.bottom - e.clientY
-      const maxHeight = containerRect.height * 0.8
-      const clamped = Math.min(Math.max(newHeight, 120), maxHeight)
-      setBottomPanelHeight(clamped)
+      if (panelRafRef.current) cancelAnimationFrame(panelRafRef.current)
+      panelRafRef.current = requestAnimationFrame(() => {
+        const containerRect = containerRef.current.getBoundingClientRect()
+        const newHeight = containerRect.bottom - e.clientY
+        const maxHeight = containerRect.height * 0.8
+        const clamped = Math.min(Math.max(newHeight, 120), maxHeight)
+        panelHeightRef.current = clamped
+        // Direct DOM update — no React re-render during drag
+        if (panelElRef.current) {
+          panelElRef.current.style.height = `${clamped}px`
+        }
+      })
     }
 
     const handleMouseUp = () => {
       isDraggingRef.current = false
+      if (panelRafRef.current) cancelAnimationFrame(panelRafRef.current)
       setIsDraggingAny(false)
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
-      // Persist
-      setBottomPanelHeight(h => {
-        localStorage.setItem('testManagerPanelHeight', String(h))
-        return h
-      })
+      // Sync React state once on release
+      const finalHeight = panelHeightRef.current
+      setBottomPanelHeight(finalHeight)
+      localStorage.setItem('testManagerPanelHeight', String(finalHeight))
     }
 
     document.addEventListener('mousemove', handleMouseMove)
     document.addEventListener('mouseup', handleMouseUp)
-  }, [])
+  }, [bottomPanelHeight])
 
-  // Drag handler for resizable sidebar
+  // Drag handler for resizable sidebar — uses refs to avoid re-renders during drag
+  const sidebarWidthRef = useRef(sidebarWidth)
+  const rafRef = useRef(null)
+  const sidebarElRef = useRef(null)
+
   const handleSidebarDragStart = useCallback((e) => {
     e.preventDefault()
     isSidebarDraggingRef.current = true
+    sidebarWidthRef.current = sidebarWidth
     setIsDraggingAny(true)
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
 
+    // Cache the sidebar element for direct DOM manipulation during drag
+    const sidebarEl = containerRef.current?.querySelector('[data-sidebar]')
+    sidebarElRef.current = sidebarEl
+
     const handleMouseMove = (e) => {
       if (!isSidebarDraggingRef.current) return
-      const newWidth = e.clientX - (containerRef.current?.getBoundingClientRect().left || 0)
-      const clamped = Math.min(Math.max(newWidth, 180), 600)
-      setSidebarWidth(clamped)
+      // Cancel any pending rAF to avoid stacking
+      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      rafRef.current = requestAnimationFrame(() => {
+        const left = containerRef.current?.getBoundingClientRect().left || 0
+        const newWidth = Math.min(Math.max(e.clientX - left, 180), 600)
+        sidebarWidthRef.current = newWidth
+        // Direct DOM update — no React re-render during drag
+        if (sidebarElRef.current) {
+          sidebarElRef.current.style.width = `${newWidth}px`
+        }
+      })
     }
 
     const handleMouseUp = () => {
       isSidebarDraggingRef.current = false
+      if (rafRef.current) cancelAnimationFrame(rafRef.current)
       setIsDraggingAny(false)
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
-      setSidebarWidth(w => {
-        localStorage.setItem('testManagerSidebarWidth', String(w))
-        return w
-      })
+      // Sync React state once on release
+      const finalWidth = sidebarWidthRef.current
+      setSidebarWidth(finalWidth)
+      localStorage.setItem('testManagerSidebarWidth', String(finalWidth))
     }
 
     document.addEventListener('mousemove', handleMouseMove)
     document.addEventListener('mouseup', handleMouseUp)
-  }, [])
+  }, [sidebarWidth])
 
   useEffect(() => {
     loadTestFiles()
@@ -1057,9 +1091,10 @@ tests:
     <div className="h-full flex flex-col">
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0 relative" ref={containerRef}>
         {/* Transparent overlay during drag to prevent Monaco from stealing mouse events */}
-        {isDraggingAny && <div className="absolute inset-0 z-20" />}
+        {isDraggingAny && <div className="absolute inset-0 z-30" style={{ cursor: isSidebarDraggingRef.current ? 'col-resize' : 'row-resize' }} />}
         {/* File List Sidebar — resizable */}
         <div
+          data-sidebar
           className={`flex-shrink-0 border-b md:border-b-0 md:border-r border-border ${showFileTree ? 'flex flex-col' : 'hidden'} md:flex md:flex-col bg-surface-elevated overflow-hidden max-h-[40vh] md:max-h-none`}
           style={{ width: typeof window !== 'undefined' && window.innerWidth >= 768 ? sidebarWidth : '100%' }}
         >
@@ -1409,7 +1444,7 @@ tests:
                 >
                   <div className="w-8 h-0.5 rounded-full bg-text-disabled group-hover:bg-primary transition-colors" />
                 </div>
-                <div className="flex-shrink-0 flex flex-col bg-surface" style={{ height: bottomPanelHeight }}>
+                <div data-bottom-panel className="flex-shrink-0 flex flex-col bg-surface" style={{ height: bottomPanelHeight }}>
                   {/* Tab Bar */}
                   <div className="flex items-center border-b border-border bg-surface-elevated px-2">
                     {/* Logs Tab */}
