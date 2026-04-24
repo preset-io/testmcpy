@@ -31,6 +31,14 @@ repos:
         args: [--fix]
       - id: ruff-format
 
+  - repo: local
+    hooks:
+      - id: no-preset-infra-urls
+        name: Block Preset infrastructure URLs
+        entry: scripts/check_no_preset_urls.sh
+        language: script
+        types: [text]
+
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.13.0
     hooks:

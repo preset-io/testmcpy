@@ -20,7 +20,7 @@ def server_url():
 
     If TESTMCPY_E2E_SERVER_URL is set, use that external server instead
     of starting a new one. This lets you run E2E tests against a server
-    rooted in a specific directory (e.g. preset-mcp-tests).
+    rooted in a specific directory.
     """
     external_url = os.environ.get("TESTMCPY_E2E_SERVER_URL")
     if external_url:

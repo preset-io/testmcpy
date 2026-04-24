@@ -125,7 +125,7 @@ class TestToolNameMatching:
         assert _match_tool_name("health_check", "health_check")
 
     def test_match_tool_name_prefix(self):
-        assert _match_tool_name("mcp__preset__health_check", "health_check")
+        assert _match_tool_name("mcp__myserver__health_check", "health_check")
 
     def test_match_tool_name_no_match(self):
         assert not _match_tool_name("list_charts", "health_check")

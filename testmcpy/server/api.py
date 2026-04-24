@@ -261,7 +261,7 @@ def is_connection_error(error_msg: str) -> bool:
 
     Only returns True for errors where the MCP session is truly dead and
     the cached client must be discarded. Auth errors (401/403) are NOT
-    included because the PresetOAuth transport handles token refresh and
+    included because the MCPOAuth transport handles token refresh and
     re-auth internally — evicting the client on an expired token would
     just trigger a new browser OAuth popup.
     """

@@ -8,22 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- (Features and capabilities added in upcoming release)
+- Docker Compose configuration for containerized deployment
+- MCP service profiles (`mcp_services.yaml`) with local profile
+- LLM provider profiles (`llm_providers.yaml`) with Claude and GPT-4o defaults
+- Pre-commit hook to prevent Preset infrastructure URLs from leaking into the repo
 
 ### Changed
-- (Changes to existing functionality)
-
-### Deprecated
-- (Features that will be removed in future releases)
+- Renamed `PresetOAuth` to `MCPOAuth` (back-compat alias preserved)
+- Genericized `.mcp_services.yaml.example` with `example.com` placeholder URLs
+- `AssistantProvider` domain mappings are now empty by default (set via env vars)
 
 ### Removed
-- (Features removed in this release)
-
-### Fixed
-- (Bug fixes)
-
-### Security
-- (Security vulnerability fixes or improvements)
+- Preset infrastructure URLs from code and config (`preset.io`, `preset.zone`)
+- `PRESET_*` environment variable fallbacks from `AssistantProvider`
+- Preset sandbox/staging profiles from committed `mcp_services.yaml`
+- `SANDBOX_API_*`/`STAGING_API_*` env vars from `docker-compose.yml`
 
 ---
 

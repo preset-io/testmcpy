@@ -23,7 +23,7 @@ class TestCompatibilityMatrixRequest:
 
     def test_valid_request(self):
         req = CompatibilityMatrixRequest(
-            profiles=["staging:Preset Staging", "prod:Preset Production"],
+            profiles=["staging:Staging MCP", "prod:Production MCP"],
             tool_names=["list_dashboards", "list_charts"],
         )
         assert len(req.profiles) == 2
@@ -37,7 +37,7 @@ class TestCompatibilityMatrixRequest:
     def test_empty_tool_names_allowed_by_model(self):
         """Model allows empty list — endpoint enforces min 1."""
         req = CompatibilityMatrixRequest(
-            profiles=["staging:Preset Staging", "prod:Preset Production"],
+            profiles=["staging:Staging MCP", "prod:Production MCP"],
             tool_names=[],
         )
         assert req.tool_names == []
@@ -49,7 +49,7 @@ class TestCompatibilityMatrixRequest:
 
     def test_missing_tool_names_raises(self):
         with pytest.raises(ValidationError):
-            CompatibilityMatrixRequest(profiles=["staging:Preset Staging"])
+            CompatibilityMatrixRequest(profiles=["staging:Staging MCP"])
 
 
 class TestToolTestResult:
@@ -92,11 +92,11 @@ class TestProfileRefParsing:
     """Test profile reference format 'profile_id:mcp_name'."""
 
     def test_valid_profile_ref(self):
-        ref = "staging:Preset Staging"
+        ref = "staging:Staging MCP"
         assert ":" in ref
         profile_id, mcp_name = ref.split(":", 1)
         assert profile_id == "staging"
-        assert mcp_name == "Preset Staging"
+        assert mcp_name == "Staging MCP"
 
     def test_profile_ref_with_colons_in_name(self):
         ref = "prod:MCP Server: v2"
@@ -165,17 +165,17 @@ class TestMatrixStructure:
         """Matrix should have tool names as top-level keys."""
         matrix = {
             "list_dashboards": {
-                "staging:Preset": {"status": "pass", "has_tool": True},
-                "prod:Preset": {"status": "pass", "has_tool": True},
+                "staging:MCP": {"status": "pass", "has_tool": True},
+                "prod:MCP": {"status": "pass", "has_tool": True},
             },
             "list_charts": {
-                "staging:Preset": {"status": "pass", "has_tool": True},
-                "prod:Preset": {"status": "missing", "has_tool": False},
+                "staging:MCP": {"status": "pass", "has_tool": True},
+                "prod:MCP": {"status": "missing", "has_tool": False},
             },
         }
         assert "list_dashboards" in matrix
         assert "list_charts" in matrix
-        assert matrix["list_charts"]["prod:Preset"]["status"] == "missing"
+        assert matrix["list_charts"]["prod:MCP"]["status"] == "missing"
 
     def test_error_profile_in_matrix(self):
         """When a profile has a connection error, all tools show error."""

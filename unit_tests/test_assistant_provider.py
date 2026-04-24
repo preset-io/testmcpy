@@ -42,16 +42,16 @@ class TestAssistantProviderConstruction:
             assert provider.workspace_hash == "ws-kwarg"
 
     def test_base_url_from_domain(self):
-        provider = AssistantProvider(workspace_hash="ws-abc", domain="app.preset.io")
-        assert provider.base_url == "https://ws-abc.app.preset.io"
+        provider = AssistantProvider(workspace_hash="ws-abc", domain="app.example.com")
+        assert provider.base_url == "https://ws-abc.app.example.com"
 
     def test_base_url_from_environment_staging(self):
         provider = AssistantProvider(workspace_hash="ws-abc", environment="staging")
-        assert provider.base_url == "https://ws-abc.app.staging.preset.zone"
+        assert provider.base_url == ""
 
     def test_base_url_from_environment_production(self):
         provider = AssistantProvider(workspace_hash="ws-abc", environment="production")
-        assert provider.base_url == "https://ws-abc.app.preset.io"
+        assert provider.base_url == ""
 
     def test_base_url_empty_without_workspace(self):
         provider = AssistantProvider()
@@ -131,7 +131,7 @@ class TestAssistantProviderApiUrl:
         provider = AssistantProvider(
             workspace_hash="ws-abc",
             environment="staging",
-            api_url="https://manage.app.staging.preset.zone/api/v1/auth/",
+            api_url="https://staging.example.com/api/v1/auth/",
         )
         assert "staging" in provider.api_url
 
@@ -139,9 +139,9 @@ class TestAssistantProviderApiUrl:
         provider = AssistantProvider(
             workspace_hash="ws-abc",
             environment="production",
-            api_url="https://manage.app.preset.io/api/v1/auth/",
+            api_url="https://api.example.com/api/v1/auth/",
         )
-        assert "preset.io" in provider.api_url
+        assert "example.com" in provider.api_url
 
     def test_custom_api_url(self):
         provider = AssistantProvider(
