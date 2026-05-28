@@ -123,7 +123,7 @@ CLAUDE_MODELS: list[ModelInfo] = [
         id="claude-sonnet-4-20250514",
         name="Claude Sonnet 4",
         provider=Provider.ANTHROPIC,
-        description="Previous generation Sonnet",
+        description="Retired — use claude-sonnet-4-6 instead",
         context_window=200_000,
         max_output_tokens=8192,
         input_price_per_1m=3.00,
@@ -135,6 +135,7 @@ CLAUDE_MODELS: list[ModelInfo] = [
             ModelCapability.LONG_CONTEXT,
         ],
         family="claude-4",
+        is_deprecated=True,
         aliases=["claude-sonnet-4", "claude-4-sonnet"],
     ),
     ModelInfo(

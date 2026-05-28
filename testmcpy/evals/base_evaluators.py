@@ -1406,7 +1406,7 @@ class LLMJudge(BaseEvaluator):
     def __init__(
         self,
         criteria: str,
-        model: str = "claude-sonnet-4-20250514",
+        model: str = "claude-sonnet-4-6",
         provider: str = "anthropic",
         pass_threshold: float = 0.7,
         rubric: str | None = None,

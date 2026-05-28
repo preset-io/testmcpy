@@ -203,7 +203,7 @@ class MCPRunner(BaseRunnerTool):
         self,
         mcp_url: str | None = None,
         mcp_client: MCPClient | None = None,
-        model: str = "claude-sonnet-4-20250514",
+        model: str = "claude-sonnet-4-6",
         provider: str = "anthropic",
     ):
         self._name = "mcp-client"
@@ -380,7 +380,7 @@ class AnthropicDirectRunner(BaseRunnerTool):
 
     def __init__(
         self,
-        model: str = "claude-sonnet-4-20250514",
+        model: str = "claude-sonnet-4-6",
         api_key: str | None = None,
     ):
         self._name = "anthropic-direct"
