@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.3] - 2026-06-12
+
+### Changed
+- **docs-site: bump Next.js 14.2.35 → 15.5.19** (security backports).
+  Dependabot proposed 16.2.9, but Nextra 3 is incompatible with Next 16 —
+  its search plugin calls `init()` on `next/dist/compiled/webpack/webpack.js`,
+  which Next 16 no longer exports (`TypeError: pkg.init is not a function`
+  while loading `next.config.mjs`). Next 15.5.x is the newest line that
+  carries the security fixes and still works with Nextra 3 / Pages Router /
+  React 18; Next 16 needs a Nextra 4 + App Router migration
+
 ## [0.10.2] - 2026-06-12
 
 ### Fixed
