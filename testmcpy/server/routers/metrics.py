@@ -13,6 +13,7 @@ from sqlalchemy import func
 
 from testmcpy.db import get_session_factory, init_db
 from testmcpy.models import QuestionResultModel, TestRunModel
+from testmcpy.scoring import compute_score_breakdown
 
 router = APIRouter(prefix="/api/metrics", tags=["metrics"])
 
@@ -247,11 +248,30 @@ async def set_false_positive(question_id: int, is_false_positive: bool = True) -
         if not qr:
             raise HTTPException(status_code=404, detail="Question result not found")
         qr.manual_false_positive = is_false_positive
+
+        # Recompute the score so a manual FP flag actually moves the number
+        # (and un-flagging restores the automatic-only score). The base is the
+        # pre-penalty evaluator mean.
+        evaluations = qr.evaluations or []
+        base_score = (
+            sum(e.get("score", 0.0) for e in evaluations) / len(evaluations)
+            if evaluations
+            else qr.score
+        )
+        breakdown = compute_score_breakdown(
+            base_score=base_score,
+            evaluations=evaluations,
+            tool_uses=qr.tool_uses,
+            manual_false_positive=is_false_positive,
+        )
+        qr.score = breakdown["final_score"]
+        qr.false_positive_rate = breakdown["false_positive_rate"]
         session.commit()
         return {
             "success": True,
             "id": question_id,
             "manual_false_positive": qr.manual_false_positive,
+            "score": qr.score,
         }
     finally:
         session.close()

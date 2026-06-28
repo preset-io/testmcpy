@@ -85,6 +85,9 @@ def test_matrix(
             func.count(QuestionResultModel.id).label("n"),
             _pass_rate_expr().label("pass_rate"),
             func.avg(QuestionResultModel.score).label("avg_score"),
+            func.avg(func.coalesce(QuestionResultModel.false_positive_rate, 0.0)).label(
+                "avg_false_positive_rate"
+            ),
             func.avg(func.coalesce(QuestionResultModel.cost_usd, 0.0)).label("avg_cost"),
             func.avg(func.coalesce(QuestionResultModel.duration_ms, 0)).label("avg_duration_ms"),
             func.max(TestRunModel.started_at).label("last_run_at"),
@@ -137,6 +140,7 @@ def test_matrix(
             "pass_rate": pass_rate,
             "flaky": flaky,
             "avg_score": round(row.avg_score or 0.0, 4),
+            "avg_false_positive_rate": round(row.avg_false_positive_rate or 0.0, 4),
             "avg_cost": round(row.avg_cost or 0.0, 6),
             "avg_duration_ms": round(row.avg_duration_ms or 0.0, 1),
             "last_run_at": row.last_run_at,
@@ -152,12 +156,16 @@ def test_matrix(
                 "mcp_profile": row.mcp_profile_id if include_profile else None,
                 "n": 0,
                 "passed_weight": 0.0,
+                "score_weight": 0.0,
+                "fp_weight": 0.0,
                 "total_cost": 0.0,
                 "flaky_cells": 0,
             },
         )
         totals["n"] += n
         totals["passed_weight"] += pass_rate * n
+        totals["score_weight"] += (row.avg_score or 0.0) * n
+        totals["fp_weight"] += (row.avg_false_positive_rate or 0.0) * n
         totals["total_cost"] += (row.avg_cost or 0.0) * n
         totals["flaky_cells"] += 1 if flaky else 0
 
@@ -186,6 +194,8 @@ def test_matrix(
                 "n_runs": run_counts.get(key, 0),
                 "n_results": n,
                 "pass_rate": round(totals["passed_weight"] / n, 4) if n else 0.0,
+                "avg_score": round(totals["score_weight"] / n, 4) if n else 0.0,
+                "avg_false_positive_rate": round(totals["fp_weight"] / n, 4) if n else 0.0,
                 "total_cost": round(totals["total_cost"], 6),
                 "flaky_cells": totals["flaky_cells"],
             }
@@ -263,6 +273,7 @@ def question_history(
             QuestionResultModel.run_id,
             QuestionResultModel.passed,
             QuestionResultModel.score,
+            QuestionResultModel.false_positive_rate,
             QuestionResultModel.cost_usd,
             QuestionResultModel.duration_ms,
             QuestionResultModel.error,
@@ -291,6 +302,7 @@ def question_history(
             "started_at": row.started_at,
             "passed": bool(row.passed),
             "score": round(row.score or 0.0, 4),
+            "false_positive_rate": round(row.false_positive_rate or 0.0, 4),
             "cost_usd": round(row.cost_usd or 0.0, 6),
             "duration_ms": row.duration_ms or 0,
             "error": row.error,

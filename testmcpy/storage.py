@@ -33,6 +33,7 @@ from testmcpy.models import (
     TestSuiteModel,
     TestVersionModel,
 )
+from testmcpy.scoring import compute_score_breakdown, real_tool_name
 
 
 # Legacy dataclasses kept for backward compatibility with callers
@@ -77,32 +78,9 @@ class TestResult:
         return d
 
 
-def _real_tool_name(tool_use: dict) -> str:
-    """Extract the canonical tool name from a tool_use dict.
-
-    Handles three patterns:
-    - Gateway: mcp__ns__call_tool + arguments.name="my_tool" → "my_tool"
-    - Direct prefixed: mcp__ns__my_tool → "my_tool"
-    - Plain: "my_tool" → "my_tool"
-
-    Recurses so a gateway inner name that is itself prefixed is also normalized.
-    Falls back to tool_use["tool_name"] for alternate payload shapes.
-    """
-    name = tool_use.get("name") or tool_use.get("tool_name", "")
-    args = tool_use.get("arguments", {})
-
-    # Gateway call: *__call_tool or bare "call_tool" — real name is in arguments
-    if name.endswith("__call_tool") or name == "call_tool":
-        inner = args.get("name") or args.get("tool_name") or ""
-        if inner:
-            return _real_tool_name({"name": inner, "arguments": {}})
-        return "call_tool"
-
-    # Direct prefixed call: mcp__namespace__tool_name → tool_name
-    if "__" in name:
-        return name.split("__")[-1]
-
-    return name
+# Canonical tool-name normalization lives in the scoring module (single source
+# of truth shared with the read paths); re-exported here for backward compat.
+_real_tool_name = real_tool_name
 
 
 class TestStorage:
@@ -881,41 +859,24 @@ class TestStorage:
         evaluations: list | None = None,
         error: str | None = None,
         cost_usd: float = 0.0,
+        base_score: float | None = None,
+        manual_false_positive: bool = False,
     ) -> None:
-        # Compute tool call breakdown and false positive rate from tool_uses.
-        tool_call_counts: dict[str, int] = {}
-        false_positive_rate = 0.0
-
-        if tool_uses:
-            for tu in tool_uses:
-                tname = _real_tool_name(tu)
-                tool_call_counts[tname] = tool_call_counts.get(tname, 0) + 1
-
-            primary_tool: str | None = None
-            for ev in evaluations or []:
-                ev_name = ev.get("evaluator", "")
-                if ev_name.startswith("was_tool_called:") or ev_name.startswith(
-                    "was_mcp_tool_called:"
-                ):
-                    raw = ev_name.split(":", 1)[1]
-                    # Normalize in case the evaluator name itself contains a prefix
-                    primary_tool = _real_tool_name({"name": raw})
-                    break
-
-            total_calls = sum(tool_call_counts.values())
-            primary_calls = tool_call_counts.get(primary_tool, 0) if primary_tool else total_calls
-            if total_calls > 0:
-                false_positive_rate = (total_calls - primary_calls) / total_calls
-
-        # Apply score penalty for unnecessary extra calls, capped at 50% of original.
-        # Skip if the unnecessary_tool_calls evaluator already penalised this result.
-        already_penalized = any(
-            ev.get("evaluator", "").startswith("unnecessary_tool_calls")
-            and not ev.get("passed", True)
-            for ev in (evaluations or [])
+        # Single source of truth for scoring lives in testmcpy.scoring. ``score``
+        # arriving here is the post-penalty value the runner already computed, so
+        # we re-derive the final score from the PRE-penalty ``base_score`` to
+        # avoid double-penalising. Legacy callers that don't pass base_score fall
+        # back to ``score`` as the base (best effort for one-time JSON imports).
+        base = base_score if base_score is not None else score
+        breakdown = compute_score_breakdown(
+            base_score=base,
+            evaluations=evaluations,
+            tool_uses=tool_uses,
+            manual_false_positive=manual_false_positive,
         )
-        if not already_penalized and false_positive_rate > 0:
-            score = score * max(0.5, 1.0 - false_positive_rate)
+        score = breakdown["final_score"]
+        false_positive_rate = breakdown["false_positive_rate"]
+        tool_call_counts = breakdown["tool_call_counts"]
 
         with self._session() as session:
             result = QuestionResultModel(
@@ -935,6 +896,7 @@ class TestStorage:
                 cost_usd=cost_usd,
                 tool_call_counts=tool_call_counts,
                 false_positive_rate=false_positive_rate,
+                manual_false_positive=manual_false_positive,
                 created_at=datetime.now(timezone.utc),
             )
             session.add(result)

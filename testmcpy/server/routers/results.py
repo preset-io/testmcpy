@@ -11,6 +11,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from testmcpy.scoring import compute_score_breakdown
 from testmcpy.server.run_persistence import question_result_kwargs
 from testmcpy.storage import get_storage
 
@@ -279,6 +280,23 @@ async def get_test_run(run_id: str) -> dict[str, Any]:
     # Transform question results to legacy result format
     results = []
     for qr in run["question_results"]:
+        evaluations = qr["evaluations"] or []
+        # Re-derive the score explanation from stored fields. The stored
+        # ``score`` is authoritative (it may have been computed under older
+        # scoring logic), so we pass it as override_final_score and let the
+        # breakdown explain it relative to the evaluator mean.
+        base_score = (
+            sum(e.get("score", 0.0) for e in evaluations) / len(evaluations)
+            if evaluations
+            else qr["score"]
+        )
+        breakdown = compute_score_breakdown(
+            base_score=base_score,
+            evaluations=evaluations,
+            tool_uses=qr["tool_uses"],
+            manual_false_positive=qr.get("manual_false_positive") or False,
+            override_final_score=qr["score"],
+        )
         results.append(
             {
                 "test_name": qr["question_id"],
@@ -289,6 +307,7 @@ async def get_test_run(run_id: str) -> dict[str, Any]:
                 "tool_call_counts": qr.get("tool_call_counts") or {},
                 "false_positive_rate": qr.get("false_positive_rate") or 0.0,
                 "manual_false_positive": qr.get("manual_false_positive") or False,
+                "score_breakdown": breakdown,
                 "response": qr["answer"],
                 "tool_calls": qr["tool_uses"],
                 "tool_results": qr["tool_results"],

@@ -49,6 +49,9 @@ def question_result_kwargs(r: dict[str, Any]) -> dict[str, Any]:
         "question_id": r.get("test_name", r.get("question_id", "unknown")),
         "passed": r.get("passed", False),
         "score": r.get("score", 0.0),
+        # Pre-penalty mean so storage re-derives the final score without
+        # double-penalising (falls back to ``score`` when absent).
+        "base_score": r.get("base_score"),
         "answer": r.get("response", r.get("answer")),
         "tool_uses": r.get("tool_calls", r.get("tool_uses")),
         "tool_results": r.get("tool_results"),

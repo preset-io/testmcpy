@@ -11,6 +11,7 @@ from typing import Any
 
 from ..evals.base_evaluators import BaseEvaluator, create_evaluator
 from ..evals.evaluator_packs import resolve_evaluators
+from ..scoring import compute_score_breakdown
 from .llm_integration import LLMProvider, create_llm_provider
 from .mcp_client import MCPClient, MCPToolCall
 
@@ -210,6 +211,13 @@ class TestResult:
     score: float
     duration: float
     reason: str | None = None
+    # Pre-penalty mean of evaluator scores. Persisted so storage can re-derive
+    # the final (post-false-positive-penalty) score without double-penalising,
+    # and so the UI can show "base × penalty = final".
+    base_score: float | None = None
+    # Structured, UI-ready explanation of how ``score`` was derived (see
+    # testmcpy.scoring.compute_score_breakdown).
+    score_breakdown: dict[str, Any] | None = None
     # Original user prompt that drove this test. Persisted so the /reports
     # detail view can render it without re-parsing the source YAML; the
     # YAML may have moved or been edited by the time a user looks at an
@@ -704,6 +712,17 @@ class TestRunner:
 
             avg_score = total_score / len(test_case.evaluators) if test_case.evaluators else 0.0
 
+            # Apply the false-positive tool-call penalty here (single source of
+            # truth in testmcpy.scoring) so the live/console score matches what
+            # storage persists — historically the penalty was only applied at
+            # save time, so the in-memory score diverged from the report.
+            score_breakdown = compute_score_breakdown(
+                base_score=avg_score,
+                evaluations=evaluations,
+                tool_uses=llm_result.tool_calls,
+            )
+            final_score = score_breakdown["final_score"]
+
             # Calculate actual execution duration (excluding wait times)
             total_duration = time.time() - start_time
             wait_time = getattr(llm_result, "wait_time", 0.0)
@@ -728,7 +747,9 @@ class TestRunner:
             return TestResult(
                 test_name=test_case.name,
                 passed=all_passed,
-                score=avg_score,
+                score=final_score,
+                base_score=avg_score,
+                score_breakdown=score_breakdown,
                 duration=actual_duration,
                 reason=reason,
                 tool_calls=llm_result.tool_calls,
