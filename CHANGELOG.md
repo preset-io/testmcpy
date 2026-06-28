@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.4] - 2026-06-27
+
+### Fixed
+- **ClaudeSDK subprocess no longer inherits global MCP plugins**: the subprocess
+  was loading MCP servers from `~/.claude/settings.json` (e.g. a Playwright
+  browser plugin) despite `setting_sources=[]` being set. Root cause: the SDK
+  only passes `--setting-sources` to the CLI when the list is truthy — an empty
+  list is silently ignored, leaving the CLI to load all default config. The fix
+  passes `--strict-mcp-config` via `extra_args`, which tells the Claude CLI to
+  honour only the MCP server explicitly provided for the test run and ignore all
+  others. This prevents the model from reaching for leaked tools (e.g.
+  `browser_navigate` to read a tool-result file) and producing spurious
+  tool-call errors in eval results.
+
 ## [0.11.3] - 2026-06-27
 
 ### Fixed

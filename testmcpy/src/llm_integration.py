@@ -2219,12 +2219,19 @@ class ClaudeSDKProvider(BaseSDKProvider):
                 system_prompt=system_prompt,
                 debug_stderr=None,  # Don't dump CLI debug to host stderr
                 stderr=_capture_stderr,  # Capture lines for failure diagnostics
-                # Isolate from the host machine's Claude Code config: don't read
-                # settings.json (user / project / local) and don't load plugins.
-                # Combined with cwd=_sdk_tmpdir this ensures the subprocess only
-                # sees the single MCP server we configure above.
-                setting_sources=[],
-                plugins=[],
+                # --strict-mcp-config tells the CLI to honour ONLY the MCP
+                # servers we pass explicitly via mcp_servers above, ignoring
+                # any servers in ~/.claude/settings.json, .mcp.json, or
+                # user-installed plugins (e.g. Playwright). Without this flag
+                # those global servers leak into the subprocess and the model
+                # reaches for them (e.g. browser_navigate to read a tool-result
+                # file) producing spurious tool-call errors in eval results.
+                #
+                # NOTE: setting_sources=[] looks like it should disable config
+                # loading but the SDK only passes --setting-sources when the
+                # list is truthy, so [] is silently a no-op. Use extra_args
+                # to pass the flag directly instead.
+                extra_args={"strict-mcp-config": None},
             )
 
             # Execute query with timeout
