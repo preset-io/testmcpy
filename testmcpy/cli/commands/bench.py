@@ -16,6 +16,7 @@ from typing import Optional
 import typer
 from rich.table import Table
 
+from testmcpy.benchmarks import BenchmarkComboError, build_benchmark_combos, combo_label
 from testmcpy.cli.app import app, console
 
 
@@ -52,51 +53,34 @@ def bench(
         console.print("[red]Error: --repeat must be >= 1[/red]")
         raise typer.Exit(1)
 
-    model_list = [m.strip() for m in models.split(",") if m.strip()]
-    profile_list: list[Optional[str]] = [
-        p.strip() for p in (profiles or "").split(",") if p.strip()
-    ] or [None]
-
-    provider_list: list[Optional[str]]
-    if providers:
-        provider_list = [p.strip() or None for p in providers.split(",")]
-        if len(provider_list) == 1:
-            provider_list = provider_list * len(model_list)
-        if len(provider_list) != len(model_list):
-            console.print(
-                f"[red]Error: {len(provider_list)} providers for "
-                f"{len(model_list)} models — pass one per model or a single value[/red]"
-            )
-            raise typer.Exit(1)
-    else:
-        provider_list = [None] * len(model_list)
+    # Shared matrix expansion (see testmcpy/benchmarks.py) so the CLI and the
+    # websocket benchmark runner build the identical cross product.
+    try:
+        combos = build_benchmark_combos(models, providers, profiles, repeat)
+    except BenchmarkComboError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1) from e
 
     session_id = str(uuid.uuid4())
-    combos = [
-        (model, provider, profile, iteration)
-        for model, provider in zip(model_list, provider_list, strict=True)
-        for profile in profile_list
-        for iteration in range(1, repeat + 1)
-    ]
-
+    n_models = len({c.model for c in combos})
+    n_profiles = len({c.profile for c in combos})
     console.print(
-        f"[bold]Bench:[/bold] {len(model_list)} model(s) × "
-        f"{len(profile_list)} profile(s) × {repeat} repeat(s) "
+        f"[bold]Bench:[/bold] {n_models} model(s) × "
+        f"{n_profiles} profile(s) × {repeat} repeat(s) "
         f"= {len(combos)} runs\n[dim]Session: {session_id}[/dim]"
     )
 
     if dry_run:
-        for model, provider, profile, iteration in combos:
-            label = f"{provider or 'default'}/{model}"
-            if profile:
-                label += f" @ {profile}"
-            console.print(f"  • {label} (run {iteration}/{repeat})")
+        for combo in combos:
+            console.print(f"  • {combo_label(combo)} (run {combo.iteration}/{repeat})")
         return
 
     results = []
-    for i, (model, provider, profile, iteration) in enumerate(combos, 1):
-        label = f"{provider or 'default'}/{model}" + (f" @ {profile}" if profile else "")
-        console.print(f"\n[cyan]── Run {i}/{len(combos)}: {label} (repeat {iteration}) ──[/cyan]")
+    for i, combo in enumerate(combos, 1):
+        label = combo_label(combo)
+        console.print(
+            f"\n[cyan]── Run {i}/{len(combos)}: {label} (repeat {combo.iteration}) ──[/cyan]"
+        )
 
         cmd = [
             sys.executable,
@@ -105,19 +89,19 @@ def bench(
             "run",
             str(test_path),
             "--model",
-            model,
+            combo.model,
             "--session-id",
             session_id,
         ]
-        if provider:
-            cmd += ["--provider", provider]
-        if profile:
-            cmd += ["--profile", profile]
+        if combo.provider:
+            cmd += ["--provider", combo.provider]
+        if combo.profile:
+            cmd += ["--profile", combo.profile]
         if extra_args:
             cmd += extra_args.split()
 
         proc = subprocess.run(cmd)
-        results.append((label, iteration, proc.returncode))
+        results.append((label, combo.iteration, proc.returncode))
 
     table = Table(show_header=True, header_style="bold cyan", title="Bench Summary")
     table.add_column("Config")

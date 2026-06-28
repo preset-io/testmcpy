@@ -3180,10 +3180,31 @@ class AssistantProvider(LLMProvider):
             tool_calls=state.tool_calls,
             tool_results=state.tool_results,
             token_usage=state.token_usage,
-            cost=0.0,
+            cost=self._estimate_cost(state.token_usage),
             duration=duration,
             tti_ms=state.tti_ms,
             logs=logs,
+        )
+
+    def _estimate_cost(self, token_usage: dict[str, int] | None) -> float:
+        """Cost in USD from the chatbot's reported token usage × the priced
+        model. The endpoint returns ``input_tokens``/``output_tokens`` (stored
+        as ``prompt``/``completion``), so we can price the run whenever the
+        model is known — i.e. when ``--model`` was passed (sent as
+        ``model_override``). With ``model="default"`` the backend picks the
+        model server-side, so it's unpriceable here and stays 0.0 (the UI
+        renders that as "not tracked" rather than free)."""
+        if not token_usage:
+            return 0.0
+        model = self.model_override or self.model
+        if not model or model == "default":
+            return 0.0
+        return _estimate_cost_with_fallback(
+            model,
+            token_usage.get("prompt", 0),
+            token_usage.get("completion", 0),
+            0.0,
+            0.0,
         )
 
     # --- Hooks (override to target a different vendor) -------------

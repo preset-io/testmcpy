@@ -5,6 +5,7 @@ WebSocket support for streaming chat responses and test execution.
 import asyncio
 import contextlib
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -291,6 +292,48 @@ def _display_test_file_name(test_path: Path) -> str:
     return test_file_name
 
 
+def _inline_auth_from_data(data: dict) -> dict | None:
+    """Build an MCPClient auth dict from ad-hoc connection fields in a run/
+    benchmark message — the websocket equivalent of the CLI's
+    ``--auth-type`` / ``--jwt-*`` / ``--auth-token`` flags. Returns ``None``
+    when no ``auth_type`` is supplied (unauthenticated MCP server)."""
+    auth_type = data.get("auth_type")
+    if not auth_type:
+        return None
+    auth: dict[str, Any] = {"type": auth_type}
+    if auth_type == "jwt":
+        if data.get("jwt_url"):
+            auth["api_url"] = data["jwt_url"]
+        if data.get("jwt_token"):
+            auth["api_token"] = data["jwt_token"]
+        if data.get("jwt_secret"):
+            auth["api_secret"] = data["jwt_secret"]
+    elif auth_type == "bearer" and data.get("auth_token"):
+        auth["token"] = data["auth_token"]
+    elif auth_type == "api_key" and data.get("auth_token"):
+        auth["api_key"] = data["auth_token"]
+    return auth
+
+
+def _assistant_config_from_data(data: dict) -> dict:
+    """Assistant ``provider_config`` from ad-hoc connection fields — the
+    websocket equivalent of the CLI's assistant flags (``--workspace-hash``,
+    ``--domain``, ``--assistant-*``, with ``--jwt-*`` as the auth fallback).
+    Only non-empty values are returned so callers can ``setdefault`` them
+    without clobbering suite/profile-provided values."""
+    fields = {
+        "workspace_hash": data.get("workspace_hash"),
+        "domain": data.get("domain"),
+        "environment": data.get("environment"),
+        "api_url": data.get("assistant_api_url") or data.get("jwt_url"),
+        "api_token": data.get("assistant_api_token") or data.get("jwt_token"),
+        "api_secret": data.get("assistant_api_secret") or data.get("jwt_secret"),
+        "conversations_path": data.get("assistant_conversations_path"),
+        "completions_path": data.get("assistant_completions_path"),
+    }
+    return {k: v for k, v in fields.items() if v}
+
+
 async def _run_test_command(handle: RunHandle, data: dict, config) -> None:
     """Execute a single 'run_test' command tied to ``handle``.
 
@@ -335,7 +378,13 @@ async def _run_test_command(handle: RunHandle, data: dict, config) -> None:
         suite_model = file_data.get("model")
 
         effective_provider = suite_provider or provider
-        effective_model = suite_model or model
+        # A suite-level `model: default` sentinel must not mask an explicitly
+        # chosen model (e.g. a benchmark combo). When ``_force_model`` is set the
+        # passed model wins — same precedence the CLI applies for `--model`.
+        if data.get("_force_model"):
+            effective_model = model
+        else:
+            effective_model = suite_model or model
 
         # Build the final provider_config. For assistant/chatbot we fold in
         # the assistant-specific fields (workspace_hash, domain, JWT auth,
@@ -376,6 +425,13 @@ async def _run_test_command(handle: RunHandle, data: dict, config) -> None:
                         if val and not effective_provider_config.get(fname):
                             effective_provider_config[fname] = val
 
+        # Ad-hoc assistant credentials supplied directly in the message (no saved
+        # profile) — how the benchmark dialog passes the user's run-args. Suite
+        # YAML / profile values already set above take precedence.
+        if effective_provider in ("assistant", "chatbot"):
+            for k, v in _assistant_config_from_data(data).items():
+                effective_provider_config.setdefault(k, v)
+
         # Filter to specific test if requested
         if test_name:
             test_cases = [tc for tc in test_cases if tc.name == test_name]
@@ -388,29 +444,41 @@ async def _run_test_command(handle: RunHandle, data: dict, config) -> None:
         if suite_provider:
             _emit_log(handle, f"📝 Suite-level provider override: {suite_provider}")
 
-        # Get MCP client - use profile or default
+        # Get MCP client. An ad-hoc ``mcp_url`` in the message (how the
+        # benchmark dialog passes the user's run-args, with no saved profile)
+        # builds a client straight from URL + auth, mirroring the CLI's
+        # inline-auth path. Otherwise fall back to the named/default profile.
         mcp_client = None
         effective_profile = profile
-        if not effective_profile:
-            # Try to get default profile from config
-            from testmcpy.server.helpers.mcp_config import load_mcp_yaml
+        adhoc_mcp_url = data.get("mcp_url")
 
-            mcp_config = load_mcp_yaml()
-            effective_profile = mcp_config.get("default")
+        if adhoc_mcp_url and not effective_profile:
+            from testmcpy.src.mcp_client import MCPClient
+
+            _emit_log(handle, f"🔌 Connecting to MCP (ad-hoc): {adhoc_mcp_url}")
+            mcp_client = MCPClient(adhoc_mcp_url, auth=_inline_auth_from_data(data))
+            await mcp_client.initialize()
+        else:
+            if not effective_profile:
+                # Try to get default profile from config
+                from testmcpy.server.helpers.mcp_config import load_mcp_yaml
+
+                mcp_config = load_mcp_yaml()
+                effective_profile = mcp_config.get("default")
+                if effective_profile:
+                    _emit_log(handle, f"🔌 Using default MCP profile: {effective_profile}")
+
             if effective_profile:
-                _emit_log(handle, f"🔌 Using default MCP profile: {effective_profile}")
-
-        if effective_profile:
-            _emit_log(handle, f"🔌 Loading MCP profile: {effective_profile}")
-            mcp_client = await get_or_create_mcp_client(effective_profile)
-            if mcp_client is None:
-                _emit_run_error(
-                    handle,
-                    data,
-                    f"MCP profile '{effective_profile}' not found. "
-                    f"Check your MCP Profiles configuration.",
-                )
-                return
+                _emit_log(handle, f"🔌 Loading MCP profile: {effective_profile}")
+                mcp_client = await get_or_create_mcp_client(effective_profile)
+                if mcp_client is None:
+                    _emit_run_error(
+                        handle,
+                        data,
+                        f"MCP profile '{effective_profile}' not found. "
+                        f"Check your MCP Profiles configuration.",
+                    )
+                    return
 
         # Get MCP URL from the selected profile's client, not the default config
         effective_mcp_url = config.get_mcp_url()
@@ -484,6 +552,9 @@ async def _run_test_command(handle: RunHandle, data: dict, config) -> None:
             provider=effective_provider,
             mcp_profile=effective_profile,
             llm_profile=llm_profile_id,
+            # Shared across a benchmark's combos so /api/results/sessions and a
+            # session-scoped /performance view can group them.
+            metadata=({"session_id": data["session_id"]} if data.get("session_id") else None),
         )
         handle.db_run_id = record.run_id
 
@@ -730,6 +801,164 @@ async def _run_directory_command(handle: RunHandle, data: dict, config) -> None:
         tb = traceback.format_exc()
         _emit_log(handle, f"❌ Batch error: {e}")
         _emit_log(handle, f"Traceback:\n{tb}")
+        _emit_event(handle, {"type": "error", "message": str(e), "traceback": tb})
+
+
+async def _run_benchmark_command(handle: RunHandle, data: dict, config) -> None:
+    """Execute a 'run_benchmark' command — one suite across a matrix of
+    models × providers × MCP profiles × repeats: the websocket-native
+    equivalent of ``testmcpy bench``.
+
+    Each (combo × file) runs as a ``_run_test_command`` sub-call with
+    ``_in_batch=True`` (its terminal all_complete suppressed), ``_force_model``
+    (the chosen model beats a suite ``model: default``), and a shared
+    ``session_id``. So every run lands in /performance as its own config column
+    and the set is grouped under one session. Connection/auth fields are
+    constant across combos and forwarded verbatim — the dialog passes the
+    user's run-args directly, no saved profile needed.
+    """
+    from testmcpy.benchmarks import BenchmarkComboError, build_benchmark_combos, combo_label
+
+    files: list[dict] = data.get("files") or (
+        [{"test_path": data["test_path"], "name": Path(data["test_path"]).name}]
+        if data.get("test_path")
+        else []
+    )
+    if not files:
+        _emit_event(handle, {"type": "error", "message": "run_benchmark: no test files provided"})
+        return
+
+    try:
+        combos = build_benchmark_combos(
+            data.get("models"),
+            data.get("providers"),
+            data.get("profiles"),
+            int(data.get("repeat", 1)),
+        )
+    except BenchmarkComboError as e:
+        _emit_event(handle, {"type": "error", "message": f"run_benchmark: {e}"})
+        return
+
+    session_id = data.get("session_id") or uuid.uuid4().hex
+    # Connection/auth fields forwarded unchanged to every per-run sub-call.
+    connection = {
+        k: data[k]
+        for k in (
+            "mcp_url",
+            "auth_type",
+            "jwt_url",
+            "jwt_token",
+            "jwt_secret",
+            "auth_token",
+            "workspace_hash",
+            "domain",
+            "environment",
+            "assistant_api_url",
+            "assistant_api_token",
+            "assistant_api_secret",
+            "assistant_conversations_path",
+            "assistant_completions_path",
+        )
+        if data.get(k) is not None
+    }
+
+    total_combos = len(combos)
+    _emit_log(
+        handle,
+        f"🏁 Benchmark: {total_combos} combo(s) × {len(files)} file(s) "
+        f"= {total_combos * len(files)} run(s) · session {session_id}",
+    )
+
+    aggregated_results: list[dict] = []
+    aggregated_summary = {"total": 0, "passed": 0, "failed": 0, "total_cost": 0.0}
+
+    try:
+        for ci, combo in enumerate(combos):
+            label = combo_label(combo)
+            _emit_event(
+                handle,
+                {
+                    "type": "combo_start",
+                    "index": ci,
+                    "total": total_combos,
+                    "model": combo.model,
+                    "provider": combo.provider,
+                    "profile": combo.profile,
+                    "iteration": combo.iteration,
+                    "label": label,
+                },
+            )
+            _emit_log(handle, f"\n{'━' * 50}")
+            _emit_log(
+                handle, f"🏁 Combo {ci + 1}/{total_combos}: {label} (repeat {combo.iteration})"
+            )
+            _emit_log(handle, f"{'━' * 50}")
+
+            combo_pre_len = len(handle.results)
+            for file_entry in files:
+                run_data = {
+                    **connection,
+                    **file_entry,
+                    "model": combo.model,
+                    "provider": combo.provider,
+                    "profile": combo.profile,
+                    "_force_model": True,
+                    "_in_batch": True,
+                    "session_id": session_id,
+                }
+                try:
+                    await _run_test_command(handle, run_data, config)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    _emit_log(handle, f"⚠️ {label} / {file_entry.get('name', '')} crashed: {e}")
+
+            combo_results = handle.results[combo_pre_len:]
+            combo_passed = sum(1 for r in combo_results if r.get("passed"))
+            aggregated_results.extend(combo_results)
+            aggregated_summary["total"] += len(combo_results)
+            aggregated_summary["passed"] += combo_passed
+            aggregated_summary["failed"] += len(combo_results) - combo_passed
+            aggregated_summary["total_cost"] += sum(r.get("cost", 0) or 0 for r in combo_results)
+
+            _emit_event(
+                handle,
+                {
+                    "type": "combo_complete",
+                    "index": ci,
+                    "total": total_combos,
+                    "label": label,
+                    "summary": {
+                        "total": len(combo_results),
+                        "passed": combo_passed,
+                        "failed": len(combo_results) - combo_passed,
+                    },
+                },
+            )
+
+        handle.summary = aggregated_summary
+        _emit_log(handle, f"\n{'=' * 50}")
+        _emit_log(
+            handle,
+            f"📊 BENCHMARK SUMMARY: {aggregated_summary['passed']} passed, "
+            f"{aggregated_summary['failed']} failed across {total_combos} combo(s)",
+        )
+        _emit_event(
+            handle,
+            {
+                "type": "all_complete",
+                "summary": aggregated_summary,
+                "results": aggregated_results,
+                "session_id": session_id,
+            },
+        )
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        import traceback
+
+        tb = traceback.format_exc()
+        _emit_log(handle, f"❌ Benchmark error: {e}")
         _emit_event(handle, {"type": "error", "message": str(e), "traceback": tb})
 
 
@@ -1030,6 +1259,8 @@ async def handle_test_websocket(websocket: WebSocket):
             await _start_new_run("single", _run_test_command, message)
         elif msg_type == "run_directory":
             await _start_new_run("directory", _run_directory_command, message)
+        elif msg_type == "run_benchmark":
+            await _start_new_run("benchmark", _run_benchmark_command, message)
         elif msg_type == "attach":
             await _attach_existing_run(message.get("run_id", ""))
         elif msg_type == "stop":
