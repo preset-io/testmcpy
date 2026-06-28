@@ -17,6 +17,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (avg-score + false-positive-rate columns, a relative cost-per-run/-per-pass bar
   for comparing models at a glance, and per-run false-positive markers).
 
+### Fixed
+- **`--model` override is no longer swallowed by a suite `model: default`**: chatbot
+  suites declare `model: default` ("let the provider pick"), and the old
+  `effective_model = suite_model or model` let that sentinel mask an explicit
+  `--model claude-opus-4-7`, so the override never reached the provider or the
+  saved run (it showed as `assistant/default` in /performance and /reports). An
+  explicit `--model` now wins; a real suite-level `model:` pin is still honoured;
+  and the `default` sentinel is preserved when no override is passed. `--dry-run`
+  now prints the resolved provider/model.
+
 ### Changed
 - **Scoring is now a single source of truth** (`testmcpy/scoring.py`) shared by
   the runner, storage, and the read APIs. Fixes: multiple expected/"primary"

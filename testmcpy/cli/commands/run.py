@@ -189,6 +189,7 @@ def research(
 
 @app.command()
 def run(
+    ctx: typer.Context,
     test_path: Path = typer.Argument(..., help="Path to test file or directory"),
     model: str = typer.Option(DEFAULT_MODEL, "--model", "-m", help="Model to use"),
     provider: ModelProvider = typer.Option(
@@ -534,7 +535,20 @@ def run(
 
         # Apply suite-level provider override (suite YAML takes precedence over CLI args)
         effective_provider = suite_provider or provider.value
-        effective_model = suite_model or model
+
+        # Model precedence: an explicit `--model` always wins. Otherwise a real
+        # suite-level `model:` pins it — EXCEPT the chatbot sentinel
+        # `model: default` ("let the provider pick"), which must not mask the
+        # CLI default either. Previously `suite_model or model` let a suite
+        # `model: default` silently swallow an explicit `--model claude-opus-4-7`,
+        # so the override never reached the provider or the saved run.
+        model_explicitly_set = ctx.get_parameter_source("model").name == "COMMANDLINE"
+        if model_explicitly_set:
+            effective_model = model
+        elif suite_model and suite_model != "default":
+            effective_model = suite_model
+        else:
+            effective_model = suite_model or model
 
         # If running an assistant/chatbot provider, fold the assistant-specific
         # CLI flags into provider_config so they reach AssistantProvider.__init__
@@ -606,6 +620,9 @@ def run(
 
         if dry_run:
             console.print("[yellow]DRY RUN - Not executing tests[/yellow]")
+            console.print(
+                f"[dim]Resolved provider/model:[/dim] {effective_provider} / {effective_model}"
+            )
             if gate_enabled:
                 console.print(
                     "[yellow]Note: --gate is skipped during --dry-run "

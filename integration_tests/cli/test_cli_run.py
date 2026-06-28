@@ -45,6 +45,60 @@ def test_run_dry_run_with_valid_file(runner, cli_app, tmp_path):
     assert result.exit_code == 0
 
 
+def _write_suite(tmp_path, suite_fields):
+    """Write a minimal one-test suite YAML with the given top-level fields."""
+    test_file = tmp_path / "suite.yaml"
+    data = {
+        "version": "1.0",
+        **suite_fields,
+        "tests": [
+            {"name": "q1", "prompt": "hello", "evaluators": [{"name": "execution_successful"}]}
+        ],
+    }
+    test_file.write_text(yaml.dump(data, default_flow_style=False))
+    return test_file
+
+
+def test_explicit_model_overrides_suite_default_sentinel(runner, cli_app, tmp_path):
+    """An explicit --model must win over a suite-level `model: default` sentinel.
+
+    Chatbot suites declare `model: default` ("let the provider pick"); previously
+    `suite_model or model` let that swallow an explicit override so the chosen
+    model never reached the provider or the saved run.
+    """
+    test_file = _write_suite(tmp_path, {"provider": "assistant", "model": "default"})
+    result = runner.invoke(
+        cli_app,
+        [
+            "run",
+            str(test_file),
+            "--provider",
+            "assistant",
+            "--model",
+            "claude-opus-4-7",
+            "--dry-run",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "assistant / claude-opus-4-7" in result.stdout
+
+
+def test_suite_default_sentinel_preserved_without_override(runner, cli_app, tmp_path):
+    """Without an explicit --model, a suite `model: default` stays 'default'."""
+    test_file = _write_suite(tmp_path, {"provider": "assistant", "model": "default"})
+    result = runner.invoke(cli_app, ["run", str(test_file), "--provider", "assistant", "--dry-run"])
+    assert result.exit_code == 0
+    assert "assistant / default" in result.stdout
+
+
+def test_real_suite_model_pin_preserved(runner, cli_app, tmp_path):
+    """A real suite-level `model:` still pins the model when no --model is given."""
+    test_file = _write_suite(tmp_path, {"model": "claude-haiku-4-5"})
+    result = runner.invoke(cli_app, ["run", str(test_file), "--dry-run"])
+    assert result.exit_code == 0
+    assert "claude-haiku-4-5" in result.stdout
+
+
 def test_run_dry_run_directory(runner, cli_app, tmp_path):
     """run --dry-run on a directory with test files should succeed."""
     test_file = tmp_path / "suite.yaml"
