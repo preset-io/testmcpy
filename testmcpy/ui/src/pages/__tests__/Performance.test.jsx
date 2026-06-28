@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { BrowserRouter } from 'react-router-dom'
 import Performance from '../Performance'
+import { TestRunProvider } from '../../contexts/TestRunContext'
 
 const emptyMatrix = { configs: [], rows: [], warnings: [] }
 const emptyLeaderboard = { configs: [], total: 0 }
@@ -91,7 +92,9 @@ function mockFetch({ matrix, leaderboard }) {
 function renderPage() {
   return render(
     <BrowserRouter>
-      <Performance />
+      <TestRunProvider>
+        <Performance />
+      </TestRunProvider>
     </BrowserRouter>
   )
 }
@@ -124,12 +127,12 @@ describe('Performance', () => {
     expect(await screen.findByText('q_multi_run')).toBeInTheDocument()
     expect(screen.getByText('q_single_run')).toBeInTheDocument()
 
-    // Cell pass% for the multi-run cell
+    // Cell pass% for the multi-run cell (now shows "n=3 · <avg score>")
     expect(screen.getByText('100%')).toBeInTheDocument()
-    expect(screen.getByText('n=3')).toBeInTheDocument()
+    expect(screen.getByText(/n=3/)).toBeInTheDocument()
 
-    // Footer aggregate row
-    expect(screen.getByText('All tests')).toBeInTheDocument()
+    // Footer aggregate rows (Pass rate / Avg score / Cost per run)
+    expect(screen.getByText('Pass rate')).toBeInTheDocument()
     expect(screen.getByText('3 runs')).toBeInTheDocument()
 
     // Warnings banner

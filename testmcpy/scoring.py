@@ -49,7 +49,7 @@ MANUAL_FP_MULTIPLIER = 0.5
 _PRIMARY_TOOL_PREFIXES = ("was_tool_called:", "was_mcp_tool_called:")
 
 
-def real_tool_name(tool_use: dict) -> str:
+def real_tool_name(tool_use: dict[str, Any]) -> str:
     """Extract the canonical tool name from a tool_use dict.
 
     Handles three patterns:
@@ -60,7 +60,7 @@ def real_tool_name(tool_use: dict) -> str:
     Recurses so a gateway inner name that is itself prefixed is also normalized.
     Falls back to ``tool_use["tool_name"]`` for alternate payload shapes.
     """
-    name = tool_use.get("name") or tool_use.get("tool_name", "")
+    name = str(tool_use.get("name") or tool_use.get("tool_name") or "")
     args = tool_use.get("arguments", {}) or {}
 
     if name.endswith("__call_tool") or name == "call_tool":
@@ -75,7 +75,7 @@ def real_tool_name(tool_use: dict) -> str:
     return name
 
 
-def primary_tools_from_evaluations(evaluations: list[dict] | None) -> list[str]:
+def primary_tools_from_evaluations(evaluations: list[dict[str, Any]] | None) -> list[str]:
     """Canonical names of every tool the test declared as expected.
 
     Reads *all* ``was_tool_called:`` / ``was_mcp_tool_called:`` evaluators (the
@@ -100,7 +100,7 @@ def primary_tools_from_evaluations(evaluations: list[dict] | None) -> list[str]:
 
 
 def compute_tool_call_breakdown(
-    tool_uses: list[dict] | None, evaluations: list[dict] | None
+    tool_uses: list[dict[str, Any]] | None, evaluations: list[dict[str, Any]] | None
 ) -> dict[str, Any]:
     """Tool-call counts and the false-positive rate for one result.
 
@@ -135,8 +135,8 @@ def compute_tool_call_breakdown(
 
 def compute_score_breakdown(
     base_score: float,
-    evaluations: list[dict] | None,
-    tool_uses: list[dict] | None = None,
+    evaluations: list[dict[str, Any]] | None,
+    tool_uses: list[dict[str, Any]] | None = None,
     manual_false_positive: bool = False,
     override_final_score: float | None = None,
 ) -> dict[str, Any]:

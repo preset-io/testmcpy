@@ -43,7 +43,7 @@ def _as_list(value: str | Sequence[str] | None) -> list[str]:
 
 
 def build_benchmark_combos(
-    models: str | Sequence[str],
+    models: str | Sequence[str] | None,
     providers: str | Sequence[str] | None = None,
     profiles: str | Sequence[str] | None = None,
     repeat: int = 1,

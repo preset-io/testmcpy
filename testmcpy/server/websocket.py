@@ -292,7 +292,7 @@ def _display_test_file_name(test_path: Path) -> str:
     return test_file_name
 
 
-def _inline_auth_from_data(data: dict) -> dict | None:
+def _inline_auth_from_data(data: dict[str, Any]) -> dict[str, Any] | None:
     """Build an MCPClient auth dict from ad-hoc connection fields in a run/
     benchmark message — the websocket equivalent of the CLI's
     ``--auth-type`` / ``--jwt-*`` / ``--auth-token`` flags. Returns ``None``
@@ -315,7 +315,7 @@ def _inline_auth_from_data(data: dict) -> dict | None:
     return auth
 
 
-def _assistant_config_from_data(data: dict) -> dict:
+def _assistant_config_from_data(data: dict[str, Any]) -> dict[str, Any]:
     """Assistant ``provider_config`` from ad-hoc connection fields — the
     websocket equivalent of the CLI's assistant flags (``--workspace-hash``,
     ``--domain``, ``--assistant-*``, with ``--jwt-*`` as the auth fallback).
@@ -804,7 +804,7 @@ async def _run_directory_command(handle: RunHandle, data: dict, config) -> None:
         _emit_event(handle, {"type": "error", "message": str(e), "traceback": tb})
 
 
-async def _run_benchmark_command(handle: RunHandle, data: dict, config) -> None:
+async def _run_benchmark_command(handle: RunHandle, data: dict[str, Any], config) -> None:
     """Execute a 'run_benchmark' command — one suite across a matrix of
     models × providers × MCP profiles × repeats: the websocket-native
     equivalent of ``testmcpy bench``.
@@ -819,13 +819,26 @@ async def _run_benchmark_command(handle: RunHandle, data: dict, config) -> None:
     """
     from testmcpy.benchmarks import BenchmarkComboError, build_benchmark_combos, combo_label
 
-    files: list[dict] = data.get("files") or (
-        [{"test_path": data["test_path"], "name": Path(data["test_path"]).name}]
-        if data.get("test_path")
-        else []
-    )
+    # Resolve the target into a concrete file list. An explicit ``files`` list
+    # (Test Manager has the tree) wins; otherwise a ``test_path`` is expanded —
+    # a directory globs its *.yaml/*.yml (skipping hidden dirs like .results),
+    # so the Performance-page trigger can pass just a folder.
+    files: list[dict[str, Any]] = list(data.get("files") or [])
+    raw_path = data.get("test_path")
+    if not files and raw_path:
+        p = Path(raw_path)
+        if p.is_dir():
+            files = [
+                {"test_path": str(f), "name": f.name}
+                for f in sorted(p.rglob("*.y*ml"))
+                if f.is_file() and not any(part.startswith(".") for part in f.relative_to(p).parts)
+            ]
+        elif p.exists():
+            files = [{"test_path": str(p), "name": p.name}]
     if not files:
-        _emit_event(handle, {"type": "error", "message": "run_benchmark: no test files provided"})
+        _emit_event(
+            handle, {"type": "error", "message": f"run_benchmark: no test files at {raw_path!r}"}
+        )
         return
 
     try:
