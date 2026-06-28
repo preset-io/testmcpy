@@ -12,6 +12,7 @@ const EMPTY_CONN = {
   jwt_url: '',
   jwt_token: '',
   jwt_secret: '',
+  auth_token: '',
   workspace_hash: '',
   domain: '',
   assistant_conversations_path: '',
@@ -26,6 +27,7 @@ const FLAG_MAP = {
   '--jwt-url': 'jwt_url',
   '--jwt-token': 'jwt_token',
   '--jwt-secret': 'jwt_secret',
+  '--auth-token': 'auth_token',
   '--workspace-hash': 'workspace_hash',
   '--domain': 'domain',
   '--assistant-conversations-path': 'assistant_conversations_path',
@@ -202,6 +204,27 @@ function BenchmarkModal({ defaultTestPath = '', onClose }) {
                   />
                   <button onClick={applyRunArgs} className="btn btn-ghost px-2 text-xs self-start">Parse</button>
                 </div>
+              </div>
+              <div className="flex items-center gap-2 mb-2">
+                <label className="text-[11px] text-text-tertiary">Auth type</label>
+                <select
+                  className="input text-xs py-1"
+                  value={conn.auth_type}
+                  onChange={e => updateConn('auth_type', e.target.value)}
+                >
+                  <option value="jwt">jwt</option>
+                  <option value="bearer">bearer</option>
+                  <option value="api_key">api_key</option>
+                  <option value="">none</option>
+                </select>
+                {(conn.auth_type === 'bearer' || conn.auth_type === 'api_key') && (
+                  <input
+                    className="input text-xs font-mono flex-1"
+                    value={conn.auth_token || ''}
+                    onChange={e => updateConn('auth_token', e.target.value)}
+                    placeholder="auth token"
+                  />
+                )}
               </div>
               <div className="grid grid-cols-2 gap-2">
                 {[

@@ -288,7 +288,7 @@ async def get_test_run(run_id: str) -> dict[str, Any]:
         base_score = (
             sum(e.get("score", 0.0) for e in evaluations) / len(evaluations)
             if evaluations
-            else qr["score"]
+            else (qr.get("base_score") if qr.get("base_score") is not None else qr["score"])
         )
         breakdown = compute_score_breakdown(
             base_score=base_score,

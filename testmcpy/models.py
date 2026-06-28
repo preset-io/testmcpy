@@ -191,6 +191,10 @@ class QuestionResultModel(Base):
     duration_ms: Mapped[int] = mapped_column(Integer, default=0)
     evaluations: Mapped[list | None] = mapped_column(JSON, nullable=True)
     score: Mapped[float] = mapped_column(Float, default=0.0)
+    # Pre-penalty mean of evaluator scores. Stored so re-scoring (e.g. toggling
+    # a manual false positive) starts from the true base instead of the already
+    # penalised `score`, which would double-penalise. NULL on legacy rows.
+    base_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     passed: Mapped[bool] = mapped_column(Boolean, nullable=False)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     cost_usd: Mapped[float] = mapped_column(Float, default=0.0)  # Per-eval cost in USD

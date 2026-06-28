@@ -359,6 +359,11 @@ async def _run_test_command(handle: RunHandle, data: dict, config) -> None:
     # Incremental history record — begun once the runner is ready, appended
     # per test, finished on every exit path (crash-safe partial results).
     record: RunRecord | None = None
+    # An ad-hoc MCP client we build ourselves (vs. a cached profile client) is
+    # ours to close — TestRunner won't, since we pass it in already-initialized
+    # (so its _owns_mcp_client is False). Closing it per run matters for a
+    # benchmark, which opens one client per combo × file.
+    adhoc_client = None
 
     try:
         # Load test cases
@@ -458,6 +463,7 @@ async def _run_test_command(handle: RunHandle, data: dict, config) -> None:
             _emit_log(handle, f"🔌 Connecting to MCP (ad-hoc): {adhoc_mcp_url}")
             mcp_client = MCPClient(adhoc_mcp_url, auth=_inline_auth_from_data(data))
             await mcp_client.initialize()
+            adhoc_client = mcp_client
         else:
             if not effective_profile:
                 # Try to get default profile from config
@@ -670,6 +676,12 @@ async def _run_test_command(handle: RunHandle, data: dict, config) -> None:
         _emit_log(handle, f"❌ Error: {str(e)}")
         _emit_log(handle, f"Traceback:\n{tb}")
         _emit_run_error(handle, data, str(e), traceback=tb)
+    finally:
+        # Release the ad-hoc client's HTTP session + auth token. Cached profile
+        # clients are shared and must NOT be closed here.
+        if adhoc_client is not None:
+            with contextlib.suppress(Exception):
+                await adhoc_client.close()
 
 
 async def _run_directory_command(handle: RunHandle, data: dict, config) -> None:

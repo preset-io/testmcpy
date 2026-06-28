@@ -891,6 +891,7 @@ class TestStorage:
                 duration_ms=duration_ms,
                 evaluations=evaluations,
                 score=score,
+                base_score=base,
                 passed=passed,
                 error=error,
                 cost_usd=cost_usd,
@@ -927,11 +928,13 @@ class TestStorage:
                     "duration_ms": q.duration_ms,
                     "evaluations": q.evaluations or [],
                     "score": q.score,
+                    "base_score": getattr(q, "base_score", None),
                     "passed": bool(q.passed),
                     "error": q.error,
                     "cost_usd": getattr(q, "cost_usd", 0.0) or 0.0,
                     "tool_call_counts": getattr(q, "tool_call_counts", None) or {},
                     "false_positive_rate": getattr(q, "false_positive_rate", 0.0) or 0.0,
+                    "manual_false_positive": getattr(q, "manual_false_positive", False) or False,
                 }
                 for q in questions
             ]

@@ -253,10 +253,14 @@ async def set_false_positive(question_id: int, is_false_positive: bool = True) -
         # (and un-flagging restores the automatic-only score). The base is the
         # pre-penalty evaluator mean.
         evaluations = qr.evaluations or []
+        # Re-score from the PRE-penalty base, never the stored (already
+        # penalised) score — otherwise toggling FP would penalise twice. Prefer
+        # the live evaluator mean; fall back to the stored base_score, and only
+        # to qr.score for legacy rows that predate the base_score column.
         base_score = (
             sum(e.get("score", 0.0) for e in evaluations) / len(evaluations)
             if evaluations
-            else qr.score
+            else (qr.base_score if qr.base_score is not None else qr.score)
         )
         breakdown = compute_score_breakdown(
             base_score=base_score,
