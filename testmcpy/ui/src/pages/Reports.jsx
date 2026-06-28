@@ -6,6 +6,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import TraceView from '../components/TraceView'
 import Badge from '../components/Badge'
+import ScoreBreakdown from '../components/ScoreBreakdown'
 import { Skeleton, ListItemSkeleton } from '../components/SkeletonLoader'
 import { formatDate, formatDuration, formatCost, formatTokens } from '../utils/formatters'
 import {
@@ -279,10 +280,27 @@ function TestResultCard({ result, providerHint, onFpToggle }) {
   const [showRerun, setShowRerun] = useState(false)
   const [fpLoading, setFpLoading] = useState(false)
   const score = result.score !== undefined ? result.score : (result.passed ? 1.0 : 0.0)
+  const breakdown = result.score_breakdown || null
   const toolCalls = result.tool_calls || []
   const evaluations = result.evaluations || []
   const evalsPassed = evaluations.filter(e => e.passed).length
   const failedEvals = evaluations.filter(e => !e.passed)
+  const hasPenalty = !!breakdown && breakdown.penalty_source && breakdown.final_score < breakdown.base_score - 0.0001
+
+  // One-sentence plain-English verdict so users don't have to decode the
+  // score themselves. Covers the subtle "passed but lost points to extra
+  // tool calls" case that the bare number hides.
+  let verdictText
+  if (result.passed) {
+    verdictText = hasPenalty
+      ? 'All checks passed, but points were lost to unexpected tool calls.'
+      : 'All evaluator checks passed.'
+  } else {
+    const names = failedEvals.map(e => e.evaluator || e.name).filter(Boolean)
+    verdictText = names.length
+      ? `Failed: ${names.join(', ')}.`
+      : 'Failed — see the breakdown below.'
+  }
   const tokenUsage = result.token_usage?.total || result.token_usage?.input_tokens
     ? (result.token_usage.total || ((result.token_usage.input_tokens || 0) + (result.token_usage.output_tokens || 0)))
     : null
@@ -352,12 +370,17 @@ function TestResultCard({ result, providerHint, onFpToggle }) {
         </div>
         <div className="flex items-center flex-wrap gap-3 text-xs text-text-tertiary flex-shrink-0 ml-2">
           <span
-            className="font-mono"
-            title="Aggregate evaluator score for this test (0.00–1.00). 1.00 = all evaluators passed at 100%."
+            className={`font-mono ${hasPenalty ? 'text-warning' : ''}`}
+            title={
+              hasPenalty
+                ? `Final score after a false-positive tool-call penalty. Base (evaluator average) was ${breakdown.base_score.toFixed(2)}; expand for the breakdown.`
+                : 'Final score = average of all evaluator scores (0.00–1.00). Expand for the breakdown.'
+            }
           >
             <span className="text-text-disabled">score </span>
             {score.toFixed(2)}
             <span className="text-text-disabled">/1.00</span>
+            {hasPenalty && <Zap size={10} className="inline ml-0.5 -mt-0.5" />}
           </span>
           {result.cost > 0 ? (
             <span className="font-mono" title="Estimated LLM call cost">{formatCost(result.cost)}</span>
@@ -398,6 +421,31 @@ function TestResultCard({ result, providerHint, onFpToggle }) {
       {/* Expanded content */}
       {expanded && (
         <div className="border-t border-border bg-surface-elevated px-4 py-3 space-y-4">
+          {/* Verdict banner — the one-glance "what happened and why" so the
+              user doesn't have to decode the raw score. Prompt → Answer →
+              Why-this-score follow below in that order. */}
+          <div className={`flex items-start gap-2.5 p-3 rounded-lg border ${
+            result.passed ? 'bg-success/5 border-success/30' : 'bg-error/5 border-error/30'
+          }`}>
+            {result.passed
+              ? <CheckCircle size={18} className="text-success flex-shrink-0 mt-0.5" />
+              : <XCircle size={18} className="text-error flex-shrink-0 mt-0.5" />}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2">
+                <span className={`text-sm font-semibold ${result.passed ? 'text-success' : 'text-error'}`}>
+                  {result.passed ? 'PASS' : 'FAIL'}
+                </span>
+                <span className="font-mono text-sm">
+                  <span className={result.passed && !hasPenalty ? 'text-success' : hasPenalty ? 'text-warning' : 'text-error'}>
+                    {score.toFixed(2)}
+                  </span>
+                  <span className="text-text-disabled"> / 1.00</span>
+                </span>
+              </div>
+              <p className="text-sm text-text-secondary mt-0.5">{verdictText}</p>
+            </div>
+          </div>
+
           {/* Prompt — surfaced at the top so users can see what the
               test actually asked for at a glance. Missing for old runs
               saved before SC-108367 — show a "(not recorded)" hint then
@@ -450,6 +498,10 @@ function TestResultCard({ result, providerHint, onFpToggle }) {
               </p>
             </div>
           )}
+
+          {/* Why this score — authoritative explainer (base × penalty =
+              final) so the number is never a mystery. */}
+          {breakdown && <ScoreBreakdown breakdown={breakdown} />}
 
           {/* Failure Reason - show prominently for failed tests */}
           {!result.passed && failedEvals.length > 0 && (

@@ -16,6 +16,7 @@ import {
   Check,
   Calendar,
   ExternalLink,
+  Wrench,
 } from 'lucide-react'
 
 const DATE_RANGES = [
@@ -84,9 +85,12 @@ function MatrixCell({ cell, onClick }) {
     else tint = 'bg-warning/15 text-warning'
   }
 
+  const fpRate = cell.avg_false_positive_rate || 0
   const title = singleRun
     ? SINGLE_RUN_TITLE
-    : `${formatPct(cell.pass_rate)} over ${cell.n} results · avg score ${cell.avg_score} · ${formatDurationMs(cell.avg_duration_ms)} · ${formatCost(cell.avg_cost)}`
+    : `${formatPct(cell.pass_rate)} over ${cell.n} results · avg score ${cell.avg_score}` +
+      (fpRate > 0 ? ` · ${formatPct(fpRate)} false-positive tool calls` : '') +
+      ` · ${formatDurationMs(cell.avg_duration_ms)} · ${formatCost(cell.avg_cost)}`
 
   return (
     <td className="px-1 py-1 border-b border-border min-w-[88px]">
@@ -98,8 +102,13 @@ function MatrixCell({ cell, onClick }) {
         <span className="flex items-center gap-1">
           <span className="text-sm font-semibold">{formatPct(cell.pass_rate)}</span>
           {cell.flaky && <Zap size={10} className="text-warning" title="flaky" />}
+          {fpRate > 0 && (
+            <Wrench size={9} className="text-error/70" title={`${formatPct(fpRate)} false-positive tool calls`} />
+          )}
         </span>
-        <span className="text-[10px] text-text-tertiary">n={cell.n}</span>
+        <span className="text-[10px] text-text-tertiary">
+          n={cell.n}{!singleRun && cell.avg_score != null ? ` · ${Number(cell.avg_score).toFixed(2)}` : ''}
+        </span>
         <Sparkline trend={cell.trend} />
       </button>
     </td>
@@ -183,7 +192,12 @@ function DrillPanel({ drill, suite, onClose }) {
                 <div className="flex-1 min-w-0">
                   <div className="text-xs text-text-secondary">{formatDate(pt.started_at)}</div>
                   <div className="flex items-center gap-3 mt-1 text-[11px] text-text-tertiary">
-                    <span>score {pt.score}</span>
+                    <span className="font-mono">score {Number(pt.score).toFixed(2)}</span>
+                    {pt.false_positive_rate > 0 && (
+                      <span className="inline-flex items-center gap-0.5 text-error/80" title="false-positive tool-call rate">
+                        <Wrench size={9} />{formatPct(pt.false_positive_rate)}
+                      </span>
+                    )}
                     <span>{formatDurationMs(pt.duration_ms)}</span>
                     <span>{formatCost(pt.cost_usd)}</span>
                   </div>
@@ -322,6 +336,18 @@ function Performance() {
   const warnings = matrix?.warnings || []
   const lbConfigs = leaderboard?.configs || []
   const isEmpty = !loading && configs.length === 0
+
+  // Cost-comparison scaling: a relative bar makes "which model costs more"
+  // obvious at a glance instead of squinting at raw dollar amounts.
+  const costPerRun = (cfg) => (cfg.n_runs > 0 ? cfg.total_cost / cfg.n_runs : 0)
+  const maxCostPerRun = Math.max(0, ...configs.map(costPerRun))
+  const cheapestKey = configs.length
+    ? configs.reduce((a, b) => (costPerRun(a) <= costPerRun(b) ? a : b)).key
+    : null
+  const maxLbCostPerPass = Math.max(
+    0,
+    ...lbConfigs.map(c => (c.cost_per_pass != null ? c.cost_per_pass : 0))
+  )
 
   return (
     <div className="h-full flex flex-col bg-background">
@@ -502,17 +528,62 @@ function Performance() {
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot>
+                  <tfoot className="border-t-2 border-border">
+                    {/* Pass rate */}
                     <tr className="bg-surface">
-                      <td className="px-3 py-2 text-xs font-semibold text-text-secondary sticky left-0 z-[1] bg-surface">
-                        All tests
+                      <td className="px-3 pt-2 pb-1 text-xs font-semibold text-text-secondary sticky left-0 z-[1] bg-surface">
+                        Pass rate
                       </td>
                       {configs.map(cfg => (
-                        <td key={cfg.key} className="px-2 py-2 text-center">
+                        <td key={cfg.key} className="px-2 pt-2 pb-1 text-center">
                           <div className="text-sm font-semibold text-text-primary">{formatPct(cfg.pass_rate)}</div>
                           <div className="text-[10px] text-text-tertiary">{cfg.n_runs} runs</div>
                         </td>
                       ))}
+                    </tr>
+                    {/* Avg score */}
+                    <tr className="bg-surface">
+                      <td className="px-3 py-1 text-xs font-semibold text-text-secondary sticky left-0 z-[1] bg-surface">
+                        Avg score
+                      </td>
+                      {configs.map(cfg => (
+                        <td key={cfg.key} className="px-2 py-1 text-center">
+                          <span className="text-xs font-mono text-text-primary">
+                            {cfg.avg_score != null ? Number(cfg.avg_score).toFixed(2) : '—'}
+                          </span>
+                          {cfg.avg_false_positive_rate > 0 && (
+                            <span className="text-[10px] text-error/70 ml-1" title="avg false-positive tool-call rate">
+                              fp {formatPct(cfg.avg_false_positive_rate)}
+                            </span>
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                    {/* Cost per run — relative bar so model cost is comparable at a glance */}
+                    <tr className="bg-surface">
+                      <td className="px-3 pt-1 pb-2 text-xs font-semibold text-text-secondary sticky left-0 z-[1] bg-surface">
+                        Cost / run
+                      </td>
+                      {configs.map(cfg => {
+                        const cpr = costPerRun(cfg)
+                        const widthPct = maxCostPerRun > 0 ? (cpr / maxCostPerRun) * 100 : 0
+                        const isCheapest = cfg.key === cheapestKey && cpr > 0
+                        return (
+                          <td key={cfg.key} className="px-2 pt-1 pb-2 align-bottom">
+                            <div className="flex flex-col items-center gap-0.5">
+                              <span className={`text-[11px] font-mono ${isCheapest ? 'text-success font-semibold' : 'text-text-secondary'}`}>
+                                {cpr > 0 ? formatCost(cpr) : '—'}
+                              </span>
+                              <div className="h-1.5 w-full max-w-[60px] rounded-full bg-border overflow-hidden" title={`${formatCost(cpr)} per run`}>
+                                <div
+                                  className={`h-full rounded-full ${isCheapest ? 'bg-success' : 'bg-primary/60'}`}
+                                  style={{ width: `${widthPct}%` }}
+                                />
+                              </div>
+                            </div>
+                          </td>
+                        )
+                      })}
                     </tr>
                   </tfoot>
                 </table>
@@ -525,9 +596,11 @@ function Performance() {
                       <th className="px-3 py-2 text-left text-xs font-semibold text-text-secondary uppercase tracking-wide">#</th>
                       <th className="px-3 py-2 text-left text-xs font-semibold text-text-secondary uppercase tracking-wide">Config</th>
                       <th className="px-3 py-2 text-right text-xs font-semibold text-text-secondary uppercase tracking-wide">Pass rate</th>
+                      <th className="px-3 py-2 text-right text-xs font-semibold text-text-secondary uppercase tracking-wide">Avg score</th>
+                      <th className="px-3 py-2 text-right text-xs font-semibold text-text-secondary uppercase tracking-wide" title="Average false-positive tool-call rate">FP rate</th>
                       <th className="px-3 py-2 text-right text-xs font-semibold text-text-secondary uppercase tracking-wide">Runs</th>
                       <th className="px-3 py-2 text-right text-xs font-semibold text-text-secondary uppercase tracking-wide">Flaky cells</th>
-                      <th className="px-3 py-2 text-right text-xs font-semibold text-text-secondary uppercase tracking-wide">Cost / pass</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-text-secondary uppercase tracking-wide">Cost / pass</th>
                       <th className="px-3 py-2 text-right text-xs font-semibold text-text-secondary uppercase tracking-wide">Avg latency</th>
                     </tr>
                   </thead>
@@ -547,6 +620,19 @@ function Performance() {
                         }`}>
                           {formatPct(cfg.pass_rate)}
                         </td>
+                        <td className="px-3 py-2 text-right font-mono text-text-primary">
+                          {cfg.avg_score != null ? Number(cfg.avg_score).toFixed(2) : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          {cfg.avg_false_positive_rate > 0 ? (
+                            <span className="inline-flex items-center gap-1 text-error/80" title="avg false-positive tool-call rate">
+                              <Wrench size={10} />
+                              {formatPct(cfg.avg_false_positive_rate)}
+                            </span>
+                          ) : (
+                            <span className="text-text-tertiary">0%</span>
+                          )}
+                        </td>
                         <td className="px-3 py-2 text-right text-text-secondary">{cfg.n_runs}</td>
                         <td className="px-3 py-2 text-right">
                           {cfg.flaky_cells > 0 ? (
@@ -558,8 +644,20 @@ function Performance() {
                             <span className="text-text-tertiary">0</span>
                           )}
                         </td>
-                        <td className="px-3 py-2 text-right text-text-secondary">
-                          {cfg.cost_per_pass != null ? formatCost(cfg.cost_per_pass) : '—'}
+                        <td className="px-3 py-2">
+                          {cfg.cost_per_pass != null ? (
+                            <div className="flex items-center gap-2 min-w-[110px]">
+                              <span className="font-mono text-text-secondary w-16 text-right">{formatCost(cfg.cost_per_pass)}</span>
+                              <div className="flex-1 h-1.5 rounded-full bg-border overflow-hidden" title={`${formatCost(cfg.cost_per_pass)} per passing test`}>
+                                <div
+                                  className="h-full rounded-full bg-primary/60"
+                                  style={{ width: `${maxLbCostPerPass > 0 ? (cfg.cost_per_pass / maxLbCostPerPass) * 100 : 0}%` }}
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-text-tertiary">—</span>
+                          )}
                         </td>
                         <td className="px-3 py-2 text-right text-text-secondary">
                           {cfg.avg_duration_ms ? `${(cfg.avg_duration_ms / 1000).toFixed(1)}s` : '—'}

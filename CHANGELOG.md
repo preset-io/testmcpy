@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.5] - 2026-06-28
+
+### Added
+- **Transparent score breakdown**: every test result now carries a structured
+  `score_breakdown` (base evaluator mean × false-positive penalty = final score),
+  surfaced in the `/reports` test detail as a "Why this score" panel with a
+  verdict banner (Prompt → Answer → Why-this-score), and in `/performance`
+  (avg-score + false-positive-rate columns, a relative cost-per-run/-per-pass bar
+  for comparing models at a glance, and per-run false-positive markers).
+
+### Changed
+- **Scoring is now a single source of truth** (`testmcpy/scoring.py`) shared by
+  the runner, storage, and the read APIs. Fixes: multiple expected/"primary"
+  tools are all honoured (was: only the first, wrongly penalising multi-tool
+  tests); the false-positive penalty is applied in the runner so the live score
+  matches the stored report (was: penalty only at save time); manually marking a
+  result as a false positive now actually lowers its score and recomputes on
+  toggle (was: an inert tag); and the coarse `unnecessary_tool_calls` skip no
+  longer cancels the false-positive penalty (the two target disjoint problems).
+
 ## [0.11.4] - 2026-06-27
 
 ### Fixed
