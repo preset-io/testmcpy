@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { formatDate, formatCost, formatDurationMs } from '../utils/formatters'
+import BenchmarkModal from '../components/BenchmarkModal'
+import { useTestRun } from '../contexts/TestRunContext'
 import {
   TrendingUp,
   Trophy,
@@ -17,6 +19,7 @@ import {
   Calendar,
   ExternalLink,
   Wrench,
+  Play,
 } from 'lucide-react'
 
 const DATE_RANGES = [
@@ -271,6 +274,8 @@ function Performance() {
   const [error, setError] = useState(null)
   const [warningsDismissed, setWarningsDismissed] = useState(false)
   const [drill, setDrill] = useState(null)
+  const [showBench, setShowBench] = useState(false)
+  const { running: benchRunning, benchmarkProgress } = useTestRun()
 
   // Filters
   const [suite, setSuite] = useState('')
@@ -326,6 +331,14 @@ function Performance() {
     loadData()
   }, [loadData])
 
+  // Refresh the matrix when a benchmark launched from this page finishes, so
+  // the new config columns appear without a manual reload.
+  const prevBenchRunning = React.useRef(false)
+  useEffect(() => {
+    if (prevBenchRunning.current && !benchRunning) loadData()
+    prevBenchRunning.current = benchRunning
+  }, [benchRunning, loadData])
+
   // Close drill panel when filters change — its cell may no longer exist.
   useEffect(() => {
     setDrill(null)
@@ -363,10 +376,16 @@ function Performance() {
               <p className="text-sm text-text-tertiary">Per-test results across model and MCP configurations</p>
             </div>
           </div>
-          <button onClick={loadData} className="btn btn-ghost" disabled={loading}>
-            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-            <span>Refresh</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setShowBench(true)} className="btn btn-primary" title="Run a benchmark to add repeats for statistical signal">
+              <Zap size={16} />
+              <span>Benchmark</span>
+            </button>
+            <button onClick={loadData} className="btn btn-ghost" disabled={loading}>
+              <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+              <span>Refresh</span>
+            </button>
+          </div>
         </div>
 
         {/* Filters */}
@@ -473,12 +492,37 @@ function Performance() {
       ) : (
         <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
           <div className="flex-1 overflow-auto p-4 md:p-6">
+            {/* Benchmark progress (when launched from this page) */}
+            {benchRunning && benchmarkProgress && (
+              <div className="mb-4 p-3 rounded-lg bg-primary/10 border border-primary/30 flex items-center gap-3">
+                <Loader2 size={16} className="text-primary animate-spin flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm text-text-primary">
+                    Benchmark running — combo {benchmarkProgress.current}/{benchmarkProgress.total || '?'}
+                    {benchmarkProgress.label ? <span className="text-text-tertiary"> · {benchmarkProgress.label}</span> : null}
+                  </div>
+                  {benchmarkProgress.total > 0 && (
+                    <div className="h-1.5 mt-1.5 rounded-full bg-border overflow-hidden">
+                      <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${(benchmarkProgress.current / benchmarkProgress.total) * 100}%` }} />
+                    </div>
+                  )}
+                </div>
+                <Link to="/tests" className="text-xs text-primary hover:underline flex-shrink-0">live logs →</Link>
+              </div>
+            )}
+
             {/* Warnings banner */}
             {activeTab === 'matrix' && warnings.length > 0 && !warningsDismissed && (
               <div className="mb-4 p-3 rounded-lg bg-warning/10 border border-warning/30 flex items-start gap-2">
                 <AlertTriangle size={16} className="text-warning flex-shrink-0 mt-0.5" />
                 <div className="flex-1 text-sm text-warning">
                   {warnings.map((w, i) => <div key={i}>{w}</div>)}
+                  <button
+                    onClick={() => setShowBench(true)}
+                    className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded bg-warning/20 hover:bg-warning/30 text-warning"
+                  >
+                    <Play size={11} /> Run a benchmark
+                  </button>
                 </div>
                 <button
                   onClick={() => setWarningsDismissed(true)}
@@ -645,7 +689,7 @@ function Performance() {
                           )}
                         </td>
                         <td className="px-3 py-2">
-                          {cfg.cost_per_pass != null ? (
+                          {cfg.cost_per_pass ? (
                             <div className="flex items-center gap-2 min-w-[110px]">
                               <span className="font-mono text-text-secondary w-16 text-right">{formatCost(cfg.cost_per_pass)}</span>
                               <div className="flex-1 h-1.5 rounded-full bg-border overflow-hidden" title={`${formatCost(cfg.cost_per_pass)} per passing test`}>
@@ -656,7 +700,7 @@ function Performance() {
                               </div>
                             </div>
                           ) : (
-                            <span className="text-text-tertiary">—</span>
+                            <span className="text-text-tertiary" title="Cost not tracked — the provider didn't report a priceable model (e.g. assistant model: default)">— not tracked</span>
                           )}
                         </td>
                         <td className="px-3 py-2 text-right text-text-secondary">
@@ -674,6 +718,10 @@ function Performance() {
             <DrillPanel drill={drill} suite={suite} onClose={() => setDrill(null)} />
           )}
         </div>
+      )}
+
+      {showBench && (
+        <BenchmarkModal defaultTestPath={suite || 'tests/'} onClose={() => setShowBench(false)} />
       )}
     </div>
   )

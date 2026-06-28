@@ -26,9 +26,11 @@ import {
   Wand2,
   Server,
   Search,
+  Zap,
 } from 'lucide-react'
 import Editor from '@monaco-editor/react'
 import Wizard from '../components/Wizard'
+import BenchmarkModal from '../components/BenchmarkModal'
 import Badge from '../components/Badge'
 import TestStatusIndicator from '../components/TestStatusIndicator'
 import TestResultPanel from '../components/TestResultPanel'
@@ -471,6 +473,7 @@ function TestManager({ selectedProfiles = [], selectedLlmProfile = null, llmProf
   const [testData, setTestData] = useState({ folders: {}, files: [] })
   const [expandedFolders, setExpandedFolders] = useState(new Set())
   const [selectedFile, setSelectedFile] = useState(null)
+  const [showBench, setShowBench] = useState(false)
   const [fileContent, setFileContent] = useState('')
   const [editMode, setEditMode] = useState(false)
   const [newFileName, setNewFileName] = useState('')
@@ -1695,6 +1698,15 @@ tests:
                     )}
                     <span>{running && runAllLlmsMode ? `${runningTests.completed}/${runningTests.total}` : 'All LLMs'}</span>
                   </button>
+                  <button
+                    onClick={() => setShowBench(true)}
+                    disabled={running || !selectedFile}
+                    className="btn btn-secondary text-sm"
+                    title="Benchmark this test across models × providers × profiles × repeats"
+                  >
+                    <Zap size={14} />
+                    <span>Benchmark</span>
+                  </button>
                   {/* Stop is visible whenever:
                       - a run is live (running=true), OR
                       - a directory batch is in progress (the v0.7.21 batch
@@ -2424,6 +2436,13 @@ tests:
             }
           }}
           onCancel={() => setShowTestWizard(false)}
+        />
+      )}
+
+      {showBench && (
+        <BenchmarkModal
+          defaultTestPath={selectedFile?.relative_path || selectedFile?.filename || 'tests/'}
+          onClose={() => setShowBench(false)}
         />
       )}
     </div>

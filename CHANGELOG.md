@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.6] - 2026-06-28
+
+### Added
+- **Run benchmarks from the app**: a "Benchmark" button in Test Manager and on
+  the Performance page (next to the "single runs are noise" warning) opens a
+  matrix builder — models × providers × MCP profiles × repeat, with a combo
+  preview. It runs natively over the websocket (live per-test + per-combo
+  progress), so no shell script is needed. Connection/auth is supplied as
+  fields (with a "paste run-args" parser) since it works without a saved
+  profile; the block is remembered in localStorage. Each combo is saved as its
+  own run under a shared `session_id` and shows up in `/performance`.
+- New websocket `run_benchmark` command and shared `testmcpy/benchmarks.py`
+  combo builder (used by both the `bench` CLI and the websocket runner).
+
+### Fixed
+- **Assistant/chatbot cost is now accurate**: the provider tracked tokens but
+  hardcoded `cost = 0`. It now prices its token usage by the (overridden)
+  model via the registry. When the model is `default` (the backend picks it
+  server-side) it stays unpriceable and the `/performance` leaderboard shows
+  "— not tracked" instead of a misleading `$0.00`.
+- The websocket run path can now connect ad-hoc from a URL + JWT (no saved
+  profile) and honors an explicitly chosen model over a suite `model: default`.
+
 ## [0.11.5] - 2026-06-28
 
 ### Added

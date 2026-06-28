@@ -40,6 +40,10 @@ export function TestRunProvider({ children }) {
   // `file_start` / `file_complete` events the server emits inside a
   // run_directory task. null when no batch is running.
   const [directoryRunProgress, setDirectoryRunProgress] = useState(null)
+  // Combo progress strip for a benchmark run (model × provider × profile ×
+  // repeat matrix). Set by the `combo_start` / `combo_complete` events the
+  // server emits inside a run_benchmark task. null when no benchmark runs.
+  const [benchmarkProgress, setBenchmarkProgress] = useState(null)
   // A historical run pinned into the Results tab. When non-null, the Results
   // tab renders this instead of the live `testResults`. Cleared automatically
   // at the start of any new run so live runs reclaim the tab.
@@ -285,6 +289,32 @@ export function TestRunProvider({ children }) {
                     summary: { total: 0, passed: 0, failed: 0 },
                     error: data.message,
                   },
+                ],
+              }
+            : prev,
+        )
+        break
+      }
+      case 'combo_start': {
+        // One cell of a benchmark matrix is starting (model × provider ×
+        // profile × repeat). Drives the benchmark progress strip.
+        setBenchmarkProgress(prev => ({
+          ...(prev || { results: [] }),
+          current: (data.index ?? 0) + 1,
+          total: data.total,
+          label: data.label,
+          iteration: data.iteration,
+        }))
+        break
+      }
+      case 'combo_complete': {
+        setBenchmarkProgress(prev =>
+          prev
+            ? {
+                ...prev,
+                results: [
+                  ...(prev.results || []),
+                  { label: data.label, summary: data.summary },
                 ],
               }
             : prev,
@@ -648,6 +678,54 @@ export function TestRunProvider({ children }) {
     }
   }, [running, cancelPendingReconnect, handleSocketClose, _handleServerMessage])
 
+  // Run a benchmark: the model × provider × profile × repeat matrix over a
+  // file/directory, streamed live. `payload` carries { files, models,
+  // providers, profiles, repeat } plus ad-hoc connection/auth fields
+  // (mcp_url, auth_type, jwt_*, workspace_hash, domain, assistant_* ) — no
+  // saved profile required. Reuses the same per-test event stream as a run.
+  const runBenchmark = useCallback(async (payload) => {
+    if (running) return
+
+    const label = payload.label || 'benchmark'
+    cancelPendingReconnect()
+    terminalRef.current = false
+    reconnectAttemptsRef.current = 0
+    runIdRef.current = null
+    setRunning(true)
+    setActiveTestFile(label)
+    setTestResults(null)
+    setPinnedHistoryRun(null)
+    setDirectoryRunProgress(null)
+    setBenchmarkProgress({ current: 0, total: 0, label: null, results: [] })
+    setStreamingLogs([`🏁 Starting benchmark: ${label}`])
+    setRunningTests({ current: 'Connecting...', total: 0, completed: 0, status: 'running' })
+
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsUrl = `${wsProtocol}//${window.location.host}/ws/tests`
+
+    try {
+      const ws = new WebSocket(wsUrl)
+      wsRef.current = ws
+
+      ws.onopen = () => {
+        setStreamingLogs(prev => [...prev, '🔌 Connected to test runner'])
+        ws.send(JSON.stringify({ type: 'run_benchmark', ...payload }))
+      }
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data)
+        _handleServerMessage(ws, data, { closeOnComplete: true })
+      }
+      ws.onerror = (error) => console.error('WebSocket error:', error)
+      ws.onclose = () => handleSocketClose(ws)
+    } catch (error) {
+      console.error('Failed to start benchmark:', error)
+      setStreamingLogs(prev => [...prev, `❌ Failed: ${error.message}`])
+      setRunning(false)
+      setRunningTests({ current: null, total: 0, completed: 0, status: 'idle' })
+      setBenchmarkProgress(null)
+    }
+  }, [running, cancelPendingReconnect, handleSocketClose, _handleServerMessage])
+
   // Reattach to a server-side run by id. The server replays buffered
   // logs as `log_replay` events, then streams live updates until the
   // run finishes or another client supersedes us.
@@ -785,12 +863,14 @@ export function TestRunProvider({ children }) {
     pinnedHistoryRun,
     currentRunId,
     directoryRunProgress,
+    benchmarkProgress,
     stopping,
     connectionState,
     // Actions
     runTests,
     runSingleTest,
     runDirectory,
+    runBenchmark,
     attachToRun,
     stopTests,
     clearLogs,
