@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/preset-io-testmcpy-badge.png)](https://mseep.ai/app/preset-io-testmcpy)
+
 <p align="center">
   <img src="https://raw.githubusercontent.com/preset-io/testmcpy/main/docs/logos/logo.svg" alt="testmcpy logo" width="600">
 </p>
