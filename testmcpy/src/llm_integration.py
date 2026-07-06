@@ -20,6 +20,8 @@ from typing import Any
 
 import httpx
 
+from testmcpy.scrubber import register_secrets_from_auth
+
 # Import MCP components (we'll handle the import error gracefully)
 try:
     from ..config import get_config
@@ -1510,6 +1512,9 @@ class BaseSDKProvider(LLMProvider, ABC):
             if default_mcp and default_mcp.auth:
                 auth = default_mcp.auth.to_dict()
         self.auth_config = auth
+        # Credentials handed to SDK providers must never appear in persisted
+        # results (tool outputs are captured verbatim and written to disk).
+        register_secrets_from_auth(auth)
         self._mcp_headers: dict[str, str] = {}
         self._logger = logging.getLogger(__name__ + "." + (self.LOGGER_NAME or type(self).__name__))
 

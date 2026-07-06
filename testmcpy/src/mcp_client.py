@@ -22,6 +22,7 @@ from fastmcp.client.transports import StreamableHttpTransport
 from mcp.types import Tool as MCPToolDef
 
 from testmcpy.auth_debugger import AuthDebugger
+from testmcpy.scrubber import register_secrets_from_auth
 
 
 class MCPOAuth(_FastMCPOAuth):
@@ -285,6 +286,9 @@ class MCPClient:
         # base_url must be provided via CLI arguments or .mcp_services.yaml
         self.base_url = base_url
         self.auth_config = auth  # Store the auth config
+        # Any credential handed to this client must never appear in persisted
+        # results (tool outputs are captured verbatim and written to disk).
+        register_secrets_from_auth(auth)
         self.client = None
         self._tools_cache: list[MCPTool] | None = None
         # Can be a BearerAuth instance, the literal "oauth" (triggers fastmcp

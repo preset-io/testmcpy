@@ -34,6 +34,7 @@ from testmcpy.models import (
     TestVersionModel,
 )
 from testmcpy.scoring import compute_score_breakdown, real_tool_name
+from testmcpy.scrubber import scrub_obj
 
 
 # Legacy dataclasses kept for backward compatibility with callers
@@ -878,6 +879,15 @@ class TestStorage:
         false_positive_rate = breakdown["false_positive_rate"]
         tool_call_counts = breakdown["tool_call_counts"]
 
+        # Last line of defence: tool calls/results are captured verbatim from
+        # the LLM session and may embed credentials (an echoed env var, a
+        # token in an error payload). Scrub before anything hits the DB.
+        answer = scrub_obj(answer)
+        tool_uses = scrub_obj(tool_uses)
+        tool_results = scrub_obj(tool_results)
+        evaluations = scrub_obj(evaluations)
+        error = scrub_obj(error)
+
         with self._session() as session:
             result = QuestionResultModel(
                 run_id=run_id,
@@ -1161,6 +1171,8 @@ class TestStorage:
         """Save a smoke report to DB. Returns report_id."""
         import uuid as _uuid
 
+        report_data = scrub_obj(report_data)
+
         report_id = report_data.get("report_id") or str(_uuid.uuid4())[
             :8
         ] + "_" + datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1300,6 +1312,7 @@ class TestStorage:
         """Save a generation log to DB. Returns log_id."""
         import uuid as _uuid
 
+        log_data = scrub_obj(log_data)
         metadata = log_data.get("metadata", log_data)
         log_id = metadata.get("log_id") or str(_uuid.uuid4())[:8] + "_" + datetime.now().strftime(
             "%Y%m%d_%H%M%S"

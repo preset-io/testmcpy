@@ -358,6 +358,13 @@ def run(
     # `testmcpy bench` invocation, which passes --session-id)
     session_id = session_id_opt or str(uuid.uuid4())
 
+    # Every credential passed on the CLI must be redacted from anything
+    # persisted (DB rows, .results sidecars, checkpoints, reports).
+    from testmcpy.scrubber import register_secret
+
+    for _secret in (auth_token, jwt_token, jwt_secret, assistant_api_token, assistant_api_secret):
+        register_secret(_secret)
+
     # Build inline auth dict if --auth-type is provided
     inline_auth = None
     if auth_type:

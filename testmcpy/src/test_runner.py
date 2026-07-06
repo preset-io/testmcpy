@@ -239,8 +239,16 @@ class TestResult:
     logs: list[str] = field(default_factory=list)  # Provider execution logs
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary."""
-        return asdict(self)
+        """Convert to dictionary, scrubbing credentials.
+
+        Every persistence sink (checkpoint/sidecar JSON, --report files,
+        JUnit, DB save via save_test_run_to_file) serialises through this
+        method, so scrubbing here guarantees no secret that surfaced in a
+        tool result, log line, or the auth_token field reaches disk.
+        """
+        from testmcpy.scrubber import scrub_obj
+
+        return scrub_obj(asdict(self))
 
 
 class TestRunner:

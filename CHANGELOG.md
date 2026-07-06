@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.7] - 2026-07-06
+
+### Security
+- **Credential scrubbing before any result persistence**: everything written to
+  disk — SQLite question results, `.results/*.json` sidecars, checkpoint files,
+  `--report` outputs, smoke reports, generation logs — now passes through a
+  scrubber (`testmcpy/scrubber.py`) first. Three tiers: (1) exact known values
+  (CLI/profile auth secrets registered at MCPClient/SDK-provider construction,
+  plus values of env vars whose names look credential-ish — `*_API_KEY`,
+  `*_TOKEN`, `*_SECRET`, ...), (2) high-precision credential patterns
+  (Anthropic/GitHub/AWS/Slack tokens, `Bearer` headers, DD-API-KEY headers,
+  private-key blocks), and (3) well-known credential field names
+  (`auth_token`, `jwt_secret`, ...) masked to their first 8 chars. Bare
+  32/40-char hex is deliberately not matched so git SHAs and UUIDs in tool
+  output survive. Motivated by a real incident: a `.results` file captured
+  live Datadog keys from an `echo $DD_API_KEY` tool call and later surfaced
+  in a public fork.
+
 ## [0.11.6] - 2026-06-28
 
 ### Added
