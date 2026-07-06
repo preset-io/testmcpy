@@ -34,7 +34,12 @@ REDACTED = "***REDACTED***"
 
 _MIN_SECRET_LEN = 8
 
-_SENSITIVE_ENV_NAME_RE = re.compile(r"(KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL)", re.IGNORECASE)
+# Matches whole `_`/`-`-delimited segments only, so MY_API_KEY and
+# X-API-Key are sensitive but MONKEY / HOCKEY / TOKENIZER are not.
+_SENSITIVE_ENV_NAME_RE = re.compile(
+    r"(?:^|[_-])(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|AUTHORIZATION)S?(?:$|[_-])",
+    re.IGNORECASE,
+)
 
 # Dict keys whose values are credentials by definition. Exact match on
 # the lowercased key — deliberately not substring matching, so fields
@@ -85,13 +90,25 @@ def register_secret(value: str | None) -> None:
 
 
 def register_secrets_from_auth(auth: dict[str, Any] | None) -> None:
-    """Register every string value of an auth config dict (tokens, secrets,
-    urls are harmless to register — only long values are kept)."""
+    """Register secret values from an auth config dict.
+
+    Walks nested dicts/lists so shapes like custom_headers auth
+    (``{"type": "custom_headers", "headers": {"X-API-Key": "..."}}``)
+    are covered — a string value is registered when its key matches the
+    sensitive-name pattern (KEY/TOKEN/SECRET/AUTHORIZATION/...).
+    """
+    if isinstance(auth, list):
+        for item in auth:
+            register_secrets_from_auth(item)
+        return
     if not isinstance(auth, dict):
         return
     for key, value in auth.items():
-        if isinstance(value, str) and _SENSITIVE_ENV_NAME_RE.search(key):
-            register_secret(value)
+        if isinstance(value, str):
+            if isinstance(key, str) and _SENSITIVE_ENV_NAME_RE.search(key):
+                register_secret(value)
+        elif isinstance(value, (dict, list)):
+            register_secrets_from_auth(value)
 
 
 def _env_secrets() -> set[str]:

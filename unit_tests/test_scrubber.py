@@ -69,6 +69,27 @@ class TestKnownValueScrubbing:
         scrub_obj(obj)
         assert obj["content"] == "mutationcheck1234"
 
+    def test_register_secrets_from_nested_custom_headers(self):
+        """custom_headers auth nests secrets under a headers dict."""
+        register_secrets_from_auth(
+            {
+                "type": "custom_headers",
+                "headers": {
+                    "Authorization": "Bearer nested-header-secret-000",
+                    "X-API-Key": "nested-apikey-value-111",
+                    "X-Trace-Id": "not-a-secret-trace-id",
+                },
+            }
+        )
+        assert scrub_text("saw Bearer nested-header-secret-000") == f"saw {REDACTED}"
+        assert REDACTED in scrub_text("got nested-apikey-value-111")
+        # non-sensitive header name is not registered
+        assert scrub_text("trace not-a-secret-trace-id") == "trace not-a-secret-trace-id"
+
+    def test_register_secrets_from_auth_list_nesting(self):
+        register_secrets_from_auth({"servers": [{"api_token": "listnested-token-222"}]})
+        assert REDACTED in scrub_text("x listnested-token-222 y")
+
 
 class TestEnvDerivedScrubbing:
     def test_env_api_key_value_scrubbed(self, monkeypatch):
@@ -86,6 +107,21 @@ class TestEnvDerivedScrubbing:
         monkeypatch.setenv("MY_FAVOURITE_COLOUR", "ultramarine-blue-12345")
         scrubber.reset_cache()
         assert scrub_text("ultramarine-blue-12345") == "ultramarine-blue-12345"
+
+    def test_env_keyword_substring_not_matched(self, monkeypatch):
+        """KEY/TOKEN must be whole segments: MONKEY and TOKENIZER are not secrets."""
+        monkeypatch.setenv("FAVOURITE_MONKEY", "bonobo-genus-pan-12345")
+        monkeypatch.setenv("TOKENIZER_PATH", "/opt/models/tokenizer.json")
+        scrubber.reset_cache()
+        assert scrub_text("bonobo-genus-pan-12345") == "bonobo-genus-pan-12345"
+        assert scrub_text("/opt/models/tokenizer.json") == "/opt/models/tokenizer.json"
+
+    def test_env_delimited_keyword_variants_matched(self, monkeypatch):
+        monkeypatch.setenv("GITHUB_TOKEN", "ghvalue-abcdef-123456")
+        monkeypatch.setenv("AWS_SECRETS", "awsvalue-abcdef-123456")
+        scrubber.reset_cache()
+        assert scrub_text("a ghvalue-abcdef-123456") == f"a {REDACTED}"
+        assert scrub_text("b awsvalue-abcdef-123456") == f"b {REDACTED}"
 
     def test_env_short_value_ignored(self, monkeypatch):
         monkeypatch.setenv("SOME_KEY", "short")
