@@ -317,7 +317,11 @@ jobs:
       - name: Run bandit over testmcpy/
         run: |
           bandit -r testmcpy -ll -f txt -o bandit-report.txt || true
-          cat bandit-report.txt >> "$GITHUB_STEP_SUMMARY"
+          if [ -f bandit-report.txt ]; then
+            cat bandit-report.txt >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "bandit did not produce a report (command failed before writing output)." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Upload report
         if: always()
