@@ -1,0 +1,188 @@
+name: Security
+
+# Split out of ci.yml on purpose: these jobs guard against secret leakage and
+# insecure code patterns rather than functional regressions, they have a
+# different failure posture (some are advisory-only), and the manual
+# full-history scan below is a one-off tool a maintainer reaches for, not
+# something that belongs next to the standard test matrix.
+#
+# Direct incident context: v0.11.7 (PR #107) fixed the runtime bug where
+# unscrubbed tool output (a `echo $DD_API_KEY` result) was persisted verbatim
+# to a tests/.results/*.json sidecar and committed to git. This workflow is
+# the CI guardrail that would have caught that commit before merge.
+
+on:
+  pull_request:
+  push:
+    branches: [main, dev]
+  workflow_dispatch:
+    inputs:
+      full_history:
+        description: "Also scan the entire git history (slow; will re-surface the known pre-v0.11.7 leak)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  no-tracked-result-artifacts:
+    # Belt-and-suspenders for the exact bug class behind the incident:
+    # .gitignore excludes these directories, but gitignore only stops *new*
+    # untracked files -- it does nothing once a file is force-added or was
+    # tracked before the ignore rule existed. This step fails CI outright if
+    # any file under the result/report/log directories is ever tracked.
+    name: Block tracked test-result artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fail if result/report/log artifacts are tracked in git
+        run: |
+          tracked=$(git ls-files -- 'tests/.results' 'tests/.smoke_reports' 'tests/.generation_logs')
+          if [ -n "$tracked" ]; then
+            echo "::error::These paths hold live tool-call output (potentially unscrubbed secrets) and must never be committed:"
+            echo "$tracked"
+            exit 1
+          fi
+          echo "OK: no tracked files under tests/.results, tests/.smoke_reports, or tests/.generation_logs."
+
+  gitleaks:
+    # Scans the PR diff (pull_request) or the pushed commit range (push).
+    # Deliberately does NOT scan full history here -- the repo has a known
+    # pre-v0.11.7 leak in its history (see the workflow_dispatch job below),
+    # and blocking every PR on old history would make this check useless.
+    #
+    # Runs the OSS gitleaks CLI directly (Docker image pinned by digest)
+    # rather than gitleaks/gitleaks-action: the action requires a
+    # GITLEAKS_LICENSE for repos owned by an organization account (which
+    # preset-io is), even though the underlying CLI is free and unrestricted.
+    name: gitleaks secret scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine scan range
+        id: range
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.event.after }}
+        run: |
+          zero="0000000000000000000000000000000000000000"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            # Scan exactly the commits introduced by this PR.
+            echo "gitleaks_args=--log-opts=${BASE_SHA}..${HEAD_SHA}" >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT_NAME" = "push" ] && [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "$zero" ]; then
+            # Scan exactly the commits introduced by this push.
+            echo "gitleaks_args=--log-opts=${BEFORE_SHA}..${AFTER_SHA}" >> "$GITHUB_OUTPUT"
+          else
+            # New branch / force-push / manual run: no reliable commit range,
+            # fall back to scanning the current tree only (not full history).
+            echo "gitleaks_args=--no-git" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run gitleaks
+        env:
+          # zricethezav/gitleaks:v8.29.1, pinned by digest (not a floating tag).
+          GITLEAKS_IMAGE: zricethezav/gitleaks@sha256:aa036a2f4bdfe3cc3c55fa4326308efabb4a6be498c883c864fd1d0d5585438a
+        run: |
+          mkdir -p gitleaks-report
+          docker run --rm -v "$PWD:/repo" -w /repo "$GITLEAKS_IMAGE" \
+            detect --source /repo --config /repo/.gitleaks.toml ${{ steps.range.outputs.gitleaks_args }} \
+            --report-path /repo/gitleaks-report/report.json --redact -v
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-report
+          path: gitleaks-report/report.json
+          if-no-files-found: ignore
+
+  gitleaks-full-history:
+    # Manually-dispatchable only: the repo's git history predates the
+    # v0.11.7 scrubber fix and contains a known leaked-credential commit
+    # (see PR #107 / CHANGELOG "0.11.7 - Security"). That history is being
+    # purged separately on the security-hardening branch. This job exists so
+    # a maintainer can re-run a full-history scan on demand without it ever
+    # gating pull_request/push CI. continue-on-error keeps a manual run from
+    # showing red for a known, already-tracked issue.
+    name: Full-history secret scan (manual)
+    if: github.event_name == 'workflow_dispatch' && inputs.full_history
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan entire git history
+        continue-on-error: true
+        env:
+          # zricethezav/gitleaks:v8.29.1, pinned by digest (not a floating tag).
+          GITLEAKS_IMAGE: zricethezav/gitleaks@sha256:aa036a2f4bdfe3cc3c55fa4326308efabb4a6be498c883c864fd1d0d5585438a
+        run: |
+          mkdir -p gitleaks-report
+          docker run --rm -v "$PWD:/repo" -w /repo "$GITLEAKS_IMAGE" \
+            detect --source /repo --config /repo/.gitleaks.toml --log-opts="--all" \
+            --report-path /repo/gitleaks-report/full-history.json --redact -v
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-full-history-report
+          path: gitleaks-report/full-history.json
+          if-no-files-found: ignore
+
+      - name: Summarize known finding
+        if: always()
+        run: |
+          {
+            echo "## Full-history secret scan"
+            echo "This job scans the *entire* git history, unlike the pull_request/push gitleaks job which only scans the diff."
+            echo "A known leak predating the v0.11.7 scrubber fix (PR #107) exists in history and is expected to be flagged here."
+            echo "History purge is tracked separately on the security-hardening branch. This job never blocks CI (continue-on-error)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  bandit:
+    # Advisory Python SAST pass over the application source only (not
+    # tests/examples, which intentionally contain fake-secret literals and
+    # dynamic patterns bandit tends to flag). Non-blocking: bandit's default
+    # ruleset is noisy on a codebase that shells out to MCP servers and
+    # spawns subprocesses by design (B404/B603-style findings), so this
+    # starts as a signal for maintainers rather than a merge gate. Promote
+    # specific rules to blocking once the baseline is reviewed.
+    name: bandit (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install bandit
+        run: pip install "bandit==1.8.3"
+
+      - name: Run bandit over testmcpy/
+        run: |
+          bandit -r testmcpy -ll -f txt -o bandit-report.txt || true
+          cat bandit-report.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report
+          path: bandit-report.txt
+          if-no-files-found: ignore
