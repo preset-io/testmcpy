@@ -20,12 +20,12 @@ regexes = [
 # those directories hold live tool-call output and must never contain a real
 # secret in the first place (see testmcpy/scrubber.py and .gitignore).
 paths = [
-  '''unit_tests/test_scrubber\.py''',
-  '''unit_tests/test_hardening\.py''',
-  '''unit_tests/test_advanced_auth\.py''',
-  '''unit_tests/test_evaluators_advanced\.py''',
-  '''examples/auth_evaluators_example\.py''',
-  '''context/archives/AUTH_FLOW_DIAGRAM\.md''',
-  '''context/concepts/authentication\.md''',
-  '''docs-site/pages/concepts/authentication\.mdx''',
+  '''^unit_tests/test_scrubber\.py$''',
+  '''^unit_tests/test_hardening\.py$''',
+  '''^unit_tests/test_advanced_auth\.py$''',
+  '''^unit_tests/test_evaluators_advanced\.py$''',
+  '''^examples/auth_evaluators_example\.py$''',
+  '''^context/archives/AUTH_FLOW_DIAGRAM\.md$''',
+  '''^context/concepts/authentication\.md$''',
+  '''^docs-site/pages/concepts/authentication\.mdx$''',
 ]
