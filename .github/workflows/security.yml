@@ -47,25 +47,17 @@ jobs:
           fi
           echo "OK: no tracked files under tests/.results, tests/.smoke_reports, or tests/.generation_logs."
 
-  gitleaks:
-    # Scans the PR diff (pull_request) or the pushed commit range (push).
-    # Deliberately does NOT scan full history here -- the repo has a known
-    # pre-v0.11.7 leak in its history (see the workflow_dispatch job below),
-    # and blocking every PR on old history would make this check useless.
-    #
-    # Runs the OSS gitleaks CLI directly (Docker image pinned by digest)
-    # rather than gitleaks/gitleaks-action: the action requires a
-    # GITLEAKS_LICENSE for repos owned by an organization account (which
-    # preset-io is), even though the underlying CLI is free and unrestricted.
-    name: gitleaks secret scan
+  scan-range:
+    # Computes the commit range once so gitleaks and trufflehog scope
+    # identically -- both scan exactly the PR diff / pushed commits, never
+    # full history (that's what the two *-full-history jobs are for).
+    name: Determine scan range
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    outputs:
+      mode: ${{ steps.range.outputs.mode }}
+      base_sha: ${{ steps.range.outputs.base_sha }}
+      head_sha: ${{ steps.range.outputs.head_sha }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - name: Determine scan range
         id: range
         env:
@@ -74,28 +66,61 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           BEFORE_SHA: ${{ github.event.before }}
           AFTER_SHA: ${{ github.event.after }}
+          CURRENT_SHA: ${{ github.sha }}
         run: |
           zero="0000000000000000000000000000000000000000"
           if [ "$EVENT_NAME" = "pull_request" ]; then
-            # Scan exactly the commits introduced by this PR.
-            echo "gitleaks_args=--log-opts=${BASE_SHA}..${HEAD_SHA}" >> "$GITHUB_OUTPUT"
+            echo "mode=range" >> "$GITHUB_OUTPUT"
+            echo "base_sha=${BASE_SHA}" >> "$GITHUB_OUTPUT"
+            echo "head_sha=${HEAD_SHA}" >> "$GITHUB_OUTPUT"
           elif [ "$EVENT_NAME" = "push" ] && [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "$zero" ]; then
-            # Scan exactly the commits introduced by this push.
-            echo "gitleaks_args=--log-opts=${BEFORE_SHA}..${AFTER_SHA}" >> "$GITHUB_OUTPUT"
+            echo "mode=range" >> "$GITHUB_OUTPUT"
+            echo "base_sha=${BEFORE_SHA}" >> "$GITHUB_OUTPUT"
+            echo "head_sha=${AFTER_SHA}" >> "$GITHUB_OUTPUT"
           else
             # New branch / force-push / manual run: no reliable commit range,
-            # fall back to scanning the current tree only (not full history).
-            echo "gitleaks_args=--no-git" >> "$GITHUB_OUTPUT"
+            # fall back to scanning only the current commit (not full history).
+            echo "mode=tree" >> "$GITHUB_OUTPUT"
+            echo "base_sha=" >> "$GITHUB_OUTPUT"
+            echo "head_sha=${CURRENT_SHA}" >> "$GITHUB_OUTPUT"
           fi
+
+  gitleaks:
+    # Scans the PR diff (pull_request) or the pushed commit range (push).
+    # Deliberately does NOT scan full history here -- the repo has a known
+    # pre-v0.11.7 leak in its history (see gitleaks-full-history below), and
+    # blocking every PR on old history would make this check useless.
+    #
+    # Runs the OSS gitleaks CLI directly (Docker image pinned by digest)
+    # rather than gitleaks/gitleaks-action: the action requires a
+    # GITLEAKS_LICENSE for repos owned by an organization account (which
+    # preset-io is), even though the underlying CLI is free and unrestricted.
+    name: gitleaks secret scan
+    needs: scan-range
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Run gitleaks
         env:
           # zricethezav/gitleaks:v8.29.1, pinned by digest (not a floating tag).
           GITLEAKS_IMAGE: zricethezav/gitleaks@sha256:aa036a2f4bdfe3cc3c55fa4326308efabb4a6be498c883c864fd1d0d5585438a
+          MODE: ${{ needs.scan-range.outputs.mode }}
+          BASE_SHA: ${{ needs.scan-range.outputs.base_sha }}
+          HEAD_SHA: ${{ needs.scan-range.outputs.head_sha }}
         run: |
           mkdir -p gitleaks-report
+          if [ "$MODE" = "range" ]; then
+            gitleaks_args="--log-opts=${BASE_SHA}..${HEAD_SHA}"
+          else
+            gitleaks_args="--no-git"
+          fi
           docker run --rm -v "$PWD:/repo" -w /repo "$GITLEAKS_IMAGE" \
-            detect --source /repo --config /repo/.gitleaks.toml ${{ steps.range.outputs.gitleaks_args }} \
+            detect --source /repo --config /repo/.gitleaks.toml $gitleaks_args \
             --report-path /repo/gitleaks-report/report.json --redact -v
 
       - name: Upload report
@@ -106,6 +131,68 @@ jobs:
           path: gitleaks-report/report.json
           if-no-files-found: ignore
 
+  trufflehog:
+    # Complements gitleaks with credential *verification*: for supported
+    # detector types (AWS, GitHub, Slack, Postgres, ...) trufflehog calls the
+    # provider's API to confirm a secret is actually live, not just
+    # pattern-shaped. That lets this job fail the build only on a
+    # confirmed-live secret -- the fixture/example files full of fake
+    # `user:pass@host`-style credentials (already allowlisted for gitleaks
+    # in .gitleaks.toml) never verify, so they show up as informational
+    # "unverified" findings instead of blocking every PR.
+    name: trufflehog secret scan
+    needs: scan-range
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run trufflehog
+        id: scan
+        env:
+          # trufflesecurity/trufflehog:3.95.8, pinned by digest (not a floating tag).
+          TRUFFLEHOG_IMAGE: trufflesecurity/trufflehog@sha256:d52e62fe0237bf0199cb79f94593051300b0989d9aeab8b431001d9f75e469c1
+          MODE: ${{ needs.scan-range.outputs.mode }}
+          BASE_SHA: ${{ needs.scan-range.outputs.base_sha }}
+          HEAD_SHA: ${{ needs.scan-range.outputs.head_sha }}
+        run: |
+          if [ "$MODE" = "range" ]; then
+            range_args="--since-commit=${BASE_SHA} --branch=${HEAD_SHA}"
+          else
+            range_args="--branch=${HEAD_SHA} --max-depth=1"
+          fi
+          docker run --rm -v "$PWD:/repo" "$TRUFFLEHOG_IMAGE" \
+            git file:///repo $range_args \
+            --results=verified,unverified,unknown --no-update -j \
+            > trufflehog-report.jsonl || true
+
+          verified=$(grep -c '"Verified":true' trufflehog-report.jsonl || true)
+          total=$(grep -c '"DetectorName"' trufflehog-report.jsonl || true)
+          echo "verified=${verified:-0}" >> "$GITHUB_OUTPUT"
+          {
+            echo "## trufflehog secret scan"
+            echo "${total:-0} total finding(s), ${verified:-0} confirmed **verified** (live) secret(s)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail on verified (live) secrets only
+        run: |
+          if [ "${{ steps.scan.outputs.verified }}" -gt 0 ]; then
+            echo "::error::trufflehog confirmed ${{ steps.scan.outputs.verified }} LIVE secret(s) -- see the trufflehog-report artifact."
+            exit 1
+          fi
+          echo "No verified (live) secrets found. Unverified/pattern-only findings (if any) are informational -- see the job summary and report artifact."
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trufflehog-report
+          path: trufflehog-report.jsonl
+          if-no-files-found: ignore
+
   gitleaks-full-history:
     # Manually-dispatchable only: the repo's git history predates the
     # v0.11.7 scrubber fix and contains a known leaked-credential commit
@@ -114,7 +201,7 @@ jobs:
     # a maintainer can re-run a full-history scan on demand without it ever
     # gating pull_request/push CI. continue-on-error keeps a manual run from
     # showing red for a known, already-tracked issue.
-    name: Full-history secret scan (manual)
+    name: Full-history secret scan (manual, gitleaks)
     if: github.event_name == 'workflow_dispatch' && inputs.full_history
     runs-on: ubuntu-latest
     permissions:
@@ -147,11 +234,58 @@ jobs:
         if: always()
         run: |
           {
-            echo "## Full-history secret scan"
+            echo "## Full-history secret scan (gitleaks)"
             echo "This job scans the *entire* git history, unlike the pull_request/push gitleaks job which only scans the diff."
             echo "A known leak predating the v0.11.7 scrubber fix (PR #107) exists in history and is expected to be flagged here."
             echo "History purge is tracked separately on the security-hardening branch. This job never blocks CI (continue-on-error)."
           } >> "$GITHUB_STEP_SUMMARY"
+
+  trufflehog-full-history:
+    # Same manual-only scope as gitleaks-full-history, but the point of
+    # running trufflehog here specifically is verification: it answers
+    # whether the known pre-v0.11.7 leaked credential is still LIVE, which a
+    # pattern-only scanner can't tell you. continue-on-error keeps this from
+    # ever blocking -- it's a triage tool, not a gate.
+    name: Full-history secret scan (manual, trufflehog verify)
+    if: github.event_name == 'workflow_dispatch' && inputs.full_history
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan entire git history with verification
+        id: scan
+        continue-on-error: true
+        env:
+          # trufflesecurity/trufflehog:3.95.8, pinned by digest (not a floating tag).
+          TRUFFLEHOG_IMAGE: trufflesecurity/trufflehog@sha256:d52e62fe0237bf0199cb79f94593051300b0989d9aeab8b431001d9f75e469c1
+        run: |
+          docker run --rm -v "$PWD:/repo" "$TRUFFLEHOG_IMAGE" \
+            git file:///repo \
+            --results=verified,unverified,unknown --no-update -j \
+            > trufflehog-full-history-report.jsonl || true
+
+          verified=$(grep -c '"Verified":true' trufflehog-full-history-report.jsonl || true)
+          total=$(grep -c '"DetectorName"' trufflehog-full-history-report.jsonl || true)
+          {
+            echo "## Full-history secret scan (trufflehog verify)"
+            echo "${total:-0} total finding(s) across full git history, ${verified:-0} confirmed **verified** (still-live) secret(s)."
+            if [ "${verified:-0}" -gt 0 ]; then
+              echo ""
+              echo "**Action needed:** rotate the credential(s) below immediately -- they are confirmed live, independent of any history purge."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trufflehog-full-history-report
+          path: trufflehog-full-history-report.jsonl
+          if-no-files-found: ignore
 
   bandit:
     # Advisory Python SAST pass over the application source only (not

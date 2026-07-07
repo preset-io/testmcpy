@@ -20,6 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ever tracked, and an advisory (non-blocking) `bandit` pass over `testmcpy/`.
   A `.gitleaks.toml` allowlists known-safe test fixtures and doc examples
   (never the result/report directories above).
+- **trufflehog verification pass**: added alongside gitleaks (also pinned by
+  Docker digest) on the same PR-diff/push scope. trufflehog calls each
+  provider's API to confirm whether a matched credential is actually live,
+  so the job only fails the build on a **verified** secret — the fake
+  `user:pass@host`-style fixtures already allowlisted for gitleaks just show
+  up as informational "unverified" findings instead of blocking every PR. A
+  matching `trufflehog-full-history` manual job answers, for the known
+  pre-v0.11.7 leak, whether that specific credential is still live.
 
 ## [0.11.7] - 2026-07-06
 
