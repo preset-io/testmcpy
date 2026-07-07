@@ -212,15 +212,21 @@ jobs:
           fetch-depth: 0
 
       - name: Scan entire git history
-        continue-on-error: true
         env:
           # zricethezav/gitleaks:v8.29.1, pinned by digest (not a floating tag).
           GITLEAKS_IMAGE: zricethezav/gitleaks@sha256:aa036a2f4bdfe3cc3c55fa4326308efabb4a6be498c883c864fd1d0d5585438a
         run: |
           mkdir -p gitleaks-report
+          set +e
           docker run --rm -v "$PWD:/repo" -w /repo "$GITLEAKS_IMAGE" \
             detect --source /repo --config /repo/.gitleaks.toml --log-opts="--all" \
             --report-path /repo/gitleaks-report/full-history.json --redact -v
+          status=$?
+          set -e
+          if [ "$status" -eq 1 ]; then
+            echo "::error::gitleaks failed to execute (exit code 1)."
+            exit 1
+          fi
 
       - name: Upload report
         if: always()
