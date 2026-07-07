@@ -10,9 +10,9 @@ description = "Known-safe fixtures, docs, and unit-test literals -- never real c
 
 # Placeholder domain the repo mandates in examples/docs instead of real
 # infrastructure URLs (see CLAUDE.md: "No Preset Infrastructure URLs in Code").
-regexes = [
-  '''example\.com''',
-]
+# Avoid a global allowlist regex for example.com: allowlist.regexes matches the
+# entire line and can suppress real secret findings if they appear alongside a
+# placeholder URL. Prefer path-scoped allowlisting for specific known-safe files.
 
 # Files with intentionally fake secrets used to exercise the scrubber and
 # auth-evaluator code paths, or docs showing sample tokens. Do NOT add
