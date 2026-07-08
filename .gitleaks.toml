@@ -6,26 +6,34 @@ title = "testmcpy gitleaks config"
 useDefault = true
 
 [allowlist]
-description = "Known-safe fixtures, docs, and unit-test literals -- never real credentials"
+description = "Known-safe fixtures and docs -- never real credentials"
 
-# Placeholder domain the repo mandates in examples/docs instead of real
-# infrastructure URLs (see CLAUDE.md: "No Preset Infrastructure URLs in Code").
-# Avoid a global allowlist regex for example.com: allowlist.regexes matches the
-# entire line and can suppress real secret findings if they appear alongside a
-# placeholder URL. Prefer path-scoped allowlisting for specific known-safe files.
+# No global `regexes` entry here on purpose: gitleaks matches an allowlist
+# regex against the *entire line* of a finding, so allowlisting something as
+# common as the mandated `example.com` placeholder (CLAUDE.md: "No Preset
+# Infrastructure URLs in Code") would suppress any real secret that happens
+# to share a line with an example.com URL, anywhere in the repo. Scope
+# allowlisting to specific known-safe files instead (below).
 
 # Files with intentionally fake secrets used to exercise the scrubber and
-# auth-evaluator code paths, or docs showing sample tokens. Do NOT add
-# tests/.results/, tests/.smoke_reports/, or tests/.generation_logs/ here --
-# those directories hold live tool-call output and must never contain a real
-# secret in the first place (see testmcpy/scrubber.py and .gitignore).
+# auth-evaluator code paths, or docs showing sample tokens. Anchored with
+# `(^|/)...$` so they match both git-mode (repo-relative, e.g.
+# "unit_tests/test_scrubber.py") and --no-git tree-mode paths (absolute,
+# e.g. "/repo/unit_tests/test_scrubber.py"), while still requiring an exact
+# trailing filename match -- not a prefix like
+# "unit_tests/test_scrubber.py.bak".
+#
+# Do NOT add tests/.results/, tests/.smoke_reports/, or
+# tests/.generation_logs/ here -- those directories hold live tool-call
+# output and must never contain a real secret in the first place (see
+# testmcpy/scrubber.py and .gitignore).
 paths = [
-  '''^unit_tests/test_scrubber\.py$''',
-  '''^unit_tests/test_hardening\.py$''',
-  '''^unit_tests/test_advanced_auth\.py$''',
-  '''^unit_tests/test_evaluators_advanced\.py$''',
-  '''^examples/auth_evaluators_example\.py$''',
-  '''^context/archives/AUTH_FLOW_DIAGRAM\.md$''',
-  '''^context/concepts/authentication\.md$''',
-  '''^docs-site/pages/concepts/authentication\.mdx$''',
+  '''(^|/)unit_tests/test_scrubber\.py$''',
+  '''(^|/)unit_tests/test_hardening\.py$''',
+  '''(^|/)unit_tests/test_advanced_auth\.py$''',
+  '''(^|/)unit_tests/test_evaluators_advanced\.py$''',
+  '''(^|/)examples/auth_evaluators_example\.py$''',
+  '''(^|/)context/archives/AUTH_FLOW_DIAGRAM\.md$''',
+  '''(^|/)context/concepts/authentication\.md$''',
+  '''(^|/)docs-site/pages/concepts/authentication\.mdx$''',
 ]

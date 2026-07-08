@@ -25,6 +25,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   no-tracked-result-artifacts:
     # Belt-and-suspenders for the exact bug class behind the incident:
@@ -58,6 +62,12 @@ jobs:
       base_sha: ${{ steps.range.outputs.base_sha }}
       head_sha: ${{ steps.range.outputs.head_sha }}
     steps:
+      # Needed so the force-push guard below can check commit reachability
+      # with `git cat-file`, not just for downstream jobs.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Determine scan range
         id: range
         env:
@@ -73,13 +83,19 @@ jobs:
             echo "mode=range" >> "$GITHUB_OUTPUT"
             echo "base_sha=${BASE_SHA}" >> "$GITHUB_OUTPUT"
             echo "head_sha=${HEAD_SHA}" >> "$GITHUB_OUTPUT"
-          elif [ "$EVENT_NAME" = "push" ] && [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "$zero" ]; then
+          elif [ "$EVENT_NAME" = "push" ] && [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "$zero" ] \
+               && git cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null; then
+            # A force-push reports a non-zero `before`, but that commit can
+            # be gone from history entirely (rewritten/dropped) -- in that
+            # case `git log BEFORE..AFTER` inside gitleaks/trufflehog would
+            # error out, so only trust the range when `before` still resolves.
             echo "mode=range" >> "$GITHUB_OUTPUT"
             echo "base_sha=${BEFORE_SHA}" >> "$GITHUB_OUTPUT"
             echo "head_sha=${AFTER_SHA}" >> "$GITHUB_OUTPUT"
           else
-            # New branch / force-push / manual run: no reliable commit range,
-            # fall back to scanning only the current commit (not full history).
+            # New branch / force-push with an unreachable base / manual run:
+            # no reliable commit range, fall back to scanning only the
+            # current commit (not full history).
             echo "mode=tree" >> "$GITHUB_OUTPUT"
             echo "base_sha=" >> "$GITHUB_OUTPUT"
             echo "head_sha=${CURRENT_SHA}" >> "$GITHUB_OUTPUT"
@@ -164,10 +180,15 @@ jobs:
           else
             range_args="--branch=${HEAD_SHA} --max-depth=1"
           fi
+          # No `|| true` here: trufflehog exits 0 even when it finds secrets
+          # (we don't pass --fail), so a non-zero exit means the scan itself
+          # broke (bad image/flags/git error) and this step should fail loud
+          # rather than let the verified-count check below pass on an empty,
+          # never-ran report.
           docker run --rm -v "$PWD:/repo" "$TRUFFLEHOG_IMAGE" \
             git file:///repo $range_args \
             --results=verified,unverified,unknown --no-update -j \
-            > trufflehog-report.jsonl || true
+            > trufflehog-report.jsonl
 
           verified=$(grep -c '"Verified":true' trufflehog-report.jsonl || true)
           total=$(grep -c '"DetectorName"' trufflehog-report.jsonl || true)
@@ -199,8 +220,15 @@ jobs:
     # (see PR #107 / CHANGELOG "0.11.7 - Security"). That history is being
     # purged separately on the security-hardening branch. This job exists so
     # a maintainer can re-run a full-history scan on demand without it ever
-    # gating pull_request/push CI. continue-on-error keeps a manual run from
-    # showing red for a known, already-tracked issue.
+    # gating pull_request/push CI.
+    #
+    # Deliberately does NOT use continue-on-error: gitleaks' default
+    # --exit-code is 1 for "leaks found" *and* for a real execution error
+    # (bad config, etc.), so continue-on-error would mask both alike. Instead
+    # this job passes --exit-code 0 so the *expected* outcome (the known
+    # historical leak) exits cleanly, while a genuine error still surfaces --
+    # docker/gitleaks fatal errors (bad flag, unreadable config, ...) return
+    # a distinct non-zero code that --exit-code doesn't override.
     name: Full-history secret scan (manual, gitleaks)
     if: github.event_name == 'workflow_dispatch' && inputs.full_history
     runs-on: ubuntu-latest
@@ -217,16 +245,9 @@ jobs:
           GITLEAKS_IMAGE: zricethezav/gitleaks@sha256:aa036a2f4bdfe3cc3c55fa4326308efabb4a6be498c883c864fd1d0d5585438a
         run: |
           mkdir -p gitleaks-report
-          set +e
           docker run --rm -v "$PWD:/repo" -w /repo "$GITLEAKS_IMAGE" \
-            detect --source /repo --config /repo/.gitleaks.toml --log-opts="--all" \
+            detect --source /repo --config /repo/.gitleaks.toml --log-opts="--all" --exit-code 0 \
             --report-path /repo/gitleaks-report/full-history.json --redact -v
-          status=$?
-          set -e
-          if [ "$status" -eq 1 ]; then
-            echo "::error::gitleaks failed to execute (exit code 1)."
-            exit 1
-          fi
 
       - name: Upload report
         if: always()
@@ -242,8 +263,8 @@ jobs:
           {
             echo "## Full-history secret scan (gitleaks)"
             echo "This job scans the *entire* git history, unlike the pull_request/push gitleaks job which only scans the diff."
-            echo "A known leak predating the v0.11.7 scrubber fix (PR #107) exists in history and is expected to be flagged here."
-            echo "History purge is tracked separately on the security-hardening branch. This job never blocks CI (continue-on-error)."
+            echo "A known leak predating the v0.11.7 scrubber fix (PR #107) exists in history and is expected to be flagged here (--exit-code 0 keeps that from failing the job; a real scan error would still fail it)."
+            echo "History purge is tracked separately on the security-hardening branch. This job never gates pull_request/push CI regardless (workflow_dispatch only)."
           } >> "$GITHUB_STEP_SUMMARY"
 
   trufflehog-full-history:
@@ -269,10 +290,16 @@ jobs:
           # trufflesecurity/trufflehog:3.95.8, pinned by digest (not a floating tag).
           TRUFFLEHOG_IMAGE: trufflesecurity/trufflehog@sha256:d52e62fe0237bf0199cb79f94593051300b0989d9aeab8b431001d9f75e469c1
         run: |
+          # No `|| true`: trufflehog exits 0 on findings by default (we don't
+          # pass --fail), so a non-zero exit here means the scan itself
+          # broke. continue-on-error on this step already keeps that from
+          # blocking anything -- this just makes the step visibly fail
+          # instead of silently reporting zero findings on a scan that
+          # never ran.
           docker run --rm -v "$PWD:/repo" "$TRUFFLEHOG_IMAGE" \
             git file:///repo \
             --results=verified,unverified,unknown --no-update -j \
-            > trufflehog-full-history-report.jsonl || true
+            > trufflehog-full-history-report.jsonl
 
           verified=$(grep -c '"Verified":true' trufflehog-full-history-report.jsonl || true)
           total=$(grep -c '"DetectorName"' trufflehog-full-history-report.jsonl || true)
@@ -317,10 +344,10 @@ jobs:
       - name: Run bandit over testmcpy/
         run: |
           bandit -r testmcpy -ll -f txt -o bandit-report.txt || true
-          if [ -f bandit-report.txt ]; then
+          if [ -s bandit-report.txt ]; then
             cat bandit-report.txt >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "bandit did not produce a report (command failed before writing output)." >> "$GITHUB_STEP_SUMMARY"
+            echo "bandit did not produce a report (see step logs above for the error)" >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Upload report
