@@ -146,6 +146,7 @@ jobs:
           name: gitleaks-report
           path: gitleaks-report/report.json
           if-no-files-found: ignore
+          retention-days: 7
 
   trufflehog:
     # Complements gitleaks with credential *verification*: for supported
@@ -175,19 +176,33 @@ jobs:
           BASE_SHA: ${{ needs.scan-range.outputs.base_sha }}
           HEAD_SHA: ${{ needs.scan-range.outputs.head_sha }}
         run: |
+          # Explicit even though GitHub Actions' bash steps already default
+          # to -o pipefail: without it, a failure in the `docker run` half of
+          # the pipe below would be masked by jq's own exit code.
+          set -o pipefail
+
           if [ "$MODE" = "range" ]; then
             range_args="--since-commit=${BASE_SHA} --branch=${HEAD_SHA}"
           else
             range_args="--branch=${HEAD_SHA} --max-depth=1"
           fi
-          # No `|| true` here: trufflehog exits 0 even when it finds secrets
-          # (we don't pass --fail), so a non-zero exit means the scan itself
-          # broke (bad image/flags/git error) and this step should fail loud
-          # rather than let the verified-count check below pass on an empty,
-          # never-ran report.
+          # No `|| true` on this pipeline: trufflehog exits 0 even when it
+          # finds secrets (we don't pass --fail), so a non-zero exit means
+          # the scan itself broke (bad image/flags/git error) and this step
+          # should fail loud rather than let the verified-count check below
+          # pass on an empty, never-ran report.
+          #
+          # Unlike gitleaks (which supports --redact), trufflehog's JSON
+          # always includes the plaintext secret -- in `Raw`/`RawV2`, and
+          # for some detectors (e.g. Postgres) duplicated again inside
+          # `SecretParts`/`StructuredData`. Never persist that unfiltered:
+          # the raw docker output is piped straight into jq and only the
+          # redacted result ever touches disk, so an un-redacted secret is
+          # never written to a file this job could accidentally upload.
           docker run --rm -v "$PWD:/repo" "$TRUFFLEHOG_IMAGE" \
             git file:///repo $range_args \
             --results=verified,unverified,unknown --no-update -j \
+            | jq -c 'del(.Raw, .RawV2, .SecretParts, .StructuredData)' \
             > trufflehog-report.jsonl
 
           verified=$(grep -c '"Verified":true' trufflehog-report.jsonl || true)
@@ -213,6 +228,10 @@ jobs:
           name: trufflehog-report
           path: trufflehog-report.jsonl
           if-no-files-found: ignore
+          # Redacted (see above), but keep the exposure window short anyway
+          # -- this is a public repo, and artifacts are otherwise downloadable
+          # by any logged-in GitHub user for the default 90 days.
+          retention-days: 7
 
   gitleaks-full-history:
     # Manually-dispatchable only: the repo's git history predates the
@@ -256,6 +275,7 @@ jobs:
           name: gitleaks-full-history-report
           path: gitleaks-report/full-history.json
           if-no-files-found: ignore
+          retention-days: 7
 
       - name: Summarize known finding
         if: always()
@@ -290,15 +310,27 @@ jobs:
           # trufflesecurity/trufflehog:3.95.8, pinned by digest (not a floating tag).
           TRUFFLEHOG_IMAGE: trufflesecurity/trufflehog@sha256:d52e62fe0237bf0199cb79f94593051300b0989d9aeab8b431001d9f75e469c1
         run: |
-          # No `|| true`: trufflehog exits 0 on findings by default (we don't
-          # pass --fail), so a non-zero exit here means the scan itself
-          # broke. continue-on-error on this step already keeps that from
-          # blocking anything -- this just makes the step visibly fail
-          # instead of silently reporting zero findings on a scan that
-          # never ran.
+          # See the `trufflehog` job for why: -o pipefail so a docker
+          # failure isn't masked by jq's exit code, and no `|| true` on the
+          # pipeline itself (continue-on-error at the step level already
+          # keeps a real failure here from blocking the workflow -- this
+          # just makes it visibly fail instead of silently reporting zero
+          # findings on a scan that never ran).
+          set -o pipefail
+
+          # This is the single most sensitive artifact in this workflow --
+          # it's the one deliberately run to check whether the known
+          # pre-v0.11.7 leaked credential is still live, so the raw secret
+          # is exactly what a full-history run is likely to surface. Same as
+          # the `trufflehog` job: pipe straight through jq so the unfiltered
+          # value (trufflehog's JSON always includes it verbatim in
+          # `Raw`/`RawV2`, and for some detectors again in
+          # `SecretParts`/`StructuredData`, unlike gitleaks' --redact) is
+          # never written to disk.
           docker run --rm -v "$PWD:/repo" "$TRUFFLEHOG_IMAGE" \
             git file:///repo \
             --results=verified,unverified,unknown --no-update -j \
+            | jq -c 'del(.Raw, .RawV2, .SecretParts, .StructuredData)' \
             > trufflehog-full-history-report.jsonl
 
           verified=$(grep -c '"Verified":true' trufflehog-full-history-report.jsonl || true)
@@ -308,7 +340,7 @@ jobs:
             echo "${total:-0} total finding(s) across full git history, ${verified:-0} confirmed **verified** (still-live) secret(s)."
             if [ "${verified:-0}" -gt 0 ]; then
               echo ""
-              echo "**Action needed:** rotate the credential(s) below immediately -- they are confirmed live, independent of any history purge."
+              echo "**Action needed:** rotate the confirmed-live credential(s) immediately -- see the trufflehog-full-history-report artifact for location (commit/file), independent of any history purge."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -319,6 +351,10 @@ jobs:
           name: trufflehog-full-history-report
           path: trufflehog-full-history-report.jsonl
           if-no-files-found: ignore
+          # Redacted (see above), but keep the exposure window short anyway
+          # -- this is a public repo, and artifacts are otherwise downloadable
+          # by any logged-in GitHub user for the default 90 days.
+          retention-days: 7
 
   bandit:
     # Advisory Python SAST pass over the application source only (not
@@ -357,3 +393,4 @@ jobs:
           name: bandit-report
           path: bandit-report.txt
           if-no-files-found: ignore
+          retention-days: 7
