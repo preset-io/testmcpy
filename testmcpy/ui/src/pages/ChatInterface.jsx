@@ -593,7 +593,13 @@ function ChatInterface({ selectedProfiles = [], selectedLlmProfile, llmProfiles 
           } else if (type === 'turn_start') {
             currentTurn = data.turn
             updateAssistantMessage({ currentTurn: data.turn })
-            setStreamingStatus(`Turn ${data.turn}/${data.max_turns} — Thinking...`)
+            // Show the denominator only when the backend caps turns (non-SDK
+            // manual loop). SDK-backed runs are open-ended, so show "Turn n".
+            setStreamingStatus(
+              data.max_turns
+                ? `Turn ${data.turn}/${data.max_turns} — Thinking...`
+                : `Turn ${data.turn} — Thinking...`
+            )
           } else if (type === 'thinking') {
             accThinking += data
             updateAssistantMessage({ thinking: accThinking })
