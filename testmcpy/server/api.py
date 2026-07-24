@@ -1512,7 +1512,13 @@ async def chat_stream(request: ChatRequest):
     import asyncio
     import time
 
+    # Cap for the non-SDK manual tool loop implemented by this endpoint.
     MAX_TURNS = 10
+    # SDK-backed providers (Claude) loop internally; their turn ceiling is the
+    # ``max_turns`` set on the agent options, not MAX_TURNS. Keep this in sync
+    # with the value passed to ``build_agent_options`` below so the progress the
+    # UI shows ("Turn n/N") uses the real cap instead of the manual-loop 10.
+    SDK_MAX_TURNS = 25
 
     def _clean_response(text: str, has_tool_calls: bool) -> str:
         """Strip tool execution status lines injected by some providers."""
@@ -1710,6 +1716,7 @@ async def chat_stream(request: ChatRequest):
                     allow_tool_search=True,
                     mcp_url_override=mcp_proxy.url if mcp_proxy is not None else None,
                     saved_system_prompt=saved_system_prompt,
+                    max_turns=SDK_MAX_TURNS,
                 )
 
                 sdk_turn = 1
@@ -1719,7 +1726,7 @@ async def chat_stream(request: ChatRequest):
                 has_content = False
                 tool_id_to_name: dict[str, str] = {}  # tool_use_id → tool name
 
-                yield send_event("turn_start", {"turn": sdk_turn, "max_turns": MAX_TURNS})
+                yield send_event("turn_start", {"turn": sdk_turn, "max_turns": SDK_MAX_TURNS})
 
                 pending_tool_calls = []  # Tool calls emitted but no result yet
                 sdk_error = None
@@ -1805,11 +1812,11 @@ async def chat_stream(request: ChatRequest):
                             has_content = False
                             yield send_event(
                                 "turn_start",
-                                {"turn": sdk_turn, "max_turns": MAX_TURNS},
+                                {"turn": sdk_turn, "max_turns": SDK_MAX_TURNS},
                             )
                             yield send_event(
                                 "status",
-                                f"Turn {sdk_turn}/{MAX_TURNS} — Thinking...",
+                                f"Turn {sdk_turn}/{SDK_MAX_TURNS} — Thinking...",
                             )
 
                         elif isinstance(message, ResultMessage):

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Chat progress now shows the correct turn ceiling for SDK-backed (Claude)
+  conversations. The status previously read "Turn n/10" even though the SDK
+  loop can run up to 25 turns, so multi-turn chats appeared to exceed their
+  own limit; the SDK path now reports "Turn n/25" (its real cap) while the
+  non-SDK manual loop keeps its 10-turn limit.
+
 ## [0.11.10] - 2026-07-15
 
 ### Added
