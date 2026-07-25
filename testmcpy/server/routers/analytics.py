@@ -22,6 +22,8 @@ async def get_matrix(
     date_to: str | None = None,
     min_runs: int = 1,
     include_profile: bool = True,
+    include_effort: bool = False,
+    include_suite: bool = False,
 ) -> dict[str, Any]:
     """Per-question × per-config performance matrix."""
     storage = get_storage()
@@ -33,6 +35,8 @@ async def get_matrix(
             date_to=date_to,
             min_runs=min_runs,
             include_profile=include_profile,
+            include_effort=include_effort,
+            include_suite=include_suite,
         )
 
 
@@ -42,8 +46,14 @@ async def get_leaderboard(
     date_from: str | None = None,
     date_to: str | None = None,
     include_profile: bool = True,
+    include_effort: bool = False,
+    include_suite: bool = False,
 ) -> dict[str, Any]:
-    """Configs ranked by pass rate with cost-per-pass and latency."""
+    """Configs ranked by pass rate with cost-per-pass and latency.
+
+    ``include_effort`` splits configs by reasoning-effort level (accuracy-vs-cost
+    effort curve); ``include_suite`` splits by test suite (per-suite facets).
+    """
     storage = get_storage()
     with storage.session() as session:
         ranked = analytics.leaderboard(
@@ -52,6 +62,8 @@ async def get_leaderboard(
             date_from=date_from,
             date_to=date_to,
             include_profile=include_profile,
+            include_effort=include_effort,
+            include_suite=include_suite,
         )
     return {"configs": ranked, "total": len(ranked)}
 

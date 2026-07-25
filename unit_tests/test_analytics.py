@@ -189,3 +189,82 @@ def test_question_history(seeded):
     assert [p["passed"] for p in points] == [True, True, False]  # chronological
     assert points[0]["config"] == CLAUDE_KEY
     assert points[0]["run_id"] == "claude-run-1"
+
+
+# --- effort / suite grouping + Python-side extras -------------------------
+
+
+def _seed_effort_run(storage, run_id, effort, score, tokens, steps, suite="suite-A", day=1):
+    storage.save_run(
+        run_id=run_id,
+        test_id=suite,
+        test_version=1,
+        model="claude-opus-4-8",
+        provider="claude-sdk",
+        started_at=f"2026-07-{day:02d}T10:00:00",
+        effort=effort,
+    )
+    tool_uses = [
+        {"name": "list_datasets", "arguments": {}, "id": f"{run_id}-{i}"} for i in range(steps)
+    ]
+    storage.save_question_result(
+        run_id=run_id,
+        question_id="q1",
+        passed=score >= 0.5,
+        score=score,
+        base_score=score,
+        tool_uses=tool_uses,
+        tokens_output=tokens,
+        duration_ms=1000,
+        cost_usd=0.01,
+    )
+    storage.complete_run(run_id, f"2026-07-{day:02d}T10:01:00")
+
+
+def test_leaderboard_splits_by_effort_with_variance(storage):
+    # two 'high' repeats (0.8, 1.0) + one 'low'
+    _seed_effort_run(storage, "r1", "high", 0.8, 100, 3)
+    _seed_effort_run(storage, "r2", "high", 1.0, 120, 5)
+    _seed_effort_run(storage, "r3", "low", 0.6, 50, 2)
+
+    with storage.session() as session:
+        ranked = leaderboard(session, include_effort=True)
+
+    by_effort = {c["effort"]: c for c in ranked}
+    assert set(by_effort) == {"high", "low"}
+    high = by_effort["high"]
+    assert high["n_results"] == 2
+    assert high["avg_score"] == 0.9
+    assert high["score_stddev"] == 0.1  # pstdev([0.8, 1.0])
+    assert high["avg_tokens_output"] == 110.0
+    assert high["avg_steps"] == 4.0  # mean([3, 5])
+    assert "[high]" in high["key"]
+
+    low = by_effort["low"]
+    assert low["n_results"] == 1
+    assert low["score_stddev"] == 0.0  # single run -> no spread
+
+
+def test_leaderboard_merges_effort_when_flag_off(storage):
+    _seed_effort_run(storage, "r1", "high", 0.8, 100, 3)
+    _seed_effort_run(storage, "r2", "low", 1.0, 120, 5)
+
+    with storage.session() as session:
+        ranked = leaderboard(session, include_effort=False)
+
+    assert len(ranked) == 1
+    assert ranked[0]["effort"] is None
+    assert ranked[0]["n_results"] == 2
+
+
+def test_leaderboard_splits_by_suite(storage):
+    _seed_effort_run(storage, "a1", None, 1.0, 100, 3, suite="suite-A")
+    _seed_effort_run(storage, "b1", None, 0.5, 100, 3, suite="suite-B")
+
+    with storage.session() as session:
+        ranked = leaderboard(session, include_suite=True)
+
+    suites = {c["suite"] for c in ranked}
+    assert suites == {"suite-A", "suite-B"}
+    # suite is folded into the unique key
+    assert any(c["key"].startswith("suite-A ::") for c in ranked)
