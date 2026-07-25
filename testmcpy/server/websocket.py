@@ -848,6 +848,7 @@ async def _run_benchmark_command(handle: RunHandle, data: dict[str, Any], config
             data.get("providers"),
             data.get("profiles"),
             int(data.get("repeat", 1)),
+            data.get("efforts"),
         )
     except BenchmarkComboError as e:
         _emit_event(handle, {"type": "error", "message": f"run_benchmark: {e}"})
@@ -898,6 +899,7 @@ async def _run_benchmark_command(handle: RunHandle, data: dict[str, Any], config
                     "model": combo.model,
                     "provider": combo.provider,
                     "profile": combo.profile,
+                    "effort": combo.effort,
                     "iteration": combo.iteration,
                     "label": label,
                 },
@@ -916,6 +918,7 @@ async def _run_benchmark_command(handle: RunHandle, data: dict[str, Any], config
                     "model": combo.model,
                     "provider": combo.provider,
                     "profile": combo.profile,
+                    "effort": combo.effort,
                     "_force_model": True,
                     "_in_batch": True,
                     "session_id": session_id,

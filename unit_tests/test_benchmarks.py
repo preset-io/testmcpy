@@ -72,6 +72,35 @@ def test_combo_label_includes_profile():
     assert combo_label(combo) == "assistant/m1 @ prod"
 
 
+def test_efforts_are_a_product_dimension():
+    combos = build_benchmark_combos(["m1"], efforts=["low", "high"], repeat=2)
+    # 1 model × 1 profile × 2 efforts × 2 repeats = 4
+    assert len(combos) == 4
+    assert {c.effort for c in combos} == {"low", "high"}
+
+
+def test_effort_defaults_to_none():
+    combos = build_benchmark_combos(["m1"], repeat=1)
+    assert combos[0].effort is None
+
+
+def test_full_matrix_with_effort_size():
+    combos = build_benchmark_combos(
+        ["m1", "m2"], providers="claude-sdk", profiles=["p1"], efforts=["low", "high"], repeat=2
+    )
+    # 2 models × 1 profile × 2 efforts × 2 repeats = 8
+    assert len(combos) == 8
+
+
+def test_combo_label_includes_effort():
+    (combo,) = build_benchmark_combos(["m1"], providers="claude-sdk", efforts=["high"])
+    assert combo_label(combo) == "claude-sdk/m1 [high]"
+    (combo2,) = build_benchmark_combos(
+        ["m1"], providers="claude-sdk", profiles=["prod"], efforts=["max"]
+    )
+    assert combo_label(combo2) == "claude-sdk/m1 @ prod [max]"
+
+
 # --- websocket ad-hoc connection helpers (no saved profile) -----------------
 
 

@@ -201,6 +201,15 @@ def run(
     profile: Optional[str] = typer.Option(
         None, "--profile", help="MCP service profile from .mcp_services.yaml"
     ),
+    effort: Optional[str] = typer.Option(
+        None,
+        "--effort",
+        help=(
+            "Reasoning effort for supported providers "
+            "(claude-sdk: low/medium/high/max; openai/codex-sdk: "
+            "minimal/low/medium/high/xhigh). Ignored by other providers."
+        ),
+    ),
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output report file"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Don't actually run tests"),
@@ -599,6 +608,12 @@ def run(
                     )
                 else:
                     console.print("[cyan]Concurrency cap:[/cyan] unbounded")
+
+        # Reasoning-effort benchmark dimension: fold --effort into provider_config
+        # so it reaches the provider __init__ (claude-sdk/codex-sdk/openai) via
+        # create_llm_provider's kwarg filtering; other providers drop it (no-op).
+        if effort:
+            effective_provider_config["effort"] = effort
 
         if suite_provider and verbose:
             console.print(f"[yellow]Suite-level provider override:[/yellow] {suite_provider}")
