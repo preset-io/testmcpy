@@ -164,6 +164,7 @@ class RunRecord:
         provider: str,
         mcp_profile: str | None = None,
         llm_profile: str | None = None,
+        effort: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> None:
         """Create the suite + the run row (status=running) up front."""
@@ -181,6 +182,7 @@ class RunRecord:
                 started_at=datetime.now(timezone.utc).isoformat(),
                 mcp_profile_id=mcp_profile,
                 llm_profile_id=llm_profile,
+                effort=effort,
                 metadata=metadata,
             )
             self._began = True

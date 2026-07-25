@@ -859,6 +859,7 @@ def run(
                 "provider": effective_provider,
                 "model": effective_model,
                 "mcp_profile": profile or "default",
+                "effort": effort,
                 "results": [r.to_dict() for r in results],
                 "summary": {
                     "total": len(results),

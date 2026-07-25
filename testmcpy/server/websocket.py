@@ -415,6 +415,13 @@ async def _run_test_command(handle: RunHandle, data: dict, config) -> None:
             **(suite_provider_config or {}),
         }
 
+        # Reasoning-effort benchmark dimension: fold into provider_config so it
+        # reaches the provider __init__ (claude-sdk/codex-sdk/openai) and record
+        # it on the run row below. None -> provider default (no-op).
+        effective_effort = data.get("effort")
+        if effective_effort:
+            effective_provider_config["effort"] = effective_effort
+
         # Ad-hoc assistant credentials supplied directly in the message (no saved
         # profile) — how the benchmark dialog passes the user's run-args. Suite
         # YAML / profile values already set above take precedence.
@@ -544,6 +551,7 @@ async def _run_test_command(handle: RunHandle, data: dict, config) -> None:
             provider=effective_provider,
             mcp_profile=effective_profile,
             llm_profile=llm_profile_id,
+            effort=effective_effort,
             # Shared across a benchmark's combos so /api/results/sessions and a
             # session-scoped /performance view can group them.
             metadata=({"session_id": data["session_id"]} if data.get("session_id") else None),
