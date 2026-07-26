@@ -26,7 +26,7 @@ const AccuracyCostTooltip = ({ active, payload }) => {
   const p = payload[0].payload
   return (
     <div className="bg-surface-elevated border border-border rounded-lg p-3 text-xs shadow-lg">
-      <div className="font-semibold text-text-primary mb-1">{p.model}</div>
+      <div className="font-semibold text-text-primary mb-1">{p.series}</div>
       <div className="text-text-secondary space-y-0.5">
         <div>Effort: {p.effort}</div>
         <div>Pass rate: {Math.round(p.y)}%</div>
@@ -36,20 +36,27 @@ const AccuracyCostTooltip = ({ active, payload }) => {
   )
 }
 
-// FrontierCode accuracy-vs-cost view: each model becomes a connected effort
-// curve on a log cost axis. A model with one effort is a single point.
-const AccuracyVsCostChart = ({ configs }) => {
-  const usable = (configs || []).filter(
-    (c) => c.n_results >= 1 && c.total_cost / c.n_results > 0
-  )
+// Effort-independent config identity: provider + model + MCP profile. Two rows
+// that differ only by effort belong to the same curve; two rows that differ by
+// provider/profile must NOT be merged (they'd form a misleading connected line
+// and inherit one row's color).
+const seriesKey = (c) =>
+  `${c.provider || '?'}/${c.model}${c.mcp_profile ? ` @ ${c.mcp_profile}` : ''}`
 
-  // Group usable configs by model, building sorted point series.
-  const byModel = new Map()
+// Build one connected effort curve per effort-independent identity. Exported so
+// the grouping (the part that must not merge distinct provider/profile configs)
+// is unit-testable without rendering recharts.
+export function buildEffortSeries(configs) {
+  const usable = (configs || []).filter((c) => c.n_results >= 1 && c.total_cost / c.n_results > 0)
+
+  const byConfig = new Map()
   usable.forEach((c) => {
-    if (!byModel.has(c.model)) {
-      byModel.set(c.model, { model: c.model, provider: c.provider, points: [] })
+    const key = seriesKey(c)
+    if (!byConfig.has(key)) {
+      byConfig.set(key, { key, model: c.model, provider: c.provider, points: [] })
     }
-    byModel.get(c.model).points.push({
+    byConfig.get(key).points.push({
+      series: key,
       model: c.model,
       cost: c.total_cost / c.n_results,
       y: c.pass_rate * 100,
@@ -58,9 +65,16 @@ const AccuracyVsCostChart = ({ configs }) => {
     })
   })
 
-  const series = Array.from(byModel.values())
+  const series = Array.from(byConfig.values())
   series.forEach((s) => s.points.sort((a, b) => effortRank(a.effort) - effortRank(b.effort)))
+  return series
+}
 
+// FrontierCode accuracy-vs-cost view: each provider/model/profile becomes a
+// connected effort curve on a log cost axis. A series with one effort is a
+// single point.
+const AccuracyVsCostChart = ({ configs }) => {
+  const series = buildEffortSeries(configs)
   const totalPoints = series.reduce((sum, s) => sum + s.points.length, 0)
   if (totalPoints === 0) {
     return (
@@ -110,8 +124,8 @@ const AccuracyVsCostChart = ({ configs }) => {
           const color = providerColor(s.provider, s.model)
           return (
             <Scatter
-              key={s.model}
-              name={s.model}
+              key={s.key}
+              name={s.key}
               data={s.points}
               line={{ stroke: color }}
               fill={color}

@@ -679,6 +679,11 @@ class OpenAIProvider(LLMProvider):
                 "model": self.model,
                 "messages": api_messages,
             }
+            # Reasoning models (including the o1 family) honor reasoning_effort;
+            # non-reasoning models ignore it. Set it on the common payload so it
+            # isn't dropped for o1, which takes the tools-less branch below.
+            if self._effort:
+                request_data["reasoning_effort"] = self._effort
 
             # o1 models use max_completion_tokens, don't support tools/temperature
             if is_o1_model:
@@ -690,9 +695,6 @@ class OpenAIProvider(LLMProvider):
                 request_data["tool_choice"] = "auto"
                 request_data["temperature"] = 0.1
                 request_data["max_tokens"] = 1000
-                # Reasoning models honor reasoning_effort; ignored by others.
-                if self._effort:
-                    request_data["reasoning_effort"] = self._effort
 
             response = await self.client.post(
                 f"{self.base_url}/chat/completions",
@@ -815,6 +817,10 @@ class OpenRouterProvider(OpenAIProvider):
                 "model": self.model,
                 "messages": api_messages,
             }
+            # Reasoning models (including the o1 family) honor reasoning_effort;
+            # set it on the common payload so it isn't dropped for o1.
+            if self._effort:
+                request_data["reasoning_effort"] = self._effort
 
             if is_o1_model:
                 request_data["max_completion_tokens"] = 1000
@@ -824,9 +830,6 @@ class OpenRouterProvider(OpenAIProvider):
                 request_data["tool_choice"] = "auto"
                 request_data["temperature"] = 0.1
                 request_data["max_tokens"] = 1000
-                # Reasoning models honor reasoning_effort; ignored by others.
-                if self._effort:
-                    request_data["reasoning_effort"] = self._effort
 
             response = await self.client.post(
                 f"{self.base_url}/chat/completions",

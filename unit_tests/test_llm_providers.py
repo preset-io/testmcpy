@@ -1621,3 +1621,59 @@ class TestNormalizeBedrockModelId:
 
         normalized = _normalize_bedrock_model_id("global.anthropic.claude-sonnet-4-20250514-v1:0")
         assert get_model(normalized) is not None
+
+
+class TestOpenAIEffortPayload:
+    """Effort must reach the outgoing request, not just be stored on the
+    provider. Regression guard: reasoning_effort was previously only added in
+    the non-o1 branch, so o1 reasoning models silently dropped it."""
+
+    async def _capture_payload(self, model, effort):
+        provider = OpenAIProvider(model=model, api_key="test", effort=effort)
+        captured = {}
+
+        class _FakeResp:
+            status_code = 200
+
+            def json(self):
+                return {"choices": [{"message": {"content": "ok"}}], "usage": {}}
+
+        async def fake_post(url, json=None, headers=None, timeout=None):
+            captured["json"] = json
+            return _FakeResp()
+
+        provider.client.post = fake_post
+        await provider.generate_with_tools("hi", tools=[], timeout=5.0)
+        return captured["json"]
+
+    @pytest.mark.asyncio
+    async def test_effort_sent_for_non_o1(self):
+        payload = await self._capture_payload("gpt-5.5", "high")
+        assert payload["reasoning_effort"] == "high"
+
+    @pytest.mark.asyncio
+    async def test_effort_sent_for_o1_reasoning_model(self):
+        # o1 takes the tools-less branch (max_completion_tokens); effort must
+        # still be present — this is the bug the review caught.
+        payload = await self._capture_payload("o1-mini", "medium")
+        assert payload["reasoning_effort"] == "medium"
+        assert "max_completion_tokens" in payload  # confirm it took the o1 branch
+
+    @pytest.mark.asyncio
+    async def test_no_effort_omits_reasoning_effort(self):
+        payload = await self._capture_payload("gpt-4o", None)
+        assert "reasoning_effort" not in payload
+
+
+class TestClaudeSDKEffortOption:
+    """Effort must reach the outgoing ClaudeAgentOptions, not just self._effort."""
+
+    def test_build_agent_options_sets_effort(self, tmp_path):
+        provider = ClaudeSDKProvider(model="claude-opus-4-8", effort="high")
+        options = provider.build_agent_options(cwd=str(tmp_path))
+        assert options.effort == "high"
+
+    def test_build_agent_options_omits_effort_when_unset(self, tmp_path):
+        provider = ClaudeSDKProvider(model="claude-opus-4-8")
+        options = provider.build_agent_options(cwd=str(tmp_path))
+        assert getattr(options, "effort", None) is None
