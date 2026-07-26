@@ -553,6 +553,67 @@ class TestChatSelectedProfileAuth:
         provider.start_insecure_mcp_proxy.assert_awaited_once()
         provider.close.assert_awaited_once()
 
+    def test_sdk_turn_start_omits_max_turns(self, client):
+        # The SDK path's sdk_turn counts streamed tool-result batches, not a hard
+        # cap, so its turn_start events must NOT carry a denominator — the UI
+        # renders a bare "Turn n". Regression guard for the PR #118 fix.
+        from testmcpy.src.llm_integration import ClaudeSDKProvider
+
+        provider = ClaudeSDKProvider(
+            model="claude-sonnet-4-6",
+            mcp_url="https://mock-mcp:3000/mcp",
+            auth={"type": "none"},
+        )
+        provider.initialize = AsyncMock()
+        provider.close = AsyncMock()
+        provider.start_insecure_mcp_proxy = AsyncMock(return_value=None)
+        provider.build_agent_options = MagicMock(return_value=SimpleNamespace())
+
+        async def fake_sdk_query(*, prompt, options):
+            if False:
+                yield None
+
+        with (
+            patch("claude_agent_sdk.query", new=fake_sdk_query),
+            patch("testmcpy.server.api.create_llm_provider", return_value=provider),
+        ):
+            response = client.post("/api/chat/stream", json=CHAT_BODY)
+
+        events = [
+            json.loads(line.removeprefix("data: "))
+            for line in response.text.splitlines()
+            if line.startswith("data: ")
+        ]
+        turn_starts = [e["data"] for e in events if e["type"] == "turn_start"]
+        assert turn_starts, "expected at least one SDK turn_start event"
+        assert all("max_turns" not in ts for ts in turn_starts)
+
+    def test_manual_turn_start_includes_max_turns_10(self, client, mock_mcp_client):
+        # The non-SDK manual loop DOES hard-stop at 10, so its turn_start events
+        # keep max_turns: 10 (the "Turn n/10" the UI still shows for that path).
+        provider = make_fake_provider()
+        provider.generate_with_tools.return_value = SimpleNamespace(
+            response="",
+            tool_calls=[{"name": "health_check", "arguments": {}, "id": "c1"}],
+            tool_results=[],
+            thinking=None,
+            token_usage=None,
+            cost=0.0,
+            duration=0.1,
+            error=None,
+        )
+        with patch("testmcpy.server.api.create_llm_provider", return_value=provider):
+            response = client.post("/api/chat/stream", json=CHAT_BODY)
+
+        events = [
+            json.loads(line.removeprefix("data: "))
+            for line in response.text.splitlines()
+            if line.startswith("data: ")
+        ]
+        turn_starts = [e["data"] for e in events if e["type"] == "turn_start"]
+        assert turn_starts, "expected at least one manual turn_start event"
+        assert all(ts.get("max_turns") == 10 for ts in turn_starts)
+
     def test_chat_stream_does_not_complete_after_claude_sdk_stream_error(self, client):
         from claude_agent_sdk import ClaudeSDKError
 

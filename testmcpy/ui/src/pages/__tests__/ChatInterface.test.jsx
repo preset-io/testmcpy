@@ -10,7 +10,7 @@ import {
   loadChatConversation,
   saveChatConversation,
 } from '../../utils/chatPersistence'
-import ChatInterface from '../ChatInterface'
+import ChatInterface, { turnStartStatus } from '../ChatInterface'
 
 vi.mock('@microlink/react-json-view', () => ({ default: () => null }))
 vi.mock('react-markdown', () => ({ default: ({ children }) => children }))
@@ -463,5 +463,18 @@ describe('ChatInterface conversation persistence', () => {
     expect(await screen.findByText('assistant answer')).toBeInTheDocument()
     expect(chatRequests()).toHaveLength(1)
     expect(requestBody().message).toBe('one request only')
+  })
+})
+
+describe('turnStartStatus (turn progress label)', () => {
+  it('shows a denominator when the backend caps turns (manual loop)', () => {
+    // Non-SDK manual loop sends max_turns: 10.
+    expect(turnStartStatus({ turn: 3, max_turns: 10 })).toBe('Turn 3/10 — Thinking...')
+  })
+
+  it('shows a bare "Turn n" when no cap is sent (SDK path)', () => {
+    // SDK-backed runs omit max_turns → no denominator (the PR #118 fix).
+    expect(turnStartStatus({ turn: 12 })).toBe('Turn 12 — Thinking...')
+    expect(turnStartStatus({ turn: 12, max_turns: undefined })).toBe('Turn 12 — Thinking...')
   })
 })
