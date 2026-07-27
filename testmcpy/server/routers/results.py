@@ -95,6 +95,7 @@ def save_test_run_to_file(data: dict[str, Any]) -> dict[str, Any]:
         provider=provider,
         started_at=started_at,
         mcp_profile_id=data.get("mcp_profile"),
+        effort=data.get("effort"),
         metadata=data.get("metadata"),
     )
 

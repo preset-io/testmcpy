@@ -801,6 +801,7 @@ class TestStorage:
         metadata: dict | None = None,
         mcp_profile_id: str | None = None,
         llm_profile_id: str | None = None,
+        effort: str | None = None,
     ) -> None:
         with self._session() as session:
             run = TestRunModel(
@@ -812,6 +813,7 @@ class TestStorage:
                 provider=provider,
                 mcp_profile_id=mcp_profile_id,
                 llm_profile_id=llm_profile_id,
+                effort=effort,
                 runner_tool=runner_tool,
                 mcp_setup_version=mcp_setup_version,
                 status="running",

@@ -132,6 +132,9 @@ class TestRunModel(Base):
     provider: Mapped[str] = mapped_column(String, nullable=False)
     mcp_profile_id: Mapped[str | None] = mapped_column(String, nullable=True)
     llm_profile_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Reasoning-effort level this run was executed at (benchmark dimension).
+    # None = the provider's default (no effort requested).
+    effort: Mapped[str | None] = mapped_column(String, nullable=True)
     runner_tool: Mapped[str] = mapped_column(String, default="mcp-client")
     mcp_setup_version: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, default="running")

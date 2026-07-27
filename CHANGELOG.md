@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Reasoning-**effort** benchmark dimension. `testmcpy run --effort <level>` and
+  `testmcpy bench --efforts low,medium,high` sweep reasoning effort for the
+  providers that support it (claude-sdk → `ClaudeAgentOptions.effort`;
+  codex-sdk → `ModelSettings.reasoning`; openai → `reasoning_effort`); other
+  providers ignore it. Effort is persisted per run (new nullable `effort`
+  column on `test_runs` + Alembic migration; SQLite auto-migrates).
+- New performance leaderboard charts on `/performance` (new **Charts** tab,
+  existing tables kept): a DeepSWE-style ranked bar chart with score-variance
+  error bars and cost/tokens/steps, a FrontierCode-style accuracy-vs-cost log
+  scatter with per-model reasoning-effort curves, and per-suite faceted bars.
+- Analytics gained effort/suite grouping (`include_effort` / `include_suite`)
+  and new per-config metrics — score standard deviation (error bars),
+  average output tokens, and average tool "steps" — on `/api/analytics`
+  matrix + leaderboard and the `leaderboard` CLI (`--by-effort` / `--by-suite`).
+
+## [0.11.10] - 2026-07-15
+
+### Added
+- Persisted Inspect/Chat conversations and saved system context across page
+  reloads, browser sessions, model changes, and profile changes until the user
+  explicitly clears the conversation.
+- Added provider-neutral history replay for Claude, Codex, Gemini, and regular
+  chat providers, including context-budget trimming metadata.
+- Added durable cross-tab clear synchronization so stale or in-flight requests
+  cannot restore a conversation after it has been cleared.
+
+### Fixed
+- Hardened Claude ToolSearch safety instructions and unified SDK error handling.
+- Preserved partial Assistant responses while reporting idle and wall-clock
+  stream aborts with the correct diagnostic.
+- Limited browser-storage compaction retries to genuine quota errors and
+  avoided misleading warnings for expected cross-tab synchronization.
+
+## [0.11.9] - 2026-07-14
+
+### Added
+- Completed the LLM profile workflows across the UI and CLI, including CRUD,
+  provider testing, default-profile selection, and runtime profile isolation.
+- Added MCP Inspector-compatible OAuth discovery, dynamic client registration,
+  PKCE, callback handling, persistent token storage, and resource indicators.
+
+### Fixed
+- Persisted OAuth auto-discovery and insecure TLS settings across MCP clients
+  and SDK providers, including selected-server isolation for chat connections.
+- Hardened MCP OAuth aliases, authorization failures, proxy cleanup, credential
+  scrubbing, and insecure loopback/canonical-gateway connections.
+
 ## [0.11.8] - 2026-07-07
 
 ### Security
