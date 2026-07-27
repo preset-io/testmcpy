@@ -1512,7 +1512,14 @@ async def chat_stream(request: ChatRequest):
     import asyncio
     import time
 
+    # Cap for the non-SDK manual tool loop implemented by this endpoint. This
+    # loop hard-stops at MAX_TURNS, so its progress is shown as "Turn n/10".
     MAX_TURNS = 10
+    # SDK-backed providers (Claude) loop internally up to this safety cap
+    # (passed to ``build_agent_options`` below); the manual loop does not apply
+    # to them. Their turn count is open-ended from the UI's perspective, so the
+    # SDK path emits no ``max_turns`` and the UI shows a bare "Turn n".
+    SDK_MAX_TURNS = 25
 
     def _clean_response(text: str, has_tool_calls: bool) -> str:
         """Strip tool execution status lines injected by some providers."""
@@ -1710,6 +1717,7 @@ async def chat_stream(request: ChatRequest):
                     allow_tool_search=True,
                     mcp_url_override=mcp_proxy.url if mcp_proxy is not None else None,
                     saved_system_prompt=saved_system_prompt,
+                    max_turns=SDK_MAX_TURNS,
                 )
 
                 sdk_turn = 1
@@ -1719,7 +1727,9 @@ async def chat_stream(request: ChatRequest):
                 has_content = False
                 tool_id_to_name: dict[str, str] = {}  # tool_use_id → tool name
 
-                yield send_event("turn_start", {"turn": sdk_turn, "max_turns": MAX_TURNS})
+                # No ``max_turns``: SDK turns are open-ended, so the UI shows a
+                # bare "Turn n" rather than a misleading "Turn n/N".
+                yield send_event("turn_start", {"turn": sdk_turn})
 
                 pending_tool_calls = []  # Tool calls emitted but no result yet
                 sdk_error = None
@@ -1803,13 +1813,10 @@ async def chat_stream(request: ChatRequest):
                             sdk_turn += 1
                             turn_tool_count = 0
                             has_content = False
-                            yield send_event(
-                                "turn_start",
-                                {"turn": sdk_turn, "max_turns": MAX_TURNS},
-                            )
+                            yield send_event("turn_start", {"turn": sdk_turn})
                             yield send_event(
                                 "status",
-                                f"Turn {sdk_turn}/{MAX_TURNS} — Thinking...",
+                                f"Turn {sdk_turn} — Thinking...",
                             )
 
                         elif isinstance(message, ResultMessage):

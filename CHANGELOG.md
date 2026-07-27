@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   average output tokens, and average tool "steps" — on `/api/analytics`
   matrix + leaderboard and the `leaderboard` CLI (`--by-effort` / `--by-suite`).
 
+### Fixed
+- Chat progress no longer shows a misleading "Turn n/10" for SDK-backed
+  (Claude) conversations. That denominator only ever bounded the non-SDK
+  manual loop; SDK runs loop internally and routinely ran past 10 turns, so
+  the counter appeared to exceed its own limit. SDK-backed chats now show an
+  open-ended "Turn n", while the non-SDK manual loop keeps its "Turn n/10".
+
 ## [0.11.10] - 2026-07-15
 
 ### Added

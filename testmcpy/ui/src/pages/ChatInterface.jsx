@@ -103,6 +103,15 @@ function contextTrimmedMessage(notice) {
   return `${sentence} to fit this model's context window. The full conversation remains saved in this browser.`
 }
 
+// Progress label for a turn_start event. The manual (non-SDK) loop sends a hard
+// max_turns cap → "Turn n/N"; SDK-backed runs are open-ended (no max_turns) →
+// a bare "Turn n". Exported so the conditional is unit-testable.
+export function turnStartStatus(data) {
+  return data.max_turns
+    ? `Turn ${data.turn}/${data.max_turns} — Thinking...`
+    : `Turn ${data.turn} — Thinking...`
+}
+
 function ChatInterface({ selectedProfiles = [], selectedLlmProfile, llmProfiles = [] }) {
   const [confirmAction, confirmElement] = useConfirm()
   const { success: notifySuccess, error: notifyError, warning: notifyWarning } = useNotification()
@@ -593,7 +602,9 @@ function ChatInterface({ selectedProfiles = [], selectedLlmProfile, llmProfiles 
           } else if (type === 'turn_start') {
             currentTurn = data.turn
             updateAssistantMessage({ currentTurn: data.turn })
-            setStreamingStatus(`Turn ${data.turn}/${data.max_turns} — Thinking...`)
+            // Denominator only when the backend caps turns (non-SDK manual
+            // loop); SDK-backed runs are open-ended, so show a bare "Turn n".
+            setStreamingStatus(turnStartStatus(data))
           } else if (type === 'thinking') {
             accThinking += data
             updateAssistantMessage({ thinking: accThinking })
