@@ -3,10 +3,14 @@ import { Link } from 'react-router-dom'
 import { formatDate, formatCost, formatDurationMs } from '../utils/formatters'
 import BenchmarkModal from '../components/BenchmarkModal'
 import { useTestRun } from '../contexts/TestRunContext'
+import LeaderboardBarChart from '../components/LeaderboardBarChart'
+import AccuracyVsCostChart from '../components/AccuracyVsCostChart'
+import SuiteFacetBars from '../components/SuiteFacetBars'
 import {
   TrendingUp,
   Trophy,
   Grid3x3,
+  BarChart3,
   Zap,
   X,
   CheckCircle,
@@ -270,6 +274,8 @@ function Performance() {
   const [activeTab, setActiveTab] = useState('matrix')
   const [matrix, setMatrix] = useState(null)
   const [leaderboard, setLeaderboard] = useState(null)
+  const [leaderboardByEffort, setLeaderboardByEffort] = useState(null)
+  const [leaderboardBySuite, setLeaderboardBySuite] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [warningsDismissed, setWarningsDismissed] = useState(false)
@@ -311,15 +317,27 @@ function Performance() {
       const matrixParams = new URLSearchParams(params)
       matrixParams.set('min_runs', String(minRuns))
 
-      const [matrixRes, lbRes] = await Promise.all([
+      // Effort- and suite-grouped leaderboards power the accuracy-vs-cost
+      // effort curve and the per-suite facets on the Charts tab.
+      const effortParams = new URLSearchParams(params)
+      effortParams.set('include_effort', 'true')
+      const suiteParams = new URLSearchParams(params)
+      suiteParams.set('include_suite', 'true')
+
+      const [matrixRes, lbRes, effortRes, suiteRes] = await Promise.all([
         fetch(`/api/analytics/matrix?${matrixParams}`),
         fetch(`/api/analytics/leaderboard?${params}`),
+        fetch(`/api/analytics/leaderboard?${effortParams}`),
+        fetch(`/api/analytics/leaderboard?${suiteParams}`),
       ])
       if (!matrixRes.ok) throw new Error(`Failed to load matrix: ${matrixRes.status}`)
       if (!lbRes.ok) throw new Error(`Failed to load leaderboard: ${lbRes.status}`)
       const [matrixData, lbData] = await Promise.all([matrixRes.json(), lbRes.json()])
       setMatrix(matrixData)
       setLeaderboard(lbData)
+      // Chart data is best-effort — a failure here shouldn't blank the tables.
+      setLeaderboardByEffort(effortRes.ok ? await effortRes.json() : null)
+      setLeaderboardBySuite(suiteRes.ok ? await suiteRes.json() : null)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -472,6 +490,17 @@ function Performance() {
           >
             <Trophy size={16} />
             Leaderboard
+          </button>
+          <button
+            onClick={() => setActiveTab('charts')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+              activeTab === 'charts'
+                ? 'bg-primary text-white'
+                : 'bg-surface hover:bg-surface-hover text-text-secondary'
+            }`}
+          >
+            <BarChart3 size={16} />
+            Charts
           </button>
         </div>
       </div>
@@ -632,7 +661,7 @@ function Performance() {
                   </tfoot>
                 </table>
               </div>
-            ) : (
+            ) : activeTab === 'leaderboard' ? (
               <div className="overflow-x-auto rounded-lg border border-border bg-surface-elevated">
                 <table className="w-full text-sm">
                   <thead>
@@ -710,6 +739,35 @@ function Performance() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="font-semibold text-text-primary mb-1 text-sm">Model leaderboard</h3>
+                  <p className="text-xs text-text-secondary mb-3">
+                    Pass rate per config, sorted best-first. Error bars show score
+                    spread across repeats; hover for cost, output tokens, and tool steps.
+                  </p>
+                  <LeaderboardBarChart configs={lbConfigs} />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-text-primary mb-1 text-sm">Accuracy vs. cost</h3>
+                  <p className="text-xs text-text-secondary mb-3">
+                    Pass rate against average cost per task (log scale). Each line walks a
+                    model across reasoning-effort levels — run{' '}
+                    <code className="text-text-primary">testmcpy bench --efforts low,medium,high</code>{' '}
+                    to draw the curve.
+                  </p>
+                  <AccuracyVsCostChart configs={leaderboardByEffort?.configs || []} />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-text-primary mb-1 text-sm">Per-suite breakdown</h3>
+                  <p className="text-xs text-text-secondary mb-3">
+                    Each test suite ranked independently, so a config that wins overall but
+                    lags on one suite stands out.
+                  </p>
+                  <SuiteFacetBars configs={leaderboardBySuite?.configs || []} />
+                </div>
               </div>
             )}
           </div>

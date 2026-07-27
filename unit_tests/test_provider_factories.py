@@ -381,3 +381,46 @@ class TestUnknownProvider:
     def test_unknown_raises(self):
         with pytest.raises(ValueError, match="Unknown provider"):
             create_llm_provider("nonexistent", "model")
+
+
+class TestEffortDimension:
+    """Reasoning-effort passthrough via the provider factory (kwarg filtering)."""
+
+    def test_claude_sdk_stores_effort(self):
+        p = create_llm_provider("claude-sdk", "claude-sonnet-4-6", effort="high")
+        assert p._effort == "high"
+
+    def test_openai_stores_effort(self):
+        p = create_llm_provider("openai", "gpt-4o", api_key="test", effort="medium")
+        assert p._effort == "medium"
+
+    def test_codex_sdk_stores_effort(self):
+        p = create_llm_provider("codex-sdk", "codex-o3", effort="xhigh")
+        assert p._effort == "xhigh"
+
+    def test_openrouter_and_xai_inherit_effort(self):
+        r = create_llm_provider(
+            "openrouter", "deepseek/deepseek-chat-v3", api_key="t", effort="low"
+        )
+        x = create_llm_provider("xai", "grok-4-0709", api_key="t", effort="high")
+        assert r._effort == "low"
+        assert x._effort == "high"
+
+    def test_effort_is_normalized(self):
+        p = create_llm_provider("claude-sdk", "claude-sonnet-4-6", effort="  HIGH ")
+        assert p._effort == "high"
+
+    def test_none_effort_is_none(self):
+        p = create_llm_provider("claude-sdk", "claude-sonnet-4-6")
+        assert p._effort is None
+
+    def test_invalid_effort_raises_with_clear_message(self):
+        with pytest.raises(ValueError, match="does not support reasoning effort 'ultra'"):
+            create_llm_provider("claude-sdk", "claude-sonnet-4-6", effort="ultra")
+
+    def test_non_supporting_provider_ignores_effort(self):
+        # Gemini's __init__ does not declare ``effort``; the factory filters the
+        # kwarg out so it is a silent no-op rather than a crash.
+        p = create_llm_provider("gemini", "gemini-3.1-pro", api_key="test", effort="high")
+        assert isinstance(p, GeminiProvider)
+        assert not hasattr(p, "_effort")

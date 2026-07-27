@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Reasoning-**effort** benchmark dimension. `testmcpy run --effort <level>` and
+  `testmcpy bench --efforts low,medium,high` sweep reasoning effort for the
+  providers that support it (claude-sdk → `ClaudeAgentOptions.effort`;
+  codex-sdk → `ModelSettings.reasoning`; openai → `reasoning_effort`); other
+  providers ignore it. Effort is persisted per run (new nullable `effort`
+  column on `test_runs` + Alembic migration; SQLite auto-migrates).
+- New performance leaderboard charts on `/performance` (new **Charts** tab,
+  existing tables kept): a DeepSWE-style ranked bar chart with score-variance
+  error bars and cost/tokens/steps, a FrontierCode-style accuracy-vs-cost log
+  scatter with per-model reasoning-effort curves, and per-suite faceted bars.
+- Analytics gained effort/suite grouping (`include_effort` / `include_suite`)
+  and new per-config metrics — score standard deviation (error bars),
+  average output tokens, and average tool "steps" — on `/api/analytics`
+  matrix + leaderboard and the `leaderboard` CLI (`--by-effort` / `--by-suite`).
+
 ### Fixed
 - Chat progress no longer shows a misleading "Turn n/10" for SDK-backed
   (Claude) conversations. That denominator only ever bounded the non-SDK

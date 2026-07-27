@@ -11,6 +11,7 @@ flaky` CLI commands so both surfaces report identical numbers.
 
 from __future__ import annotations
 
+import statistics
 from typing import Any
 
 from sqlalchemy import case, func
@@ -26,11 +27,26 @@ FLAKY_MIN_RUNS = 3
 TREND_BUCKETS = 7
 
 
-def config_key(model: str, provider: str, mcp_profile_id: str | None = None) -> str:
-    """Canonical label for a model/provider/profile combination."""
+def config_key(
+    model: str,
+    provider: str,
+    mcp_profile_id: str | None = None,
+    effort: str | None = None,
+    suite_id: str | None = None,
+) -> str:
+    """Canonical label for a config combination.
+
+    ``effort``/``suite_id`` are folded in only when they are grouping
+    dimensions, so the key stays unique per group (e.g.
+    ``suite1 :: claude-sdk/claude-opus-4-8 @ prod [high]``).
+    """
     key = f"{provider}/{model}"
     if mcp_profile_id:
         key = f"{key} @ {mcp_profile_id}"
+    if effort:
+        key = f"{key} [{effort}]"
+    if suite_id:
+        key = f"{suite_id} :: {key}"
     return key
 
 
@@ -55,6 +71,57 @@ def _apply_run_filters(
     return query
 
 
+def _config_extras(
+    session: Session,
+    config_cols: list[Any],
+    cell_key,
+    suite_id: str | None,
+    date_from: str | None,
+    date_to: str | None,
+) -> dict[str, dict[str, float]]:
+    """Per-config metrics that can't be aggregated in portable SQL.
+
+    Returns ``{cell_key: {score_stddev, avg_tokens_output, avg_steps}}``.
+    Score variance uses population stddev (0.0 for a single run, so the
+    leaderboard shows no error bar); "steps" is the per-result sum of
+    tool_call_counts, averaged across the config's runs. Computed Python-side
+    because SQLite has no STDDEV and tool_call_counts is a JSON column.
+    """
+    rows = _apply_run_filters(
+        session.query(
+            *config_cols,
+            QuestionResultModel.score,
+            QuestionResultModel.tokens_output,
+            QuestionResultModel.tool_call_counts,
+        ).join(TestRunModel, TestRunModel.run_id == QuestionResultModel.run_id),
+        suite_id,
+        date_from,
+        date_to,
+    )
+
+    scores: dict[str, list[float]] = {}
+    tokens: dict[str, list[float]] = {}
+    steps: dict[str, list[float]] = {}
+    for row in rows:
+        key = cell_key(row)
+        scores.setdefault(key, []).append(row.score or 0.0)
+        tokens.setdefault(key, []).append(float(row.tokens_output or 0))
+        counts = row.tool_call_counts
+        step_total = sum(counts.values()) if isinstance(counts, dict) else 0
+        steps.setdefault(key, []).append(float(step_total))
+
+    extras: dict[str, dict[str, float]] = {}
+    for key, score_list in scores.items():
+        extras[key] = {
+            "score_stddev": (
+                round(statistics.pstdev(score_list), 4) if len(score_list) > 1 else 0.0
+            ),
+            "avg_tokens_output": round(statistics.fmean(tokens[key]), 1) if tokens[key] else 0.0,
+            "avg_steps": round(statistics.fmean(steps[key]), 2) if steps[key] else 0.0,
+        }
+    return extras
+
+
 def test_matrix(
     session: Session,
     suite_id: str | None = None,
@@ -62,21 +129,34 @@ def test_matrix(
     date_to: str | None = None,
     min_runs: int = 1,
     include_profile: bool = True,
+    include_effort: bool = False,
+    include_suite: bool = False,
     trend_buckets: int = TREND_BUCKETS,
 ) -> dict[str, Any]:
     """Per-question × per-config aggregation.
 
     Returns ``{"configs": [...], "rows": [...], "warnings": [...]}`` where
     each row carries one cell per config with n, pass_rate, flaky flag,
-    avg score/cost/latency, and a day-bucketed pass-rate trend.
+    avg score/cost/latency, and a day-bucketed pass-rate trend. ``include_effort``
+    and ``include_suite`` promote reasoning-effort / suite to grouping
+    dimensions (for the leaderboard effort curve and per-suite facets).
     """
     config_cols: list[Any] = [TestRunModel.model, TestRunModel.provider]
     if include_profile:
         config_cols.append(TestRunModel.mcp_profile_id)
+    if include_effort:
+        config_cols.append(TestRunModel.effort)
+    if include_suite:
+        config_cols.append(TestRunModel.suite_id)
 
     def cell_key(row) -> str:
-        profile = row.mcp_profile_id if include_profile else None
-        return config_key(row.model, row.provider, profile)
+        return config_key(
+            row.model,
+            row.provider,
+            row.mcp_profile_id if include_profile else None,
+            row.effort if include_effort else None,
+            row.suite_id if include_suite else None,
+        )
 
     group_cols = [QuestionResultModel.question_id, *config_cols]
     cells_query = _apply_run_filters(
@@ -154,6 +234,8 @@ def test_matrix(
                 "model": row.model,
                 "provider": row.provider,
                 "mcp_profile": row.mcp_profile_id if include_profile else None,
+                "effort": row.effort if include_effort else None,
+                "suite": row.suite_id if include_suite else None,
                 "n": 0,
                 "passed_weight": 0.0,
                 "score_weight": 0.0,
@@ -182,21 +264,32 @@ def test_matrix(
     ).group_by(*config_cols)
     run_counts = {cell_key(row): int(row.n_runs or 0) for row in runs_query}
 
+    # Per-config score variance (for leaderboard error bars) + avg output
+    # tokens + avg tool "steps". Computed Python-side: SQLite has no STDDEV,
+    # and tool_call_counts is a JSON column that can't be summed in SQL.
+    extras = _config_extras(session, config_cols, cell_key, suite_id, date_from, date_to)
+
     configs = []
     for key, totals in sorted(config_totals.items()):
         n = totals["n"]
+        extra = extras.get(key, {})
         configs.append(
             {
                 "key": key,
                 "model": totals["model"],
                 "provider": totals["provider"],
                 "mcp_profile": totals["mcp_profile"],
+                "effort": totals["effort"],
+                "suite": totals["suite"],
                 "n_runs": run_counts.get(key, 0),
                 "n_results": n,
                 "pass_rate": round(totals["passed_weight"] / n, 4) if n else 0.0,
                 "avg_score": round(totals["score_weight"] / n, 4) if n else 0.0,
+                "score_stddev": extra.get("score_stddev", 0.0),
                 "avg_false_positive_rate": round(totals["fp_weight"] / n, 4) if n else 0.0,
                 "total_cost": round(totals["total_cost"], 6),
+                "avg_tokens_output": extra.get("avg_tokens_output", 0.0),
+                "avg_steps": extra.get("avg_steps", 0.0),
                 "flaky_cells": totals["flaky_cells"],
             }
         )
@@ -221,14 +314,23 @@ def leaderboard(
     date_from: str | None = None,
     date_to: str | None = None,
     include_profile: bool = True,
+    include_effort: bool = False,
+    include_suite: bool = False,
 ) -> list[dict[str, Any]]:
-    """Configs ranked by pass rate, with cost-per-pass and latency."""
+    """Configs ranked by pass rate, with cost-per-pass and latency.
+
+    ``include_effort`` splits each config by reasoning-effort level (for the
+    accuracy-vs-cost effort curve); ``include_suite`` splits by test suite
+    (for the per-suite facets).
+    """
     matrix = test_matrix(
         session,
         suite_id=suite_id,
         date_from=date_from,
         date_to=date_to,
         include_profile=include_profile,
+        include_effort=include_effort,
+        include_suite=include_suite,
     )
 
     # Aggregate latency per config from the row cells.

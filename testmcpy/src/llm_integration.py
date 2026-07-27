@@ -118,6 +118,40 @@ class ToolSchema:
         return cls(name=tool.name, description=tool.description, parameters=tool.input_schema)
 
 
+# Reasoning-effort ("thinking budget") values accepted per provider family.
+# Effort is an optional benchmark dimension; each provider maps the value onto
+# its own SDK/API field (Claude: ClaudeAgentOptions.effort; OpenAI/Codex:
+# reasoning_effort / ModelSettings.reasoning). Providers not listed ignore it.
+CLAUDE_EFFORT_VALUES: tuple[str, ...] = ("low", "medium", "high", "max")
+OPENAI_REASONING_EFFORT_VALUES: tuple[str, ...] = (
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+)
+
+
+def validate_effort(effort: str | None, allowed: tuple[str, ...], provider: str) -> str | None:
+    """Normalize and validate a reasoning-effort value for a provider.
+
+    Returns ``None`` when no effort is requested. Raises ``ValueError`` naming
+    the provider and its allowed values when the effort is unsupported, so a bad
+    ``--effort`` fails fast with a clear message instead of a cryptic SDK error.
+    """
+    if effort is None:
+        return None
+    normalized = effort.strip().lower()
+    if not normalized:
+        return None
+    if normalized not in allowed:
+        raise ValueError(
+            f"{provider} does not support reasoning effort {effort!r}. "
+            f"Allowed values: {', '.join(allowed)}."
+        )
+    return normalized
+
+
 class LLMProvider(ABC):
     """Base class for LLM providers."""
 
@@ -478,12 +512,19 @@ class OpenAIProvider(LLMProvider):
     """OpenAI API provider (also works with OpenAI-compatible APIs)."""
 
     def __init__(
-        self, model: str, api_key: str | None = None, base_url: str = "https://api.openai.com/v1"
+        self,
+        model: str,
+        api_key: str | None = None,
+        base_url: str = "https://api.openai.com/v1",
+        effort: str | None = None,
     ):
         self.model = model
         self.api_key = api_key or ""
         self.base_url = base_url
         self.client = httpx.AsyncClient(timeout=60.0)
+        # Optional reasoning-effort benchmark dimension; applied as
+        # ``reasoning_effort`` for reasoning models (no-op otherwise).
+        self._effort = validate_effort(effort, OPENAI_REASONING_EFFORT_VALUES, "OpenAI")
 
     async def initialize(self):
         """Initialize OpenAI provider."""
@@ -638,6 +679,11 @@ class OpenAIProvider(LLMProvider):
                 "model": self.model,
                 "messages": api_messages,
             }
+            # Reasoning models (including the o1 family) honor reasoning_effort;
+            # non-reasoning models ignore it. Set it on the common payload so it
+            # isn't dropped for o1, which takes the tools-less branch below.
+            if self._effort:
+                request_data["reasoning_effort"] = self._effort
 
             # o1 models use max_completion_tokens, don't support tools/temperature
             if is_o1_model:
@@ -726,11 +772,12 @@ class OpenRouterProvider(OpenAIProvider):
     https://openrouter.ai/api/v1 with an OpenRouter API key.
     """
 
-    def __init__(self, model: str, api_key: str | None = None):
+    def __init__(self, model: str, api_key: str | None = None, effort: str | None = None):
         super().__init__(
             model=model,
             api_key=api_key or "",
             base_url="https://openrouter.ai/api/v1",
+            effort=effort,
         )
 
     async def initialize(self):
@@ -770,6 +817,10 @@ class OpenRouterProvider(OpenAIProvider):
                 "model": self.model,
                 "messages": api_messages,
             }
+            # Reasoning models (including the o1 family) honor reasoning_effort;
+            # set it on the common payload so it isn't dropped for o1.
+            if self._effort:
+                request_data["reasoning_effort"] = self._effort
 
             if is_o1_model:
                 request_data["max_completion_tokens"] = 1000
@@ -858,11 +909,12 @@ class XAIProvider(OpenAIProvider):
     https://api.x.ai/v1 with an xAI API key.
     """
 
-    def __init__(self, model: str, api_key: str | None = None):
+    def __init__(self, model: str, api_key: str | None = None, effort: str | None = None):
         super().__init__(
             model=model,
             api_key=api_key or "",
             base_url="https://api.x.ai/v1",
+            effort=effort,
         )
 
     async def initialize(self):
@@ -2396,9 +2448,13 @@ class ClaudeSDKProvider(BaseSDKProvider):
         api_key: str | None = None,
         api_key_env: str | None = None,
         llm_profile_id: str | None = None,
+        effort: str | None = None,
     ):
         super().__init__(model=model, mcp_url=mcp_url, auth=auth)
         self.log_callback = log_callback
+        # Optional reasoning-effort benchmark dimension, applied to
+        # ClaudeAgentOptions.effort in build_agent_options (None -> SDK default).
+        self._effort = validate_effort(effort, CLAUDE_EFFORT_VALUES, "Claude SDK")
         # Optional model-auth token entered via the UI/profile. Precedence:
         # explicit api_key, then a named api_key_env, then a best-effort lookup
         # in the default LLM profile so code paths that can't thread a token
@@ -2577,6 +2633,10 @@ class ClaudeSDKProvider(BaseSDKProvider):
                 server_config.pop("headers", None)
             mcp_servers["mcp-service"] = server_config
 
+        # Only pass ``effort`` when set, so older SDK builds without the field
+        # keep working when no effort dimension is requested.
+        effort_option: dict[str, Any] = {"effort": self._effort} if self._effort else {}
+
         return ClaudeAgentOptions(
             model=model or self.model,
             permission_mode="bypassPermissions",
@@ -2606,6 +2666,7 @@ class ClaudeSDKProvider(BaseSDKProvider):
             # setting_sources=[] is a no-op in the SDK; this CLI flag is what
             # guarantees only the explicit mcp_servers mapping is honored.
             extra_args={"strict-mcp-config": None},
+            **effort_option,
         )
 
     async def _run_agent(
@@ -4371,6 +4432,7 @@ class CodexSDKProvider(BaseSDKProvider):
         mcp_url: str | None = None,
         auth: dict[str, Any] | None = None,
         openai_api_key: str | None = None,
+        effort: str | None = None,
     ):
         # Keep the unmapped id (e.g. "codex-o3") for model_registry cost
         # estimation; pass the vendor id (e.g. "o3") to the base for self.model.
@@ -4381,6 +4443,9 @@ class CodexSDKProvider(BaseSDKProvider):
             auth=auth,
         )
         self.openai_api_key = openai_api_key or ""
+        # Optional reasoning-effort benchmark dimension, applied via
+        # ModelSettings.reasoning in _run_agent (None -> SDK default).
+        self._effort = validate_effort(effort, OPENAI_REASONING_EFFORT_VALUES, "Codex")
 
     # ---- BaseSDKProvider hooks ------------------------------------------
 
@@ -4457,6 +4522,16 @@ class CodexSDKProvider(BaseSDKProvider):
             name="testmcpy-mcp",
         ) as mcp_server:
             saved_system_prompt, agent_prompt = _prepare_agent_chat_context(prompt, messages)
+            # Reasoning effort maps to ModelSettings.reasoning; only set when
+            # requested so default behavior is unchanged.
+            agent_kwargs: dict[str, Any] = {}
+            if self._effort:
+                from agents import ModelSettings  # noqa: PLC0415
+                from openai.types.shared import Reasoning  # noqa: PLC0415
+
+                agent_kwargs["model_settings"] = ModelSettings(
+                    reasoning=Reasoning(effort=self._effort)
+                )
             agent = Agent(
                 name="testmcpy-codex-agent",
                 model=self.model,
@@ -4465,6 +4540,7 @@ class CodexSDKProvider(BaseSDKProvider):
                     saved_system_prompt,
                 ),
                 mcp_servers=[mcp_server],
+                **agent_kwargs,
             )
             run_config = RunConfig(
                 model_provider=OAIProvider(api_key=self.openai_api_key),

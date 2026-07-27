@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Optional
 
 import typer
+from rich.markup import escape
 from rich.table import Table
 
 from testmcpy.benchmarks import BenchmarkComboError, build_benchmark_combos, combo_label
@@ -37,7 +38,16 @@ def bench(
     profiles: Optional[str] = typer.Option(
         None, "--profiles", help="Comma-separated MCP profiles (default: just the default profile)"
     ),
-    repeat: int = typer.Option(3, "--repeat", help="Runs per model × profile combination"),
+    efforts: Optional[str] = typer.Option(
+        None,
+        "--efforts",
+        help=(
+            "Comma-separated reasoning-effort levels to sweep, e.g. low,medium,high "
+            "(product dimension; default: none). Only affects providers that "
+            "support effort — claude-sdk, codex-sdk, openai."
+        ),
+    ),
+    repeat: int = typer.Option(3, "--repeat", help="Runs per model × profile × effort combination"),
     extra_args: Optional[str] = typer.Option(
         None,
         "--run-args",
@@ -56,7 +66,7 @@ def bench(
     # Shared matrix expansion (see testmcpy/benchmarks.py) so the CLI and the
     # websocket benchmark runner build the identical cross product.
     try:
-        combos = build_benchmark_combos(models, providers, profiles, repeat)
+        combos = build_benchmark_combos(models, providers, profiles, repeat, efforts)
     except BenchmarkComboError as e:
         console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1) from e
@@ -64,22 +74,26 @@ def bench(
     session_id = str(uuid.uuid4())
     n_models = len({c.model for c in combos})
     n_profiles = len({c.profile for c in combos})
+    n_efforts = len({c.effort for c in combos})
     console.print(
         f"[bold]Bench:[/bold] {n_models} model(s) × "
-        f"{n_profiles} profile(s) × {repeat} repeat(s) "
+        f"{n_profiles} profile(s) × {n_efforts} effort(s) × {repeat} repeat(s) "
         f"= {len(combos)} runs\n[dim]Session: {session_id}[/dim]"
     )
 
     if dry_run:
         for combo in combos:
-            console.print(f"  • {combo_label(combo)} (run {combo.iteration}/{repeat})")
+            # escape(): labels can contain "[high]" etc., which Rich would
+            # otherwise parse as style markup and swallow.
+            console.print(f"  • {escape(combo_label(combo))} (run {combo.iteration}/{repeat})")
         return
 
     results = []
     for i, combo in enumerate(combos, 1):
         label = combo_label(combo)
         console.print(
-            f"\n[cyan]── Run {i}/{len(combos)}: {label} (repeat {combo.iteration}) ──[/cyan]"
+            f"\n[cyan]── Run {i}/{len(combos)}: {escape(label)} "
+            f"(repeat {combo.iteration}) ──[/cyan]"
         )
 
         cmd = [
@@ -97,6 +111,8 @@ def bench(
             cmd += ["--provider", combo.provider]
         if combo.profile:
             cmd += ["--profile", combo.profile]
+        if combo.effort:
+            cmd += ["--effort", combo.effort]
         if extra_args:
             cmd += extra_args.split()
 
@@ -112,7 +128,7 @@ def bench(
         if code != 0:
             failures += 1
         status = "[green]0[/green]" if code == 0 else f"[red]{code}[/red]"
-        table.add_row(label, str(iteration), status)
+        table.add_row(escape(label), str(iteration), status)
     console.print(table)
 
     console.print(

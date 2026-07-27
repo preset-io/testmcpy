@@ -15,16 +15,17 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class BenchmarkCombo:
-    """One (model, provider, profile, iteration) point in the matrix.
+    """One (model, provider, profile, effort, iteration) point in the matrix.
 
-    ``provider``/``profile`` are ``None`` when unset (falls back to the run
-    command's defaults). ``iteration`` is 1-based.
+    ``provider``/``profile``/``effort`` are ``None`` when unset (falls back to
+    the run command's defaults). ``iteration`` is 1-based.
     """
 
     model: str
     provider: str | None
     profile: str | None
     iteration: int
+    effort: str | None = None
 
 
 class BenchmarkComboError(ValueError):
@@ -47,13 +48,14 @@ def build_benchmark_combos(
     providers: str | Sequence[str] | None = None,
     profiles: str | Sequence[str] | None = None,
     repeat: int = 1,
+    efforts: str | Sequence[str] | None = None,
 ) -> list[BenchmarkCombo]:
     """Expand the benchmark matrix.
 
     ``providers`` aligns to ``models`` (a single value broadcasts to all; a
-    mismatched length is an error). ``profiles`` is a full product dimension
-    (defaults to a single ``None`` = the default profile). Order is
-    model → profile → iteration, matching the original CLI.
+    mismatched length is an error). ``profiles`` and ``efforts`` are full
+    product dimensions (each defaults to a single ``None`` = the run command's
+    default). Order is model → profile → effort → iteration.
     """
     if repeat < 1:
         raise BenchmarkComboError("repeat must be >= 1")
@@ -64,6 +66,9 @@ def build_benchmark_combos(
 
     profile_raw = _as_list(profiles)
     profile_list: list[str | None] = list(profile_raw) if profile_raw else [None]
+
+    effort_raw = _as_list(efforts)
+    effort_list: list[str | None] = list(effort_raw) if effort_raw else [None]
 
     provider_raw = _as_list(providers)
     provider_list: list[str | None]
@@ -80,16 +85,26 @@ def build_benchmark_combos(
         provider_list = [None] * len(model_list)
 
     return [
-        BenchmarkCombo(model=model, provider=provider, profile=profile, iteration=iteration)
+        BenchmarkCombo(
+            model=model,
+            provider=provider,
+            profile=profile,
+            iteration=iteration,
+            effort=effort,
+        )
         for model, provider in zip(model_list, provider_list, strict=True)
         for profile in profile_list
+        for effort in effort_list
         for iteration in range(1, repeat + 1)
     ]
 
 
 def combo_label(combo: BenchmarkCombo) -> str:
-    """Human-readable config label, e.g. ``assistant/claude-sonnet-4-6 @ prod``."""
+    """Human-readable config label, e.g.
+    ``assistant/claude-sonnet-4-6 @ prod [high]``."""
     label = f"{combo.provider or 'default'}/{combo.model}"
     if combo.profile:
         label += f" @ {combo.profile}"
+    if combo.effort:
+        label += f" [{combo.effort}]"
     return label

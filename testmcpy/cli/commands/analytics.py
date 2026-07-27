@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 import typer
+from rich.markup import escape
 from rich.table import Table
 
 from testmcpy.cli.app import app, console
@@ -156,6 +157,10 @@ def leaderboard(
     no_profile: bool = typer.Option(
         False, "--no-profile", help="Group by model+provider only (ignore MCP profile)"
     ),
+    by_effort: bool = typer.Option(
+        False, "--by-effort", help="Split configs by reasoning-effort level"
+    ),
+    by_suite: bool = typer.Option(False, "--by-suite", help="Split configs by test suite"),
     output_format: str = typer.Option("table", "--format", help="table, json, or csv"),
     db_path: Optional[str] = typer.Option(None, "--db-path", help="Results DB path override"),
 ):
@@ -168,6 +173,8 @@ def leaderboard(
             suite_id=suite,
             date_from=_parse_since(since),
             include_profile=not no_profile,
+            include_effort=by_effort,
+            include_suite=by_suite,
         )
 
     if output_format == "json":
@@ -196,7 +203,9 @@ def leaderboard(
         cost = f"${config['cost_per_pass']:.4f}" if config["cost_per_pass"] else "—"
         table.add_row(
             str(i),
-            config["key"],
+            # escape(): keys can contain "[high]", which Rich would parse as
+            # style markup and swallow.
+            escape(config["key"]),
             _pct(config["pass_rate"]),
             str(config["n_runs"]),
             str(config["flaky_cells"]),
