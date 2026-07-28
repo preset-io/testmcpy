@@ -29,6 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   manual loop; SDK runs loop internally and routinely ran past 10 turns, so
   the counter appeared to exceed its own limit. SDK-backed chats now show an
   open-ended "Turn n", while the non-SDK manual loop keeps its "Turn n/10".
+- Restored the docs-site build (broken since June). Earlier dependency bumps
+  pushed it to Nextra 4 / Next 16 while the site is still a Nextra 3 `pages/`
+  app, so `next build` failed on the now-unrecognized `theme`/`themeConfig`
+  config keys. Pinned `nextra`/`nextra-theme-docs` back to `^3.3.1` (Next 15
+  is compatible); this also unblocks the docs-site Dependabot PRs, which were
+  all failing the same build check.
 
 ## [0.11.10] - 2026-07-15
 
