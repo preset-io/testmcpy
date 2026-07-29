@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { buildEffortSeries } from '../AccuracyVsCostChart'
+import { buildEffortSeries, computeYDomain } from '../AccuracyVsCostChart'
+
+// Series shape computeYDomain consumes: only `points[].y` (pass rate, 0..100).
+const series = (...ys) => [{ points: ys.map((y) => ({ y })) }]
 
 const cfg = (over) => ({
   model: 'claude-opus-4-8',
@@ -48,5 +51,35 @@ describe('buildEffortSeries', () => {
       cfg({ total_cost: 0, provider: 'openai', key: 'openai/x' }),
     ])
     expect(series).toHaveLength(0)
+  })
+})
+
+describe('computeYDomain', () => {
+  it('falls back to the full 0–100 axis when there is no data', () => {
+    expect(computeYDomain([])).toEqual([0, 100])
+  })
+
+  it('brackets a high-clustered field without starting at zero', () => {
+    // Pass rates 72–94 → padded, snapped-to-5 window that excludes 0 so the
+    // spread fills the axis instead of hugging the top.
+    const [min, max] = computeYDomain(series(72, 88, 94, 81))
+    expect(min).toBeGreaterThan(0)
+    expect(min).toBeLessThanOrEqual(72)
+    expect(max).toBeGreaterThanOrEqual(94)
+    expect(max).toBeLessThanOrEqual(100)
+    expect(min % 5).toBe(0)
+    expect(max % 5).toBe(0)
+  })
+
+  it('never exceeds [0,100] even with extreme values', () => {
+    const [min, max] = computeYDomain(series(0, 100))
+    expect(min).toBe(0)
+    expect(max).toBe(100)
+  })
+
+  it('gives a single-value field a visible, non-zero-height band', () => {
+    const [min, max] = computeYDomain(series(80, 80, 80))
+    expect(max).toBeGreaterThan(min)
+    expect(min).toBeGreaterThan(0)
   })
 })

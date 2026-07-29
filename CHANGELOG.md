@@ -32,6 +32,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   CLI crash collapsed to an undiagnosable "Command failed with exit code 1"
   with the real error thrown away. It now prefers the captured buffer and
   ignores the placeholder, so failing bench/eval runs show the underlying cause.
+- Performance → Charts "Accuracy vs. cost" scatter is more readable: the pass-
+  rate (Y) axis now brackets the actual data with a padded, 5%-snapped window
+  instead of a fixed 0–100, so a high-clustered field (e.g. 70–95%) spreads
+  across the axis instead of hugging the top; and its legend was replaced with
+  a flex-wrap layout so the long `provider/model @ profile` series labels no
+  longer overlap.
 - Chat progress no longer shows a misleading "Turn n/10" for SDK-backed
   (Claude) conversations. That denominator only ever bounded the non-SDK
   manual loop; SDK runs loop internally and routinely ran past 10 turns, so
