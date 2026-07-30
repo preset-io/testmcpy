@@ -29,7 +29,7 @@ const SuiteTooltip = ({ active, payload }) => {
 }
 
 // One faceted card per suite, each ranking that suite's configs by pass rate.
-const SuiteFacetBars = ({ configs }) => {
+const SuiteFacetBars = ({ configs, colorFor = providerColor }) => {
   const withSuite = (configs || []).filter((c) => c.suite)
   if (withSuite.length === 0) {
     return <p className="text-sm text-text-secondary">No per-suite data.</p>
@@ -76,7 +76,7 @@ const SuiteFacetBars = ({ configs }) => {
                 <Tooltip content={<SuiteTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
                 <Bar dataKey="pass_rate" radius={[0, 3, 3, 0]}>
                   {group.map((c, i) => (
-                    <Cell key={i} fill={providerColor(c.provider, c.model)} />
+                    <Cell key={i} fill={colorFor(c.provider, c.model)} />
                   ))}
                 </Bar>
               </BarChart>

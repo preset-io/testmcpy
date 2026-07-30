@@ -112,7 +112,7 @@ export function buildEffortSeries(configs) {
 // FrontierCode accuracy-vs-cost view: each provider/model/profile becomes a
 // connected effort curve on a log cost axis. A series with one effort is a
 // single point.
-const AccuracyVsCostChart = ({ configs }) => {
+const AccuracyVsCostChart = ({ configs, colorFor = providerColor }) => {
   const series = buildEffortSeries(configs)
   const totalPoints = series.reduce((sum, s) => sum + s.points.length, 0)
   if (totalPoints === 0) {
@@ -161,7 +161,7 @@ const AccuracyVsCostChart = ({ configs }) => {
         <Tooltip content={<AccuracyCostTooltip />} cursor={false} />
         <Legend content={<EffortLegend />} />
         {series.map((s) => {
-          const color = providerColor(s.provider, s.model)
+          const color = colorFor(s.provider, s.model)
           return (
             <Scatter
               key={s.key}
