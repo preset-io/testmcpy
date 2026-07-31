@@ -191,6 +191,77 @@ async def test_claude_iteration_error_retains_partial_text_and_sets_error(monkey
     assert result.error == "stream disconnected"
 
 
+@pytest.mark.asyncio
+async def test_process_error_surfaces_captured_stderr_not_sdk_placeholder(monkeypatch):
+    """The claude-agent-sdk sets ProcessError.stderr to a fixed placeholder
+    ("Check stderr output for details"), not the real stream. The provider must
+    surface the stderr it captured via its own callback instead of that
+    placeholder — otherwise real CLI crashes are undiagnosable (regression:
+    all-swallowed "Command failed with exit code 1")."""
+    sdk = _install_fake_claude_sdk(monkeypatch)
+
+    provider = ClaudeSDKProvider(model="claude-sonnet-4-5")
+    provider._mcp_server_config = {}
+    monkeypatch.setattr(provider, "start_insecure_mcp_proxy", AsyncMock(return_value=None))
+
+    # Capture the stderr callback the provider passes into build_agent_options
+    # so the fake query can feed it "real" CLI diagnostics.
+    holder = {}
+
+    def fake_build(**kwargs):
+        holder["stderr_cb"] = kwargs.get("stderr")
+        return object()
+
+    monkeypatch.setattr(provider, "build_agent_options", fake_build)
+
+    async def fake_query(**_kwargs):
+        holder["stderr_cb"]("panic: real underlying CLI failure")
+        holder["stderr_cb"]("  at transport/subprocess")
+        err = sdk.ProcessError(
+            "Command failed with exit code 1 (exit code: 1)\n"
+            "Error output: Check stderr output for details"
+        )
+        err.stderr = "Check stderr output for details"
+        raise err
+        yield  # unreachable; makes this an async generator
+
+    sdk.query = fake_query
+
+    result = await provider._run_agent("hello", 30.0, None)
+
+    # The real captured stderr is surfaced...
+    assert "panic: real underlying CLI failure" in result.response_text
+    assert "panic: real underlying CLI failure" in result.error
+    assert "CLI stderr:" in result.response_text
+    # ...and the useless SDK placeholder is not what we surfaced as the detail.
+    assert "CLI stderr:\nCheck stderr output for details" not in result.response_text
+
+
+@pytest.mark.asyncio
+async def test_process_error_without_captured_stderr_omits_detail_section(monkeypatch):
+    """When nothing was captured and the SDK only offers its placeholder, the
+    provider must not append a misleading 'CLI stderr: Check stderr...' section."""
+    sdk = _install_fake_claude_sdk(monkeypatch)
+
+    provider = ClaudeSDKProvider(model="claude-sonnet-4-5")
+    provider._mcp_server_config = {}
+    monkeypatch.setattr(provider, "start_insecure_mcp_proxy", AsyncMock(return_value=None))
+    monkeypatch.setattr(provider, "build_agent_options", lambda **_kwargs: object())
+
+    async def fake_query(**_kwargs):
+        err = sdk.ProcessError("Command failed with exit code 1")
+        err.stderr = "Check stderr output for details"
+        raise err
+        yield  # unreachable; makes this an async generator
+
+    sdk.query = fake_query
+
+    result = await provider._run_agent("hello", 30.0, None)
+
+    assert "CLI stderr:" not in result.response_text
+    assert result.error.startswith("Claude CLI process failed:")
+
+
 class _FakeGeminiEvent:
     def __init__(self, *, error_code=None, error_message=None, interrupted=None):
         self.error_code = error_code

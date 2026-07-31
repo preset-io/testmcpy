@@ -3057,12 +3057,18 @@ class ClaudeSDKProvider(BaseSDKProvider):
             )
         except ProcessError as e:
             # Surface the real CLI stderr (e.g. the root + bypassPermissions
-            # refusal) instead of just "exit code 1". Prefer the stderr the
-            # SDK already attached to ProcessError; fall back to our own
-            # callback-captured buffer. Truncate to keep error payloads sane.
+            # refusal) instead of just "exit code 1". The claude-agent-sdk
+            # sets ProcessError.stderr to a FIXED placeholder ("Check stderr
+            # output for details") rather than the actual stream, so preferring
+            # it silently defeats our own capture. Prefer the callback-captured
+            # buffer; only fall back to the SDK's attribute when it's a real
+            # message (not the placeholder). Truncate to keep payloads sane.
+            _SDK_STDERR_PLACEHOLDER = "Check stderr output for details"
             sdk_stderr = (getattr(e, "stderr", None) or "").strip()
+            if sdk_stderr == _SDK_STDERR_PLACEHOLDER:
+                sdk_stderr = ""
             captured = "\n".join(stderr_capture).strip()
-            stderr_text = sdk_stderr or captured
+            stderr_text = captured or sdk_stderr
             max_chars = 2000
             if len(stderr_text) > max_chars:
                 stderr_text = stderr_text[-max_chars:]

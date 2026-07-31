@@ -24,6 +24,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   matrix + leaderboard and the `leaderboard` CLI (`--by-effort` / `--by-suite`).
 
 ### Fixed
+- Claude-SDK provider now surfaces the **real** CLI stderr when the subprocess
+  crashes (exit code 1), instead of the SDK's fixed placeholder. The
+  claude-agent-sdk sets `ProcessError.stderr` to a constant
+  ("Check stderr output for details") rather than the actual stream, and the
+  provider was preferring that over its own callback-captured buffer — so every
+  CLI crash collapsed to an undiagnosable "Command failed with exit code 1"
+  with the real error thrown away. It now prefers the captured buffer and
+  ignores the placeholder, so failing bench/eval runs show the underlying cause.
 - Chat progress no longer shows a misleading "Turn n/10" for SDK-backed
   (Claude) conversations. That denominator only ever bounded the non-SDK
   manual loop; SDK runs loop internally and routinely ran past 10 turns, so
