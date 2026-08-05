@@ -20,6 +20,45 @@ const effortRank = (e) => {
   return i === -1 ? EFFORT_ORDER.length : i
 }
 
+// Pass rates cluster high (e.g. 70–95%), so a fixed 0–100 axis squashes the
+// whole field into the top strip and hides the spread the chart exists to show.
+// Derive a padded, nice-rounded window around the actual data instead: snap to
+// multiples of 5, keep ~15% (min 5pts) of headroom on each side, clamp to
+// [0,100]. Exported so the bounds logic is unit-testable without recharts.
+export function computeYDomain(series) {
+  const ys = (series || []).flatMap((s) => s.points.map((p) => p.y))
+  if (ys.length === 0) return [0, 100]
+  const lo = Math.min(...ys)
+  const hi = Math.max(...ys)
+  const pad = Math.max(5, (hi - lo) * 0.15)
+  const min = Math.max(0, Math.floor((lo - pad) / 5) * 5)
+  const max = Math.min(100, Math.ceil((hi + pad) / 5) * 5)
+  // Degenerate band (all points equal after snapping) → force a visible height.
+  if (min >= max) return [Math.max(0, min - 5), Math.min(100, Math.max(min, max) + 5)]
+  return [min, max]
+}
+
+// Recharts' default <Legend> lays series names out inline and lets them collide
+// when the labels are long (our series are "provider/model @ profile"). This
+// flex-wrap legend gives every item its own box with a color swatch, so they
+// wrap cleanly and never overlap regardless of count or label length.
+const EffortLegend = ({ payload }) => {
+  if (!payload || !payload.length) return null
+  return (
+    <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 px-2 pt-3 text-[11px] text-text-secondary">
+      {payload.map((entry) => (
+        <span key={entry.value} className="inline-flex items-center gap-1.5 whitespace-nowrap">
+          <span
+            className="inline-block w-2.5 h-2.5 rounded-sm shrink-0"
+            style={{ backgroundColor: entry.color || entry.payload?.fill }}
+          />
+          {entry.value}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 // Tooltip body for a single point on a model's effort curve.
 const AccuracyCostTooltip = ({ active, payload }) => {
   if (!active || !payload || !payload.length) return null
@@ -73,7 +112,7 @@ export function buildEffortSeries(configs) {
 // FrontierCode accuracy-vs-cost view: each provider/model/profile becomes a
 // connected effort curve on a log cost axis. A series with one effort is a
 // single point.
-const AccuracyVsCostChart = ({ configs }) => {
+const AccuracyVsCostChart = ({ configs, colorFor = providerColor }) => {
   const series = buildEffortSeries(configs)
   const totalPoints = series.reduce((sum, s) => sum + s.points.length, 0)
   if (totalPoints === 0) {
@@ -108,7 +147,8 @@ const AccuracyVsCostChart = ({ configs }) => {
           type="number"
           dataKey="y"
           name="Pass rate"
-          domain={[0, 100]}
+          domain={computeYDomain(series)}
+          allowDecimals={false}
           tick={{ fontSize: 11, fill: 'currentColor' }}
           label={{
             value: 'Pass rate (%)',
@@ -119,9 +159,9 @@ const AccuracyVsCostChart = ({ configs }) => {
           }}
         />
         <Tooltip content={<AccuracyCostTooltip />} cursor={false} />
-        <Legend wrapperStyle={{ fontSize: 11 }} />
+        <Legend content={<EffortLegend />} />
         {series.map((s) => {
-          const color = providerColor(s.provider, s.model)
+          const color = colorFor(s.provider, s.model)
           return (
             <Scatter
               key={s.key}

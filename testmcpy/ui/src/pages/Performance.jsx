@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { formatDate, formatCost, formatDurationMs } from '../utils/formatters'
 import BenchmarkModal from '../components/BenchmarkModal'
@@ -6,6 +6,7 @@ import { useTestRun } from '../contexts/TestRunContext'
 import LeaderboardBarChart from '../components/LeaderboardBarChart'
 import AccuracyVsCostChart from '../components/AccuracyVsCostChart'
 import SuiteFacetBars from '../components/SuiteFacetBars'
+import { buildColorScale } from '../utils/providerColors'
 import {
   TrendingUp,
   Trophy,
@@ -367,6 +368,19 @@ function Performance() {
   const warnings = matrix?.warnings || []
   const lbConfigs = leaderboard?.configs || []
   const isEmpty = !loading && configs.length === 0
+
+  // One color scale shared by all three Charts-tab charts so a given model
+  // renders in the same, maximally-separated color everywhere. Built from the
+  // union of every chart's configs.
+  const chartColorFor = useMemo(
+    () =>
+      buildColorScale([
+        ...lbConfigs,
+        ...(leaderboardByEffort?.configs || []),
+        ...(leaderboardBySuite?.configs || []),
+      ]),
+    [lbConfigs, leaderboardByEffort, leaderboardBySuite]
+  )
 
   // Cost-comparison scaling: a relative bar makes "which model costs more"
   // obvious at a glance instead of squinting at raw dollar amounts.
@@ -748,7 +762,7 @@ function Performance() {
                     Pass rate per config, sorted best-first. Error bars show score
                     spread across repeats; hover for cost, output tokens, and tool steps.
                   </p>
-                  <LeaderboardBarChart configs={lbConfigs} />
+                  <LeaderboardBarChart configs={lbConfigs} colorFor={chartColorFor} />
                 </div>
                 <div>
                   <h3 className="font-semibold text-text-primary mb-1 text-sm">Accuracy vs. cost</h3>
@@ -758,7 +772,10 @@ function Performance() {
                     <code className="text-text-primary">testmcpy bench --efforts low,medium,high</code>{' '}
                     to draw the curve.
                   </p>
-                  <AccuracyVsCostChart configs={leaderboardByEffort?.configs || []} />
+                  <AccuracyVsCostChart
+                    configs={leaderboardByEffort?.configs || []}
+                    colorFor={chartColorFor}
+                  />
                 </div>
                 <div>
                   <h3 className="font-semibold text-text-primary mb-1 text-sm">Per-suite breakdown</h3>
@@ -766,7 +783,10 @@ function Performance() {
                     Each test suite ranked independently, so a config that wins overall but
                     lags on one suite stands out.
                   </p>
-                  <SuiteFacetBars configs={leaderboardBySuite?.configs || []} />
+                  <SuiteFacetBars
+                    configs={leaderboardBySuite?.configs || []}
+                    colorFor={chartColorFor}
+                  />
                 </div>
               </div>
             )}

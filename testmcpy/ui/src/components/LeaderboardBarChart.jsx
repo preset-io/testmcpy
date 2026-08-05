@@ -37,7 +37,7 @@ const LeaderboardTooltip = ({ active, payload }) => {
 
 // DeepSWE-style ranked leaderboard: one horizontal bar per config, sorted by
 // pass rate, colored by provider family, with a score-stddev error bar.
-const LeaderboardBarChart = ({ configs }) => {
+const LeaderboardBarChart = ({ configs, colorFor = providerColor }) => {
   if (!configs || configs.length === 0) {
     return <p className="text-sm text-text-secondary">No data</p>
   }
@@ -68,7 +68,7 @@ const LeaderboardBarChart = ({ configs }) => {
         <Tooltip content={<LeaderboardTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
         <Bar dataKey="pass_rate" radius={[0, 3, 3, 0]}>
           {data.map((c, i) => (
-            <Cell key={i} fill={providerColor(c.provider, c.model)} />
+            <Cell key={i} fill={colorFor(c.provider, c.model)} />
           ))}
           <ErrorBar
             dataKey="score_stddev"
