@@ -24,6 +24,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   matrix + leaderboard and the `leaderboard` CLI (`--by-effort` / `--by-suite`).
 
 ### Fixed
+- Claude-SDK runs no longer silently lose all MCP tools after a stale CLI
+  auth-cache poisons the fixed `mcp-service` server name. The Claude CLI caches
+  a per-server "needs OAuth authorization" flag; once `mcp-service` landed in
+  `~/.claude/mcp-needs-auth-cache.json` (a transient 401, an expired JWT, or an
+  OAuth-typed profile), the CLI **skipped connecting** to the server on every
+  subsequent run — ignoring the `Authorization` header we pass — so zero tools
+  loaded and every tool-based test failed (as an `exit code 1` crash or as "no
+  tool calls"). The provider now drops just its own entry from that cache
+  before each run, since it authenticates via a header and a cached needs-auth
+  is always stale for it.
 - Claude-SDK provider now surfaces the **real** CLI stderr when the subprocess
   crashes (exit code 1), instead of the SDK's fixed placeholder. The
   claude-agent-sdk sets `ProcessError.stderr` to a constant
