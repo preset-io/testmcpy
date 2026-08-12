@@ -24,6 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   matrix + leaderboard and the `leaderboard` CLI (`--by-effort` / `--by-suite`).
 
 ### Fixed
+- Silenced the noisy `authlib.jose module is deprecated` warning that fastmcp's
+  JWT verifier triggers transitively on every CLI and test run touching MCP
+  auth. It's a third-party migration notice we can't act on. authlib installs
+  its own `simplefilter("always", ...)` that overrides a naive ignore, so the
+  package root imports `authlib.deprecate` first and then registers the ignore
+  ahead of it; a matching pytest `filterwarnings` keeps it out of the test
+  summary too.
 - Claude-SDK runs no longer silently lose all MCP tools after a stale CLI
   auth-cache poisons the fixed `mcp-service` server name. The Claude CLI caches
   a per-server "needs OAuth authorization" flag; once `mcp-service` landed in

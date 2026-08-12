@@ -53,6 +53,12 @@ addopts = [
 markers = [
     "e2e: End-to-end UI tests (requires playwright)",
 ]
+filterwarnings = [
+    # fastmcp's JWT verifier imports authlib.jose, which emits a deprecation
+    # notice we can't act on. Silenced at runtime in testmcpy/__init__.py; also
+    # ignored here so it stays out of the pytest warnings summary.
+    "ignore:authlib.jose module is deprecated:DeprecationWarning",
+]
 
 [tool.coverage.run]
 source = ["testmcpy"]
@@ -93,7 +99,7 @@ testmcpy = [
 
 [project]
 name = "testmcpy"
-version = "0.11.18"
+version = "0.11.19"
 description = "A comprehensive testing framework for validating LLM tool calling capabilities with MCP services"
 authors = [{name = "Amin Ghadersohi"}]
 license = "Apache-2.0"
