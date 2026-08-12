@@ -2412,6 +2412,10 @@ class ClaudeSDKProvider(BaseSDKProvider):
     """
 
     LOGGER_NAME = "ClaudeSDKProvider"
+    # Fixed name we register our MCP server under in the CLI's --mcp-config.
+    # Also the key the CLI uses in its needs-auth cache (see
+    # _evict_needs_auth_cache_entry).
+    _MCP_SERVER_NAME = "mcp-service"
     _MCP_ONLY_SYSTEM_PROMPT = (
         "You are a test executor. Your ONLY job is to call the MCP tools provided "
         "to fulfill the user's request, then report the results.\n\n"
@@ -2631,7 +2635,7 @@ class ClaudeSDKProvider(BaseSDKProvider):
                 # The loopback proxy injects fixed upstream credentials so
                 # bearer tokens never traverse even the local plaintext hop.
                 server_config.pop("headers", None)
-            mcp_servers["mcp-service"] = server_config
+            mcp_servers[self._MCP_SERVER_NAME] = server_config
 
         # Only pass ``effort`` when set, so older SDK builds without the field
         # keep working when no effort dimension is requested.
@@ -2668,6 +2672,49 @@ class ClaudeSDKProvider(BaseSDKProvider):
             extra_args={"strict-mcp-config": None},
             **effort_option,
         )
+
+    @classmethod
+    def _needs_auth_cache_path(cls, env: dict[str, str] | None = None) -> Path:
+        """Path to the Claude CLI's per-server needs-auth cache. The CLI stores
+        it in its config dir — ``$CLAUDE_CONFIG_DIR`` when set, else
+        ``~/.claude``. ``env`` defaults to the current process environment
+        (the same one inherited by the CLI subprocess)."""
+        source = env if env is not None else os.environ
+        config_dir = source.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
+        return Path(config_dir) / "mcp-needs-auth-cache.json"
+
+    @classmethod
+    def _evict_needs_auth_cache_entry(cls, env: dict[str, str] | None = None) -> bool:
+        """Best-effort removal of our server's entry from the CLI's needs-auth
+        cache before a run.
+
+        The CLI caches a per-server "needs OAuth authorization" flag keyed by
+        the server name. Once ``mcp-service`` lands in it (e.g. a transient
+        401, an expired JWT, or an OAuth-typed profile), the CLI *skips
+        connecting* to that server on every subsequent run — ignoring the valid
+        ``Authorization`` header we pass — and exposes no tools, so every
+        tool-based test fails until the cache is cleared. We authenticate via a
+        header and own this fixed server name, so a cached needs-auth entry is
+        always stale for us: drop just our entry, leaving other servers' state
+        intact. Returns True if an entry was removed.
+        """
+        path = cls._needs_auth_cache_path(env)
+        try:
+            raw = path.read_text()
+        except (FileNotFoundError, OSError):
+            return False
+        try:
+            cache = json.loads(raw)
+        except (json.JSONDecodeError, ValueError):
+            return False
+        if not isinstance(cache, dict) or cls._MCP_SERVER_NAME not in cache:
+            return False
+        cache.pop(cls._MCP_SERVER_NAME, None)
+        try:
+            path.write_text(json.dumps(cache))
+        except OSError:
+            return False
+        return True
 
     async def _run_agent(
         self,
@@ -2746,6 +2793,13 @@ class ClaudeSDKProvider(BaseSDKProvider):
                 mcp_url_override=_mcp_proxy.url if _mcp_proxy is not None else None,
                 saved_system_prompt=saved_system_prompt,
             )
+
+            # Drop any stale "needs-auth" flag the CLI cached for our server so
+            # it reconnects with the Authorization header we pass instead of
+            # silently skipping the connection (which yields zero MCP tools and
+            # fails every tool-based test). Uses the same env the CLI inherits.
+            if self._evict_needs_auth_cache_entry(getattr(options, "env", None)):
+                log(f"[ClaudeSDK] Cleared stale needs-auth cache for {self._MCP_SERVER_NAME}")
 
             # Execute query with timeout
             response_text = ""
