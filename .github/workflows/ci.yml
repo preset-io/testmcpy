@@ -67,11 +67,15 @@ jobs:
           pip install build twine
           python -m build oauth-probe --outdir oauth-probe/dist
           python -m twine check oauth-probe/dist/*
+          (cd oauth-probe/dist && sha256sum *.whl *.tar.gz > SHA256SUMS)
+          (cd oauth-probe/dist && sha256sum --check SHA256SUMS)
       - name: Smoke clean minimal install
         run: |
           python -m venv /tmp/oauth-probe-venv
+          (cd oauth-probe/dist && sha256sum --check SHA256SUMS)
           /tmp/oauth-probe-venv/bin/pip install oauth-probe/dist/*.whl
           /tmp/oauth-probe-venv/bin/testmcpy-oauth schema >/dev/null
+          /tmp/oauth-probe-venv/bin/testmcpy-oauth schema --kind report >/dev/null
           /tmp/oauth-probe-venv/bin/testmcpy-oauth validate \
             --config examples/oauth-smoke/auth-smoke.example.yaml
       - uses: actions/upload-artifact@v4

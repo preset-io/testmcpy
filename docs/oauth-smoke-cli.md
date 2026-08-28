@@ -34,6 +34,10 @@ report = await ProbeRunner().run_manifest(
 assert report.exit_code == 0
 ```
 
+Minimal-package consumers can import the same symbols from
+`testmcpy_oauth_probe`. Both packages expose the manifest and report schemas as
+`manifest_json_schema()` and `report_json_schema()`.
+
 Adapters may inject an `HttpTransport`, which lets the UI stream the same
 typed check records without importing CLI code and lets tests use deterministic
 fixtures.
@@ -55,6 +59,15 @@ testmcpy-oauth check --config auth-smoke.yaml --profile canary \
 The minimal wheel has only HTTPX and PyYAML as dependencies. Its version can be
 pinned independently; config and report schemas are also versioned separately.
 The main CLI offers equivalent `testmcpy auth validate|check|schema` commands.
+Use `testmcpy-oauth schema --kind report` (or the equivalent main CLI command)
+to materialize the report contract.
+
+The package CI job builds from the checked-out PR commit and uploads an artifact
+named `testmcpy-oauth-probe-<full Git SHA>`. Its `SHA256SUMS` covers both the
+wheel and source archive and is verified before the clean-install smoke. CI
+consumers should pin the full commit/artifact name and run
+`sha256sum --check SHA256SUMS` before installing; the mutable branch name is not
+a provenance boundary.
 
 Credentials are accepted only through named environment references in the
 manifest. The probe never accepts credential values on argv, never writes
@@ -92,6 +105,9 @@ explicitly configured);
 Use `required`, `supported`, `forbidden`, or `ignore` per optional capability.
 An absent `supported` feature is skipped; a required feature fails; optional
 RFC features are never made mandatory merely because another provider has it.
+An `ignore` metadata capability is not requested at all. The
+`client_credentials` grant is rejected at configuration time unless a
+confidential client-authentication method is configured.
 `expectations.issuers` constrains RFC 8414/OIDC metadata, while
 `expectations.token_issuers` and `expectations.audiences` explicitly opt into
 unverified JWT routing-claim diagnostics. This separation keeps an opaque

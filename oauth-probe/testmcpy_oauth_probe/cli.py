@@ -28,7 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     validate = subparsers.add_parser("validate", help="Validate a manifest without network access")
     validate.add_argument("--config", required=True)
-    schema = subparsers.add_parser("schema", help="Print the versioned manifest JSON Schema")
+    schema = subparsers.add_parser("schema", help="Print a versioned JSON Schema")
     schema.add_argument("--kind", choices=("manifest", "report"), default="manifest")
     schema.set_defaults(command="schema")
     check = subparsers.add_parser("check", help="Run configured targets headlessly")

@@ -21,3 +21,5 @@ testmcpy auth check --config examples/oauth-smoke/auth-smoke.example.yaml \
 
 The independently installable `oauth-probe/` distribution exposes the same
 core as `testmcpy-oauth` while avoiding the UI and LLM dependency stack.
+Its versioned result schema is available with
+`testmcpy-oauth schema --kind report`.
