@@ -3,9 +3,16 @@
 from __future__ import annotations
 
 import json
+import re
 import xml.etree.ElementTree as ET
 
 from testmcpy_oauth_probe.models import CheckStatus, RunReport
+
+_INVALID_XML_10 = re.compile(r"[\x00-\x08\x0B\x0C\x0E-\x1F\uFFFE\uFFFF]")
+
+
+def _xml_text(value: object) -> str:
+    return _INVALID_XML_10.sub("�", str(value))
 
 
 def to_json(report: RunReport) -> str:
@@ -73,15 +80,15 @@ def to_junit(report: RunReport) -> str:
         time=f"{report.duration_ms / 1000:.3f}",
     )
     properties = ET.SubElement(suite, "properties")
-    ET.SubElement(properties, "property", name="schema", value=report.schema)
-    ET.SubElement(properties, "property", name="run_id", value=report.run_id)
-    ET.SubElement(properties, "property", name="tool_version", value=report.tool_version)
+    ET.SubElement(properties, "property", name="schema", value=_xml_text(report.schema))
+    ET.SubElement(properties, "property", name="run_id", value=_xml_text(report.run_id))
+    ET.SubElement(properties, "property", name="tool_version", value=_xml_text(report.tool_version))
     for target, check in checks:
         case = ET.SubElement(
             suite,
             "testcase",
-            name=f"{target.target_id}::{check.id}",
-            classname=f"oauth_probe.{check.stage}",
+            name=_xml_text(f"{target.target_id}::{check.id}"),
+            classname=_xml_text(f"oauth_probe.{check.stage}"),
             time=f"{check.duration_ms / 1000:.3f}",
         )
         case_properties = ET.SubElement(case, "properties")
@@ -95,16 +102,16 @@ def to_junit(report: RunReport) -> str:
             ("http_status", check.http_status),
         ):
             if value is not None:
-                ET.SubElement(case_properties, "property", name=name, value=str(value))
+                ET.SubElement(case_properties, "property", name=name, value=_xml_text(value))
         if check.status is CheckStatus.SKIP:
-            ET.SubElement(case, "skipped", message=check.message)
+            ET.SubElement(case, "skipped", message=_xml_text(check.message))
         elif check.status is CheckStatus.FAIL:
-            failure = ET.SubElement(case, "failure", message=check.message)
-            failure.text = check.message
+            failure = ET.SubElement(case, "failure", message=_xml_text(check.message))
+            failure.text = _xml_text(check.message)
         elif check.status is CheckStatus.ERROR:
-            error = ET.SubElement(case, "error", message=check.message)
-            error.text = check.message
+            error = ET.SubElement(case, "error", message=_xml_text(check.message))
+            error.text = _xml_text(check.message)
         output = ET.SubElement(case, "system-out")
-        output.text = json.dumps(check.evidence, sort_keys=True)
+        output.text = _xml_text(json.dumps(check.evidence, sort_keys=True))
     ET.indent(suite)
     return ET.tostring(suite, encoding="unicode", xml_declaration=True) + "\n"

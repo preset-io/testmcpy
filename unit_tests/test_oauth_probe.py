@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import base64
 import json
+import xml.etree.ElementTree as ET
 from collections.abc import Mapping
+from dataclasses import replace
 from typing import Any
 
 import httpx
@@ -22,7 +24,7 @@ from testmcpy_oauth_probe.discovery import (
     parse_bearer_challenge,
     protected_resource_metadata_urls,
 )
-from testmcpy_oauth_probe.models import CheckStatus, TargetConfig
+from testmcpy_oauth_probe.models import CheckStatus, Correlation, TargetConfig
 from testmcpy_oauth_probe.reporters import to_human, to_json, to_jsonl, to_junit
 from testmcpy_oauth_probe.runner import ProbeRunner
 from testmcpy_oauth_probe.secrets import safe_url
@@ -359,6 +361,15 @@ async def test_healthy_json_and_sse_roundtrips_are_stage_visible_and_redacted(
     validator.validate(report.to_dict())
     for line in to_jsonl(report).splitlines():
         validator.validate(json.loads(line))
+    xml_hostile_report = replace(
+        report,
+        reports=(
+            replace(report.reports[0], correlation=Correlation(service="invalid\x01service")),
+        ),
+    )
+    junit = to_junit(xml_hostile_report)
+    assert "\x01" not in junit
+    ET.fromstring(junit)
     assert "example-revision" in rendered
     assert "test-region" in rendered
     assert "service=example-mcp" in to_human(report)
