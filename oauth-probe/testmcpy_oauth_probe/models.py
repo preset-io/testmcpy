@@ -84,6 +84,7 @@ class OAuthConfig:
 @dataclass(frozen=True)
 class Expectations:
     issuers: tuple[str, ...] = ()
+    token_issuers: tuple[str, ...] = ()
     resources: tuple[str, ...] = ()
     audiences: tuple[str, ...] = ()
     scopes: tuple[str, ...] = ()

@@ -182,6 +182,7 @@ def _expectations(value: Any, path: str) -> Expectations:
         data,
         {
             "issuers",
+            "token_issuers",
             "resources",
             "audiences",
             "scopes",
@@ -215,6 +216,7 @@ def _expectations(value: Any, path: str) -> Expectations:
         raise ConfigError(f"{path}.initialized_statuses must be an array of HTTP statuses")
     return Expectations(
         issuers=_strings(data.get("issuers"), f"{path}.issuers"),
+        token_issuers=_strings(data.get("token_issuers"), f"{path}.token_issuers"),
         resources=_strings(data.get("resources"), f"{path}.resources"),
         audiences=_strings(data.get("audiences"), f"{path}.audiences"),
         scopes=_strings(data.get("scopes"), f"{path}.scopes"),

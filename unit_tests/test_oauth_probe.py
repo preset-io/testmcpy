@@ -67,6 +67,7 @@ def _manifest(*, flow: str = "refresh_token", capabilities: str = "supported") -
                     "oauth": oauth,
                     "expectations": {
                         "issuers": [AUTH_ISSUER],
+                        "token_issuers": [AUTH_ISSUER],
                         "resources": [MCP_URL],
                         "audiences": ["mcp-api"],
                         "scopes": ["mcp.read"],
@@ -283,11 +284,16 @@ class FixtureTransport:
                     headers={"content-type": "text/plain"},
                 )
             audience = "wrong-region-api" if self.scenario == "wrong_audience" else "mcp-api"
+            access_token = (
+                "opaque-access-token-123456789"
+                if self.scenario == "opaque_token"
+                else _jwt(audience=audience)
+            )
             return self.response(
                 url,
                 200,
                 payload={
-                    "access_token": _jwt(audience=audience),
+                    "access_token": access_token,
                     "refresh_token": "rotated-refresh-secret-987654321",
                     "token_type": "Bearer",
                     "expires_in": 300,
@@ -346,6 +352,29 @@ async def test_healthy_json_and_sse_roundtrips_are_stage_visible_and_redacted(
         request[3] and request[3].get("refresh_token") == REFRESH_SECRET
         for request in transports[0].requests
     )
+
+
+@pytest.mark.asyncio
+async def test_opaque_token_is_valid_when_only_metadata_issuer_is_constrained() -> None:
+    document = json.loads(_manifest())
+    expectations = document["targets"]["healthy"]["expectations"]
+    expectations.pop("token_issuers")
+    expectations.pop("audiences")
+
+    report = await ProbeRunner(
+        transport_factory=lambda target: FixtureTransport(target, scenario="opaque_token"),
+        environ={
+            "TEST_REFRESH_TOKEN": REFRESH_SECRET,
+            "TEST_CLIENT_ID": "example-client",
+            "TEST_CLIENT_SECRET": CLIENT_SECRET,
+        },
+    ).run_manifest(loads_manifest(json.dumps(document)))
+
+    checks = {check.id: check for check in report.reports[0].checks}
+    assert checks["rfc8414.issuer.identity"].status is CheckStatus.PASS
+    assert checks["oauth.token.claims.policy"].status is CheckStatus.SKIP
+    assert checks["mcp.initialize.protocol_contract"].status is CheckStatus.PASS
+    assert report.exit_code == 0
 
 
 @pytest.mark.asyncio

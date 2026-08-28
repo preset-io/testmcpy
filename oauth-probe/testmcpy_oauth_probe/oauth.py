@@ -406,7 +406,7 @@ async def acquire_token(
             )
         )
         claims = _decode_claims(access_token)
-        if target.expectations.issuers or target.expectations.audiences:
+        if target.expectations.token_issuers or target.expectations.audiences:
             if claims is None:
                 checks.append(
                     _check(
@@ -427,7 +427,10 @@ async def acquire_token(
                     and all(isinstance(item, str) for item in audience_value)
                     else set()
                 )
-                issuer_ok = not target.expectations.issuers or issuer in target.expectations.issuers
+                issuer_ok = (
+                    not target.expectations.token_issuers
+                    or issuer in target.expectations.token_issuers
+                )
                 audience_ok = not target.expectations.audiences or bool(
                     audiences.intersection(target.expectations.audiences)
                 )

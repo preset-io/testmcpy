@@ -82,9 +82,9 @@ manifest produces a report even when a target errors.
 - public clients plus `client_secret_basic`, `client_secret_post`, and
   `client_secret_jwt` confidential authentication;
 - a safe unsupported-grant OAuth error probe, token media/type/cache/scope
-  contracts, refresh rotation policy, and optional unverified JWT routing-claim
-  diagnostics (opaque access tokens remain valid unless a claim policy is
-  explicitly configured);
+contracts, refresh rotation policy, and optional unverified JWT routing-claim
+diagnostics (opaque access tokens remain valid unless a claim policy is
+explicitly configured);
 - authenticated `initialize`, `notifications/initialized`, and paginated
   `tools/list` using JSON or SSE, exact HTTP statuses, JSON-RPC ID correlation,
   negotiated protocol, session propagation, and a page safety bound.
@@ -92,6 +92,11 @@ manifest produces a report even when a target errors.
 Use `required`, `supported`, `forbidden`, or `ignore` per optional capability.
 An absent `supported` feature is skipped; a required feature fails; optional
 RFC features are never made mandatory merely because another provider has it.
+`expectations.issuers` constrains RFC 8414/OIDC metadata, while
+`expectations.token_issuers` and `expectations.audiences` explicitly opt into
+unverified JWT routing-claim diagnostics. This separation keeps an opaque
+access token valid when only metadata issuer identity is being asserted; the
+authenticated MCP response remains the authoritative audience/resource check.
 
 ## Compatibility and dual-run migration
 

@@ -29,6 +29,7 @@ targets:
 
     expectations:
       issuers: [https://auth.example.test]
+      token_issuers: [https://auth.example.test]
       resources: [https://mcp.example.test/mcp]
       audiences: [mcp-api]
       scopes: [mcp.read]
