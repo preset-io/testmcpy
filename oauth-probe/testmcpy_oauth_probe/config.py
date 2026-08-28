@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 from collections.abc import Mapping
@@ -284,13 +285,18 @@ def _target(target_id: str, value: Any, defaults: Mapping[str, Any]) -> TargetCo
     spec_profile = _string(merged.get("spec_profile", "mcp-2025-06-18"), f"{path}.spec_profile")
     assert mcp_url is not None and spec_profile is not None
     timeout = merged.get("timeout_seconds", 20.0)
-    if not isinstance(timeout, (int, float)) or timeout <= 0:
+    if (
+        not isinstance(timeout, (int, float))
+        or isinstance(timeout, bool)
+        or not math.isfinite(timeout)
+        or timeout <= 0
+    ):
         raise ConfigError(f"{path}.timeout_seconds must be positive")
     max_bytes = merged.get("max_response_bytes", 1_048_576)
     retries = merged.get("transient_retries", 1)
     if not isinstance(max_bytes, int) or max_bytes < 1024:
         raise ConfigError(f"{path}.max_response_bytes must be an integer >= 1024")
-    if not isinstance(retries, int) or not 0 <= retries <= 5:
+    if not isinstance(retries, int) or isinstance(retries, bool) or not 0 <= retries <= 5:
         raise ConfigError(f"{path}.transient_retries must be between 0 and 5")
     for boolean_name in ("allow_http_loopback", "allow_private_network"):
         if not isinstance(merged.get(boolean_name, boolean_name == "allow_http_loopback"), bool):

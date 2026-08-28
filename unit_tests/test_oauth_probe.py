@@ -635,6 +635,10 @@ def test_config_is_strict_versioned_and_credentials_are_references() -> None:
     )
     with pytest.raises(ConfigError, match="confidential client"):
         loads_manifest(json.dumps(public_client_credentials))
+    boolean_timeout = json.loads(_manifest())
+    boolean_timeout["targets"]["healthy"]["timeout_seconds"] = True
+    with pytest.raises(ConfigError, match="must be positive"):
+        loads_manifest(json.dumps(boolean_timeout))
 
 
 def test_packaged_schema_and_documented_example_stay_loadable() -> None:
