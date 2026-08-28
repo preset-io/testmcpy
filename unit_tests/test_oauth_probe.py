@@ -8,7 +8,12 @@ from collections.abc import Mapping
 from typing import Any
 
 import pytest
-from testmcpy_oauth_probe.config import ConfigError, loads_manifest
+from testmcpy_oauth_probe.config import (
+    ConfigError,
+    load_manifest,
+    loads_manifest,
+    manifest_json_schema,
+)
 from testmcpy_oauth_probe.discovery import (
     authorization_metadata_urls,
     parse_bearer_challenge,
@@ -494,6 +499,20 @@ def test_config_is_strict_versioned_and_credentials_are_references() -> None:
         loads_manifest(json.dumps(unknown_field))
     with pytest.raises(ConfigError, match="unsupported schema"):
         loads_manifest(_manifest().replace("oauth-smoke/v1", "oauth-smoke/v2"))
+
+
+def test_packaged_schema_and_documented_example_stay_loadable() -> None:
+    schema = manifest_json_schema()
+    assert schema["$id"] == "testmcpy.io/oauth-smoke/v1"
+    manifest = load_manifest("examples/oauth-smoke/auth-smoke.example.yaml")
+    assert tuple(manifest.targets) == ("example-us",)
+    report_schema = json.loads(
+        open(
+            "oauth-probe/testmcpy_oauth_probe/schemas/oauth-smoke-report-v1.schema.json",
+            encoding="utf-8",
+        ).read()
+    )
+    assert report_schema["$id"] == "testmcpy.io/oauth-smoke-report/v1"
 
 
 def test_discovery_builders_and_multi_challenge_parser_cover_path_issuers() -> None:

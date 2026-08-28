@@ -1,0 +1,54 @@
+schema: testmcpy.io/oauth-smoke/v1
+
+defaults:
+  spec_profile: mcp-2025-06-18
+  timeout_seconds: 20
+  transient_retries: 1
+
+targets:
+  example-us:
+    mcp_url: https://mcp.example.test/mcp
+    correlation:
+      service: example-mcp
+      region: us-test
+      revision: ${REVISION:-unknown}
+      deployment_id: ${DEPLOYMENT_ID:-unknown}
+
+    oauth:
+      flow: refresh_token
+      refresh_token:
+        env: MCP_REFRESH_TOKEN
+      client_id:
+        env: MCP_CLIENT_ID
+      client_secret:
+        env: MCP_CLIENT_SECRET
+      client_auth_method: client_secret_basic
+      scopes: [mcp.read]
+      resource: https://mcp.example.test/mcp
+      audience: mcp-api
+
+    expectations:
+      issuers: [https://auth.example.test]
+      resources: [https://mcp.example.test/mcp]
+      audiences: [mcp-api]
+      scopes: [mcp.read]
+      min_tools: 1
+      grants:
+        refresh_token: required
+      auth_methods:
+        client_secret_basic: required
+      endpoints:
+        token_endpoint: required
+        revocation_endpoint: ignore
+        introspection_endpoint: supported
+      capabilities:
+        protected_resource_metadata: required
+        authorization_server_metadata: required
+        bearer_challenge: required
+        oidc_discovery: supported
+        dynamic_client_registration: supported
+        refresh_rotation: supported
+
+profiles:
+  canary:
+    targets: [example-us]

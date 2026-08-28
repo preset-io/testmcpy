@@ -96,6 +96,7 @@ testmcpy = [
     "ui/**/*",
     "server/**/*",
 ]
+testmcpy_oauth_probe = ["schemas/*.json"]
 
 [project]
 name = "testmcpy"

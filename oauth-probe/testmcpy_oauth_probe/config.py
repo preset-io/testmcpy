@@ -6,6 +6,7 @@ import json
 import os
 import re
 from collections.abc import Mapping
+from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
@@ -348,19 +349,12 @@ def load_manifest(path: str | Path) -> Manifest:
 
 
 def manifest_json_schema() -> dict[str, Any]:
-    """Small machine-readable schema descriptor for adapters and editors."""
-    return {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": CONFIG_SCHEMA,
-        "type": "object",
-        "required": ["schema", "targets"],
-        "properties": {
-            "schema": {"const": CONFIG_SCHEMA},
-            "targets": {"type": "object", "minProperties": 1},
-            "profiles": {"type": "object"},
-        },
-        "additionalProperties": False,
-    }
+    """Return the packaged machine-readable v1 schema."""
+    schema = files("testmcpy_oauth_probe").joinpath("schemas/oauth-smoke-v1.schema.json")
+    value = json.loads(schema.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):  # pragma: no cover - package invariant
+        raise RuntimeError("packaged manifest schema is invalid")
+    return value
 
 
 def dump_manifest_schema() -> str:

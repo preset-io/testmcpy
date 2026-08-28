@@ -20,3 +20,6 @@ testmcpy-oauth = "testmcpy_oauth_probe.cli:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["testmcpy_oauth_probe*"]
+
+[tool.setuptools.package-data]
+testmcpy_oauth_probe = ["schemas/*.json"]

@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "testmcpy.io/oauth-smoke-report/v1",
+  "title": "testmcpy OAuth/MCP probe report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "run", "targets"],
+  "properties": {
+    "schema": {"const": "testmcpy.io/oauth-smoke-report/v1"},
+    "run": {
+      "type": "object",
+      "required": ["id", "tool_version", "started_at", "duration_ms"],
+      "properties": {
+        "id": {"type": "string"},
+        "tool_version": {"type": "string"},
+        "started_at": {"type": "string", "format": "date-time"},
+        "duration_ms": {"type": "integer", "minimum": 0}
+      }
+    },
+    "targets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["target", "spec_profile", "started_at", "duration_ms", "summary", "checks"],
+        "properties": {
+          "target": {"type": "object"},
+          "spec_profile": {"type": "string"},
+          "started_at": {"type": "string", "format": "date-time"},
+          "duration_ms": {"type": "integer", "minimum": 0},
+          "summary": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "stage", "status", "applicable", "message", "duration_ms", "evidence"],
+              "properties": {
+                "id": {"type": "string"},
+                "stage": {"type": "string"},
+                "status": {"enum": ["pass", "fail", "skip", "warn", "error"]},
+                "applicable": {"type": "boolean"},
+                "message": {"type": "string"},
+                "duration_ms": {"type": "integer", "minimum": 0},
+                "reference": {"type": "string"},
+                "http_status": {"type": "integer", "minimum": 100, "maximum": 599},
+                "evidence": {"type": "object"}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
