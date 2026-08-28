@@ -62,12 +62,13 @@ The main CLI offers equivalent `testmcpy auth validate|check|schema` commands.
 Use `testmcpy-oauth schema --kind report` (or the equivalent main CLI command)
 to materialize the report contract.
 
-The package CI job builds from the checked-out PR commit and uploads an artifact
-named `testmcpy-oauth-probe-<full Git SHA>`. Its `SHA256SUMS` covers both the
-wheel and source archive and is verified before the clean-install smoke. CI
-consumers should pin the full commit/artifact name and run
-`sha256sum --check SHA256SUMS` before installing; the mutable branch name is not
-a provenance boundary.
+The package CI job explicitly checks out the PR head (rather than GitHub's
+synthetic merge ref) and uploads an artifact named
+`testmcpy-oauth-probe-<full Git SHA>`. `SOURCE_COMMIT` records that same SHA;
+`SHA256SUMS` covers it, the wheel, and the source archive and is verified before
+the clean-install smoke. CI consumers should pin the full commit/artifact name,
+then run `sha256sum --check SHA256SUMS` before installing; the mutable branch
+name is not a provenance boundary.
 
 Credentials are accepted only through named environment references in the
 manifest. The probe never accepts credential values on argv, never writes

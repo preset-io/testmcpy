@@ -54,8 +54,12 @@ jobs:
   oauth-probe-package:
     name: Headless OAuth probe package
     runs-on: ubuntu-latest
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -65,14 +69,17 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install build twine
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           python -m build oauth-probe --outdir oauth-probe/dist
           python -m twine check oauth-probe/dist/*
-          (cd oauth-probe/dist && sha256sum *.whl *.tar.gz > SHA256SUMS)
+          printf '%s\n' "$SOURCE_SHA" > oauth-probe/dist/SOURCE_COMMIT
+          (cd oauth-probe/dist && sha256sum *.whl *.tar.gz SOURCE_COMMIT > SHA256SUMS)
           (cd oauth-probe/dist && sha256sum --check SHA256SUMS)
       - name: Smoke clean minimal install
         run: |
           python -m venv /tmp/oauth-probe-venv
           (cd oauth-probe/dist && sha256sum --check SHA256SUMS)
+          test "$(cat oauth-probe/dist/SOURCE_COMMIT)" = "$SOURCE_SHA"
           /tmp/oauth-probe-venv/bin/pip install oauth-probe/dist/*.whl
           /tmp/oauth-probe-venv/bin/testmcpy-oauth schema >/dev/null
           /tmp/oauth-probe-venv/bin/testmcpy-oauth schema --kind report >/dev/null
@@ -80,7 +87,7 @@ jobs:
             --config examples/oauth-smoke/auth-smoke.example.yaml
       - uses: actions/upload-artifact@v4
         with:
-          name: testmcpy-oauth-probe-${{ github.sha }}
+          name: testmcpy-oauth-probe-${{ env.SOURCE_SHA }}
           path: oauth-probe/dist/*
           if-no-files-found: error
 

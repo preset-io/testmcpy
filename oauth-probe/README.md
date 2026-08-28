@@ -16,5 +16,6 @@ testmcpy-oauth check --config auth-smoke.yaml --format json --output report.json
 ```
 
 CI builds publish a `testmcpy-oauth-probe-<full Git SHA>` artifact containing
-the wheel, source archive, and `SHA256SUMS`. Pin the full commit/artifact name
-and verify the checksums before installation.
+the wheel, source archive, `SOURCE_COMMIT`, and `SHA256SUMS`. Pin the full
+commit/artifact name, confirm `SOURCE_COMMIT`, and verify the checksums before
+installation.
