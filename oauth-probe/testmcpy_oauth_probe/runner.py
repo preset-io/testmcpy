@@ -149,7 +149,12 @@ class ProbeRunner:
                 )
             )
         finally:
-            await transport.aclose()
+            try:
+                await transport.aclose()
+            except Exception:
+                # Closing must never turn an already-sanitized result into an
+                # escaping transport exception. No response data is emitted here.
+                pass
         return self._report(target, correlation_override, started_at, started, checks, registry)
 
     def _report(

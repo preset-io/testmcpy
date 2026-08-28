@@ -22,6 +22,7 @@ from testmcpy_oauth_probe.discovery import (
 from testmcpy_oauth_probe.models import CheckStatus
 from testmcpy_oauth_probe.reporters import to_human, to_json, to_jsonl, to_junit
 from testmcpy_oauth_probe.runner import ProbeRunner
+from testmcpy_oauth_probe.secrets import safe_url
 from testmcpy_oauth_probe.transport import HttpResponse
 
 ACCESS_SECRET = "access-token-secret-canary-123456789"
@@ -188,13 +189,18 @@ class FixtureTransport:
                 assert headers.get("mcp-session-id") == SESSION_SECRET
                 return self.response(url, 202)
             if rpc_method == "tools/list":
+                tools = (
+                    [{"name": "missing-schema"}]
+                    if self.scenario == "malformed_tool"
+                    else [{"name": "safe-tool", "inputSchema": {"type": "object"}}]
+                )
                 return self.response(
                     url,
                     200,
                     payload={
                         "jsonrpc": "2.0",
                         "id": json_body.get("id"),
-                        "result": {"tools": [{"name": "safe-tool"}]},
+                        "result": {"tools": tools},
                     },
                 )
         if url == "https://healthy.example.test/meta":
@@ -348,6 +354,8 @@ async def test_healthy_json_and_sse_roundtrips_are_stage_visible_and_redacted(
         assert secret not in rendered
     assert "example-revision" in rendered
     assert "test-region" in rendered
+    assert "service=example-mcp" in to_human(report)
+    assert 'name="service" value="example-mcp"' in to_junit(report)
     assert any(
         request[3] and request[3].get("refresh_token") == REFRESH_SECRET
         for request in transports[0].requests
@@ -375,6 +383,72 @@ async def test_opaque_token_is_valid_when_only_metadata_issuer_is_constrained() 
     assert checks["oauth.token.claims.policy"].status is CheckStatus.SKIP
     assert checks["mcp.initialize.protocol_contract"].status is CheckStatus.PASS
     assert report.exit_code == 0
+
+
+@pytest.mark.asyncio
+async def test_bearer_claim_policy_runs_without_optional_metadata_fetches() -> None:
+    document = json.loads(_manifest())
+    target = document["targets"]["healthy"]
+    target["oauth"] = {"flow": "bearer", "access_token": {"env": "TEST_ACCESS_TOKEN"}}
+    target["expectations"]["capabilities"].update(
+        {
+            "protected_resource_metadata": "ignore",
+            "authorization_server_metadata": "ignore",
+            "oidc_discovery": "ignore",
+        }
+    )
+    transport: FixtureTransport | None = None
+
+    def factory(target_config: object) -> FixtureTransport:
+        nonlocal transport
+        transport = FixtureTransport(target_config)
+        return transport
+
+    report = await ProbeRunner(
+        transport_factory=factory,
+        environ={"TEST_ACCESS_TOKEN": _jwt()},
+    ).run_manifest(loads_manifest(json.dumps(document)))
+
+    assert report.exit_code == 0
+    assert transport is not None
+    assert not [request for request in transport.requests if request[0] == "GET"]
+    checks = {check.id: check for check in report.reports[0].checks}
+    assert checks["oauth.token.claims.policy"].status is CheckStatus.PASS
+    assert checks["rfc9728.metadata.available"].status is CheckStatus.SKIP
+    assert checks["rfc8414.metadata.available"].status is CheckStatus.SKIP
+
+
+@pytest.mark.asyncio
+async def test_basic_client_credentials_are_form_encoded_before_base64() -> None:
+    transport: FixtureTransport | None = None
+
+    def factory(target_config: object) -> FixtureTransport:
+        nonlocal transport
+        transport = FixtureTransport(target_config)
+        return transport
+
+    report = await ProbeRunner(
+        transport_factory=factory,
+        environ={
+            "TEST_REFRESH_TOKEN": REFRESH_SECRET,
+            "TEST_CLIENT_ID": "client:name",
+            "TEST_CLIENT_SECRET": "secret/value",
+        },
+    ).run_manifest(loads_manifest(_manifest()))
+
+    assert report.exit_code == 0
+    assert transport is not None
+    token_request = next(
+        request
+        for request in transport.requests
+        if request[1] == "https://auth.example.test/token"
+        and request[3]
+        and request[3].get("grant_type") == "refresh_token"
+    )
+    authorization = token_request[2]["authorization"]
+    assert base64.b64decode(authorization.removeprefix("Basic ")).decode() == (
+        "client%3Aname:secret%2Fvalue"
+    )
 
 
 @pytest.mark.asyncio
@@ -456,6 +530,7 @@ async def test_confidential_client_and_preobtained_pkce_paths(flow: str, auth_me
         ("authenticated_500", "mcp.initialize.http_status"),
         ("malformed_challenge", "mcp.auth.challenge.bearer"),
         ("protocol_correlation", "mcp.initialize.protocol_contract"),
+        ("malformed_tool", "mcp.tools_list.protocol_contract"),
     ],
 )
 async def test_incident_and_malformed_protocol_scenarios_fail_deterministically(
@@ -528,6 +603,20 @@ def test_config_is_strict_versioned_and_credentials_are_references() -> None:
         loads_manifest(json.dumps(unknown_field))
     with pytest.raises(ConfigError, match="unsupported schema"):
         loads_manifest(_manifest().replace("oauth-smoke/v1", "oauth-smoke/v2"))
+    invalid_status = json.loads(_manifest())
+    invalid_status["targets"]["healthy"]["expectations"]["initialize_status"] = 42
+    with pytest.raises(ConfigError, match="HTTP status"):
+        loads_manifest(json.dumps(invalid_status))
+    empty_profile = json.loads(_manifest())
+    empty_profile["profiles"]["canary"]["targets"] = []
+    with pytest.raises(ConfigError, match="must not be empty"):
+        loads_manifest(json.dumps(empty_profile))
+    public_client_credentials = json.loads(_manifest())
+    public_client_credentials["targets"]["healthy"]["oauth"].update(
+        {"flow": "client_credentials", "client_auth_method": "none"}
+    )
+    with pytest.raises(ConfigError, match="confidential client"):
+        loads_manifest(json.dumps(public_client_credentials))
 
 
 def test_packaged_schema_and_documented_example_stay_loadable() -> None:
@@ -565,3 +654,5 @@ def test_discovery_builders_and_multi_challenge_parser_cover_path_issuers() -> N
         "scope": "read write",
         "resource_metadata": "https://mcp.example.test/meta",
     }
+    assert safe_url("https://[::1]:8443/path?secret=value") == "https://[::1]:8443/path"
+    assert safe_url("https://example.test:invalid/path") == "[INVALID URL]"

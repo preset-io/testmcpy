@@ -135,13 +135,14 @@ class HttpxTransport:
         started = time.monotonic()
         for attempt in range(attempts):
             try:
-                response = await self._client.request(
+                request = self._client.build_request(
                     method,
                     url,
                     headers=headers,
                     json=json_body,
                     data=form_body,
                 )
+                response = await self._client.send(request, stream=True)
             except (httpx.TimeoutException, httpx.NetworkError) as exc:
                 if attempt + 1 < attempts:
                     await asyncio.sleep(min(0.1 * (2**attempt), 0.5))
@@ -154,11 +155,20 @@ class HttpxTransport:
             await response.aclose()
             await asyncio.sleep(min(0.1 * (2**attempt), 0.5))
         assert response is not None
-        body = await response.aread()
-        latency_ms = int((time.monotonic() - started) * 1000)
-        if len(body) > self.target.max_response_bytes:
+        body_parts: list[bytes] = []
+        body_size = 0
+        try:
+            async for part in response.aiter_bytes():
+                body_size += len(part)
+                if body_size > self.target.max_response_bytes:
+                    raise TransportError("HTTP response exceeded the configured body-size limit")
+                body_parts.append(part)
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            raise TransportError("HTTP response failed while reading its body") from exc
+        finally:
             await response.aclose()
-            raise TransportError("HTTP response exceeded the configured body-size limit")
+        body = b"".join(body_parts)
+        latency_ms = int((time.monotonic() - started) * 1000)
         result = HttpResponse(
             status=response.status_code,
             headers={key.lower(): value for key, value in response.headers.items()},
@@ -166,7 +176,6 @@ class HttpxTransport:
             latency_ms=latency_ms,
             url=str(response.url),
         )
-        await response.aclose()
         return result
 
     async def aclose(self) -> None:

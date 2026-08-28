@@ -93,6 +93,8 @@ def _value_ref(value: Any, path: str) -> ValueRef | None:
     _only(data, {"env"}, path)
     env_name = _string(data.get("env"), f"{path}.env", required=True)
     assert env_name is not None
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", env_name):
+        raise ConfigError(f"{path}.env must be an environment variable name")
     return ValueRef(env=env_name)
 
 
@@ -173,6 +175,8 @@ def _oauth(value: Any, path: str) -> OAuthConfig:
         raise ConfigError(f"{path}.client_id is required for {auth_method.value}")
     if auth_method is not ClientAuthMethod.NONE and config.client_secret is None:
         raise ConfigError(f"{path}.client_secret is required for {auth_method.value}")
+    if flow is AuthFlow.CLIENT_CREDENTIALS and auth_method is ClientAuthMethod.NONE:
+        raise ConfigError(f"{path} client_credentials requires confidential client authentication")
     return config
 
 
@@ -203,17 +207,24 @@ def _expectations(value: Any, path: str) -> Expectations:
         ("unauthorized_status", 401),
         ("initialize_status", 200),
         ("tools_list_status", 200),
-        ("min_tools", 0),
     ):
         raw = data.get(name, default)
-        if not isinstance(raw, int) or raw < 0:
-            raise ConfigError(f"{path}.{name} must be a non-negative integer")
+        if not isinstance(raw, int) or isinstance(raw, bool) or not 100 <= raw <= 599:
+            raise ConfigError(f"{path}.{name} must be an HTTP status between 100 and 599")
         status_fields[name] = raw
+    min_tools = data.get("min_tools", 0)
+    if not isinstance(min_tools, int) or isinstance(min_tools, bool) or min_tools < 0:
+        raise ConfigError(f"{path}.min_tools must be a non-negative integer")
     initialized_statuses = data.get("initialized_statuses", [200, 202])
-    if not isinstance(initialized_statuses, list) or not all(
-        isinstance(item, int) and 100 <= item <= 599 for item in initialized_statuses
+    if (
+        not isinstance(initialized_statuses, list)
+        or not initialized_statuses
+        or not all(
+            isinstance(item, int) and not isinstance(item, bool) and 100 <= item <= 599
+            for item in initialized_statuses
+        )
     ):
-        raise ConfigError(f"{path}.initialized_statuses must be an array of HTTP statuses")
+        raise ConfigError(f"{path}.initialized_statuses must be a non-empty array of HTTP statuses")
     return Expectations(
         issuers=_strings(data.get("issuers"), f"{path}.issuers"),
         token_issuers=_strings(data.get("token_issuers"), f"{path}.token_issuers"),
@@ -228,7 +239,7 @@ def _expectations(value: Any, path: str) -> Expectations:
         initialize_status=status_fields["initialize_status"],
         initialized_statuses=tuple(initialized_statuses),
         tools_list_status=status_fields["tools_list_status"],
-        min_tools=status_fields["min_tools"],
+        min_tools=min_tools,
     )
 
 
@@ -244,6 +255,8 @@ def _correlation(value: Any, path: str) -> Correlation:
 
 
 def _target(target_id: str, value: Any, defaults: Mapping[str, Any]) -> TargetConfig:
+    if not target_id:
+        raise ConfigError("target IDs must be non-empty strings")
     path = f"targets.{target_id}"
     data = _mapping(value, path)
     _only(
@@ -321,9 +334,13 @@ def _parse(document: Any) -> Manifest:
     profile_values = _mapping(root.get("profiles"), "profiles")
     profiles: dict[str, RunProfile] = {}
     for profile_name, value in profile_values.items():
+        if not profile_name:
+            raise ConfigError("profile names must be non-empty strings")
         data = _mapping(value, f"profiles.{profile_name}")
         _only(data, {"targets"}, f"profiles.{profile_name}")
         selected = _strings(data.get("targets"), f"profiles.{profile_name}.targets")
+        if not selected:
+            raise ConfigError(f"profiles.{profile_name}.targets must not be empty")
         missing = sorted(set(selected) - set(targets))
         if missing:
             raise ConfigError(

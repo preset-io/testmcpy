@@ -41,6 +41,7 @@ def to_human(report: RunReport) -> str:
         correlation = ", ".join(
             value
             for value in (
+                f"service={target.correlation.service}" if target.correlation.service else "",
                 f"region={target.correlation.region}" if target.correlation.region else "",
                 f"revision={target.correlation.revision}" if target.correlation.revision else "",
                 f"deployment={target.correlation.deployment_id}"
@@ -85,6 +86,7 @@ def to_junit(report: RunReport) -> str:
         case_properties = ET.SubElement(case, "properties")
         for name, value in (
             ("target", target.target_id),
+            ("service", target.correlation.service),
             ("region", target.correlation.region),
             ("revision", target.correlation.revision),
             ("deployment_id", target.correlation.deployment_id),

@@ -107,9 +107,12 @@ def safe_url(value: str) -> str:
     """Remove userinfo, query, and fragment from a URL before evidence output."""
     try:
         parsed = urlsplit(value)
+        port = parsed.port
     except ValueError:
         return "[INVALID URL]"
     host = parsed.hostname or ""
-    if parsed.port is not None:
-        host = f"{host}:{parsed.port}"
+    if ":" in host:
+        host = f"[{host}]"
+    if port is not None:
+        host = f"{host}:{port}"
     return urlunsplit((parsed.scheme, host, parsed.path, "", ""))

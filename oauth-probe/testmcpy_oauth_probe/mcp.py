@@ -224,6 +224,7 @@ async def probe_mcp(
         return McpProbeResult(tuple(checks))
 
     tool_count = 0
+    tool_names: set[str] = set()
     cursor: str | None = None
     for page in range(20):
         started = time.monotonic()
@@ -263,6 +264,16 @@ async def probe_mcp(
             tools = result.get("tools")
             if not isinstance(tools, list) or not all(isinstance(tool, Mapping) for tool in tools):
                 raise ValueError("tools/list tools is not an array of objects")
+            for tool in tools:
+                name = tool.get("name")
+                input_schema = tool.get("inputSchema")
+                if not isinstance(name, str) or not name or not isinstance(input_schema, Mapping):
+                    raise ValueError(
+                        "tools/list tool entries require a non-empty name and inputSchema object"
+                    )
+                if name in tool_names:
+                    raise ValueError("tools/list returned a duplicate tool name across pages")
+                tool_names.add(name)
             tool_count += len(tools)
             next_cursor = result.get("nextCursor")
             if next_cursor is None:

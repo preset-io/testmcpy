@@ -15,7 +15,6 @@ from testmcpy_oauth_probe.models import (
     CapabilityPolicy,
     CheckResult,
     CheckStatus,
-    ClientAuthMethod,
     TargetConfig,
 )
 from testmcpy_oauth_probe.secrets import safe_url
@@ -45,6 +44,8 @@ class DiscoveryResult:
 def _origin(url: str) -> str:
     parsed = urlsplit(url)
     netloc = parsed.hostname or ""
+    if ":" in netloc:
+        netloc = f"[{netloc}]"
     if parsed.port is not None:
         netloc = f"{netloc}:{parsed.port}"
     return urlunsplit((parsed.scheme, netloc, "", "", ""))
@@ -308,10 +309,16 @@ async def discover(target: TargetConfig, transport: HttpTransport) -> DiscoveryR
     )
     started = time.monotonic()
     try:
-        prm_result = await _first_json(
-            transport,
-            protected_resource_metadata_urls(target.mcp_url, challenge.get("resource_metadata")),
-            "protected-resource metadata",
+        prm_result = (
+            None
+            if prm_policy is CapabilityPolicy.IGNORE
+            else await _first_json(
+                transport,
+                protected_resource_metadata_urls(
+                    target.mcp_url, challenge.get("resource_metadata")
+                ),
+                "protected-resource metadata",
+            )
         )
         prm = prm_result[2] if prm_result else None
         checks.append(
@@ -418,7 +425,7 @@ async def discover(target: TargetConfig, transport: HttpTransport) -> DiscoveryR
                 authorization_metadata_urls(selected_issuer),
                 "authorization-server metadata",
             )
-            if selected_issuer
+            if selected_issuer and auth_policy is not CapabilityPolicy.IGNORE
             else None
         )
         auth_metadata = auth_result[2] if auth_result else None
@@ -479,6 +486,8 @@ async def discover(target: TargetConfig, transport: HttpTransport) -> DiscoveryR
                 endpoint = endpoint_values.get(endpoint_name) or _absolute_url(
                     auth_metadata, endpoint_name
                 )
+                if endpoint is not None:
+                    validate_url_syntax(endpoint, target)
                 checks.append(
                     _policy_result(
                         check_id=f"oauth.endpoint.{endpoint_name}",
@@ -535,7 +544,11 @@ async def discover(target: TargetConfig, transport: HttpTransport) -> DiscoveryR
                         reference="RFC 8414 §2",
                     )
                 )
-            if target.oauth.client_auth_method is not ClientAuthMethod.NONE:
+            if target.oauth.flow in {
+                AuthFlow.REFRESH_TOKEN,
+                AuthFlow.CLIENT_CREDENTIALS,
+                AuthFlow.AUTHORIZATION_CODE,
+            }:
                 selected_method = target.oauth.client_auth_method.value
                 checks.append(
                     _policy_result(

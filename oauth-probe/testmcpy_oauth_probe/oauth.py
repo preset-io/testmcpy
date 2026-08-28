@@ -6,11 +6,12 @@ import base64
 import hashlib
 import hmac
 import json
+import re
 import secrets
 import time
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 from testmcpy_oauth_probe.models import (
     AuthFlow,
@@ -101,6 +102,53 @@ def _decode_claims(token: str) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
+def _token_claim_check(target: TargetConfig, token: str, *, started: float) -> CheckResult:
+    """Apply explicitly configured, diagnostic JWT routing-claim policy."""
+    if not target.expectations.token_issuers and not target.expectations.audiences:
+        return _check(
+            "oauth.token.claims.policy",
+            CheckStatus.SKIP,
+            "no JWT claim policy configured; opaque tokens remain valid",
+            started=started,
+            applicable=False,
+        )
+    claims = _decode_claims(token)
+    if claims is None:
+        return _check(
+            "oauth.token.claims.policy",
+            CheckStatus.FAIL,
+            "claim policy requires a JWT-shaped token but the token is opaque",
+            started=started,
+        )
+    issuer = claims.get("iss")
+    audience_value = claims.get("aud")
+    audiences = (
+        {audience_value}
+        if isinstance(audience_value, str)
+        else set(audience_value)
+        if isinstance(audience_value, list)
+        and all(isinstance(item, str) for item in audience_value)
+        else set()
+    )
+    issuer_ok = not target.expectations.token_issuers or issuer in target.expectations.token_issuers
+    audience_ok = not target.expectations.audiences or bool(
+        audiences.intersection(target.expectations.audiences)
+    )
+    return _check(
+        "oauth.token.claims.policy",
+        CheckStatus.PASS if issuer_ok and audience_ok else CheckStatus.FAIL,
+        "unverified routing claims match deployment policy"
+        if issuer_ok and audience_ok
+        else "unverified routing claims violate issuer/audience policy",
+        started=started,
+        evidence={
+            "issuer_matches": issuer_ok,
+            "audience_matches": audience_ok,
+            "note": "diagnostic claim decoding; MCP resource acceptance is authoritative",
+        },
+    )
+
+
 async def _safe_error_probe(
     token_endpoint: str,
     transport: HttpTransport,
@@ -159,7 +207,11 @@ def _apply_client_auth(
     if not client_id or not client_secret:
         raise ValueError(f"client credentials required for {method.value}")
     if method is ClientAuthMethod.CLIENT_SECRET_BASIC:
-        encoded = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+        # RFC 6749 §2.3.1 applies application/x-www-form-urlencoded encoding
+        # to each credential component before joining them with a colon.
+        encoded_id = quote(client_id, safe="")
+        encoded_secret = quote(client_secret, safe="")
+        encoded = base64.b64encode(f"{encoded_id}:{encoded_secret}".encode()).decode()
         registry.register(encoded)
         headers["authorization"] = f"Basic {encoded}"
     elif method is ClientAuthMethod.CLIENT_SECRET_POST:
@@ -202,6 +254,8 @@ async def acquire_token(
                 started=started,
             )
         )
+        assert token is not None
+        checks.append(_token_claim_check(target, token, started=started))
         return TokenResult(token, tuple(checks))
     if oauth.flow is AuthFlow.NONE:
         checks.append(
@@ -258,6 +312,11 @@ async def acquire_token(
             code = registry.resolve(oauth.authorization_code)
             verifier = registry.resolve(oauth.pkce_verifier)
             assert code is not None and verifier is not None and oauth.redirect_uri is not None
+            if (
+                not 43 <= len(verifier) <= 128
+                or re.fullmatch(r"[A-Za-z0-9._~-]+", verifier) is None
+            ):
+                raise ValueError("PKCE verifier must be 43-128 RFC 7636 unreserved characters")
             form.update(
                 {
                     "code": code,
@@ -405,60 +464,7 @@ async def acquire_token(
                 evidence={"missing_scopes": missing, "granted_scope_count": len(granted)},
             )
         )
-        claims = _decode_claims(access_token)
-        if target.expectations.token_issuers or target.expectations.audiences:
-            if claims is None:
-                checks.append(
-                    _check(
-                        "oauth.token.claims.policy",
-                        CheckStatus.FAIL,
-                        "claim policy requires a JWT-shaped token but the token is opaque",
-                        started=started,
-                    )
-                )
-            else:
-                issuer = claims.get("iss")
-                audience_value = claims.get("aud")
-                audiences = (
-                    {audience_value}
-                    if isinstance(audience_value, str)
-                    else set(audience_value)
-                    if isinstance(audience_value, list)
-                    and all(isinstance(item, str) for item in audience_value)
-                    else set()
-                )
-                issuer_ok = (
-                    not target.expectations.token_issuers
-                    or issuer in target.expectations.token_issuers
-                )
-                audience_ok = not target.expectations.audiences or bool(
-                    audiences.intersection(target.expectations.audiences)
-                )
-                checks.append(
-                    _check(
-                        "oauth.token.claims.policy",
-                        CheckStatus.PASS if issuer_ok and audience_ok else CheckStatus.FAIL,
-                        "unverified routing claims match deployment policy"
-                        if issuer_ok and audience_ok
-                        else "unverified routing claims violate issuer/audience policy",
-                        started=started,
-                        evidence={
-                            "issuer_matches": issuer_ok,
-                            "audience_matches": audience_ok,
-                            "note": "diagnostic claim decoding; MCP resource acceptance is authoritative",
-                        },
-                    )
-                )
-        else:
-            checks.append(
-                _check(
-                    "oauth.token.claims.policy",
-                    CheckStatus.SKIP,
-                    "no JWT claim policy configured; opaque tokens remain valid",
-                    started=started,
-                    applicable=False,
-                )
-            )
+        checks.append(_token_claim_check(target, access_token, started=started))
         return TokenResult(access_token, tuple(checks))
     except (TransportError, ValueError) as exc:
         checks.append(
