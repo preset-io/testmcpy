@@ -88,7 +88,7 @@ requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-where = ["."]
+where = [".", "oauth-probe"]
 include = ["testmcpy*"]
 
 [tool.setuptools.package-data]
@@ -226,6 +226,7 @@ all = [
 
 [project.scripts]
 testmcpy = "testmcpy.cli:app"
+testmcpy-oauth = "testmcpy_oauth_probe.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/preset-io/testmcpy"
