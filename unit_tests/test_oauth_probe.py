@@ -7,6 +7,7 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
+import httpx
 import pytest
 from jsonschema import Draft202012Validator
 from testmcpy_oauth_probe.config import (
@@ -21,11 +22,11 @@ from testmcpy_oauth_probe.discovery import (
     parse_bearer_challenge,
     protected_resource_metadata_urls,
 )
-from testmcpy_oauth_probe.models import CheckStatus
+from testmcpy_oauth_probe.models import CheckStatus, TargetConfig
 from testmcpy_oauth_probe.reporters import to_human, to_json, to_jsonl, to_junit
 from testmcpy_oauth_probe.runner import ProbeRunner
 from testmcpy_oauth_probe.secrets import safe_url
-from testmcpy_oauth_probe.transport import HttpResponse
+from testmcpy_oauth_probe.transport import HttpResponse, HttpxTransport, TransportError
 
 ACCESS_SECRET = "access-token-secret-canary-123456789"
 REFRESH_SECRET = "refresh-token-secret-canary-123456789"
@@ -656,3 +657,23 @@ def test_discovery_builders_and_multi_challenge_parser_cover_path_issuers() -> N
     }
     assert safe_url("https://[::1]:8443/path?secret=value") == "https://[::1]:8443/path"
     assert safe_url("https://example.test:invalid/path") == "[INVALID URL]"
+
+
+@pytest.mark.asyncio
+async def test_http_transport_enforces_body_limit_while_streaming() -> None:
+    target = TargetConfig(
+        id="bounded",
+        mcp_url=MCP_URL,
+        max_response_bytes=1024,
+        allow_private_network=True,
+    )
+    transport = HttpxTransport(target)
+    await transport._client.aclose()
+    transport._client = httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, content=b"x" * 2048))
+    )
+    try:
+        with pytest.raises(TransportError, match="body-size limit"):
+            await transport.request("GET", "https://healthy.example.test/oversized")
+    finally:
+        await transport.aclose()

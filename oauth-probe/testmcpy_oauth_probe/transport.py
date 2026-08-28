@@ -143,7 +143,7 @@ class HttpxTransport:
                     data=form_body,
                 )
                 response = await self._client.send(request, stream=True)
-            except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            except httpx.RequestError as exc:
                 if attempt + 1 < attempts:
                     await asyncio.sleep(min(0.1 * (2**attempt), 0.5))
                     continue
@@ -163,7 +163,7 @@ class HttpxTransport:
                 if body_size > self.target.max_response_bytes:
                     raise TransportError("HTTP response exceeded the configured body-size limit")
                 body_parts.append(part)
-        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+        except httpx.RequestError as exc:
             raise TransportError("HTTP response failed while reading its body") from exc
         finally:
             await response.aclose()
