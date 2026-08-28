@@ -28,7 +28,7 @@ from testmcpy.oauth_probe import ProbeRunner, load_manifest
 manifest = load_manifest("auth-smoke.yaml")
 report = await ProbeRunner().run_manifest(
     manifest,
-    target_ids=["staging-us"],
+    target_ids=["example-us"],
     run_id="build-123",
 )
 assert report.exit_code == 0
