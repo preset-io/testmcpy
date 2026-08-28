@@ -23,8 +23,9 @@ def to_jsonl(report: RunReport) -> str:
                         "id": report.run_id,
                         "tool_version": report.tool_version,
                         "started_at": report.started_at,
+                        "duration_ms": report.duration_ms,
                     },
-                    **target.to_dict(),
+                    "targets": [target.to_dict()],
                 },
                 sort_keys=True,
             )

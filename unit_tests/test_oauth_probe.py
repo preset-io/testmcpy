@@ -355,7 +355,10 @@ async def test_healthy_json_and_sse_roundtrips_are_stage_visible_and_redacted(
     rendered = "".join((to_json(report), to_jsonl(report), to_human(report), to_junit(report)))
     for secret in (ACCESS_SECRET, REFRESH_SECRET, CLIENT_SECRET, SESSION_SECRET, _jwt()):
         assert secret not in rendered
-    Draft202012Validator(report_json_schema()).validate(report.to_dict())
+    validator = Draft202012Validator(report_json_schema())
+    validator.validate(report.to_dict())
+    for line in to_jsonl(report).splitlines():
+        validator.validate(json.loads(line))
     assert "example-revision" in rendered
     assert "test-region" in rendered
     assert "service=example-mcp" in to_human(report)
