@@ -44,6 +44,7 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["unit_tests", "integration_tests"]
+pythonpath = ["oauth-probe"]
 python_files = ["test_*.py"]
 addopts = [
     "-v",
