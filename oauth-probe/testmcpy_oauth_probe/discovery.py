@@ -11,13 +11,20 @@ from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
 from testmcpy_oauth_probe.models import (
+    AuthFlow,
     CapabilityPolicy,
     CheckResult,
     CheckStatus,
+    ClientAuthMethod,
     TargetConfig,
 )
 from testmcpy_oauth_probe.secrets import safe_url
-from testmcpy_oauth_probe.transport import HttpResponse, HttpTransport, TransportError
+from testmcpy_oauth_probe.transport import (
+    HttpResponse,
+    HttpTransport,
+    TransportError,
+    validate_url_syntax,
+)
 
 _JSON_MEDIA_TYPES = ("application/json", "+json")
 _AUTH_PARAM_RE = re.compile(
@@ -451,8 +458,27 @@ async def discover(target: TargetConfig, transport: HttpTransport) -> DiscoveryR
             token_endpoint = target.oauth.token_endpoint or _absolute_url(
                 auth_metadata, "token_endpoint"
             )
+            response_types = _string_list(auth_metadata, "response_types_supported")
+            if response_types is None:
+                raise ValueError("metadata field response_types_supported is required")
+            endpoint_values = {
+                field: _absolute_url(auth_metadata, field)
+                for field in (
+                    "authorization_endpoint",
+                    "token_endpoint",
+                    "registration_endpoint",
+                    "revocation_endpoint",
+                    "introspection_endpoint",
+                    "jwks_uri",
+                )
+            }
+            for endpoint in endpoint_values.values():
+                if endpoint is not None:
+                    validate_url_syntax(endpoint, target)
             for endpoint_name, policy in target.expectations.endpoints.items():
-                endpoint = _absolute_url(auth_metadata, endpoint_name)
+                endpoint = endpoint_values.get(endpoint_name) or _absolute_url(
+                    auth_metadata, endpoint_name
+                )
                 checks.append(
                     _policy_result(
                         check_id=f"oauth.endpoint.{endpoint_name}",
@@ -478,6 +504,23 @@ async def discover(target: TargetConfig, transport: HttpTransport) -> DiscoveryR
                         reference="RFC 8414 §2",
                     )
                 )
+            selected_grant = {
+                AuthFlow.REFRESH_TOKEN: "refresh_token",
+                AuthFlow.CLIENT_CREDENTIALS: "client_credentials",
+                AuthFlow.AUTHORIZATION_CODE: "authorization_code",
+            }.get(target.oauth.flow)
+            if selected_grant is not None:
+                checks.append(
+                    _policy_result(
+                        check_id="oauth.grant.selected",
+                        stage="authorization_server_metadata",
+                        name=f"configured grant {selected_grant}",
+                        present=selected_grant in advertised_grants,
+                        policy=CapabilityPolicy.REQUIRED,
+                        started=started,
+                        reference="RFC 8414 §2",
+                    )
+                )
             methods = _string_list(auth_metadata, "token_endpoint_auth_methods_supported")
             advertised_methods = set(methods or ("client_secret_basic",))
             for method, policy in target.expectations.auth_methods.items():
@@ -490,6 +533,55 @@ async def discover(target: TargetConfig, transport: HttpTransport) -> DiscoveryR
                         policy=policy,
                         started=started,
                         reference="RFC 8414 §2",
+                    )
+                )
+            if target.oauth.client_auth_method is not ClientAuthMethod.NONE:
+                selected_method = target.oauth.client_auth_method.value
+                checks.append(
+                    _policy_result(
+                        check_id="oauth.client_auth.selected",
+                        stage="authorization_server_metadata",
+                        name=f"configured client auth method {selected_method}",
+                        present=selected_method in advertised_methods,
+                        policy=CapabilityPolicy.REQUIRED,
+                        started=started,
+                        reference="RFC 8414 §2",
+                    )
+                )
+            advertised_scopes = set(_string_list(auth_metadata, "scopes_supported") or ())
+            missing_scopes = sorted(set(target.expectations.scopes) - advertised_scopes)
+            checks.append(
+                _check(
+                    "rfc8414.scopes.policy",
+                    "authorization_server_metadata",
+                    CheckStatus.FAIL if missing_scopes else CheckStatus.PASS,
+                    "authorization metadata advertises required scopes"
+                    if not missing_scopes
+                    else "authorization metadata is missing required scopes",
+                    started=started,
+                    reference="RFC 8414 §2",
+                    evidence={"missing_scopes": missing_scopes},
+                )
+            )
+            if target.oauth.flow is AuthFlow.AUTHORIZATION_CODE:
+                pkce_methods = set(
+                    _string_list(auth_metadata, "code_challenge_methods_supported") or ()
+                )
+                auth_code_contract = (
+                    "code" in response_types
+                    and "S256" in pkce_methods
+                    and endpoint_values["authorization_endpoint"] is not None
+                )
+                checks.append(
+                    _check(
+                        "oauth.authorization_code.pkce_policy",
+                        "authorization_server_metadata",
+                        CheckStatus.PASS if auth_code_contract else CheckStatus.FAIL,
+                        "authorization-code metadata advertises code and PKCE S256"
+                        if auth_code_contract
+                        else "authorization-code metadata is missing code, endpoint, or PKCE S256",
+                        started=started,
+                        reference="RFC 7636 §4.2 / MCP Authorization",
                     )
                 )
             protected_resources = _string_list(auth_metadata, "protected_resources")

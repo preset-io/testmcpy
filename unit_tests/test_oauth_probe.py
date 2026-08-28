@@ -232,9 +232,18 @@ class FixtureTransport:
                     "token_endpoint": "https://auth.example.test/token",
                     "registration_endpoint": "https://auth.example.test/register",
                     "response_types_supported": ["code"],
-                    "grant_types_supported": ["authorization_code", "refresh_token"],
+                    "grant_types_supported": [
+                        "authorization_code",
+                        "refresh_token",
+                        "client_credentials",
+                    ],
                     "code_challenge_methods_supported": ["S256"],
-                    "token_endpoint_auth_methods_supported": ["client_secret_basic"],
+                    "token_endpoint_auth_methods_supported": [
+                        "none",
+                        "client_secret_basic",
+                        "client_secret_post",
+                        "client_secret_jwt",
+                    ],
                     "scopes_supported": ["mcp.read"],
                     "protected_resources": [MCP_URL],
                 },
@@ -317,6 +326,7 @@ async def test_healthy_json_and_sse_roundtrips_are_stage_visible_and_redacted(
         "rfc9728.resource.identity",
         "rfc8414.issuer.identity",
         "oauth.token.error_contract",
+        "oauth.refresh.rotation",
         "oauth.token.claims.policy",
         "mcp.initialize.protocol_contract",
         "mcp.initialized.http_status",
@@ -331,6 +341,75 @@ async def test_healthy_json_and_sse_roundtrips_are_stage_visible_and_redacted(
         request[3] and request[3].get("refresh_token") == REFRESH_SECRET
         for request in transports[0].requests
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("flow", "auth_method"),
+    [
+        ("client_credentials", "client_secret_jwt"),
+        ("authorization_code", "none"),
+    ],
+)
+async def test_confidential_client_and_preobtained_pkce_paths(flow: str, auth_method: str) -> None:
+    document = json.loads(_manifest())
+    oauth: dict[str, Any] = {
+        "flow": flow,
+        "client_id": {"env": "TEST_CLIENT_ID"},
+        "client_auth_method": auth_method,
+        "scopes": ["mcp.read"],
+        "resource": MCP_URL,
+        "audience": "mcp-api",
+    }
+    if auth_method != "none":
+        oauth["client_secret"] = {"env": "TEST_CLIENT_SECRET"}
+    if flow == "authorization_code":
+        oauth.update(
+            {
+                "authorization_code": {"env": "TEST_AUTH_CODE"},
+                "pkce_verifier": {"env": "TEST_PKCE_VERIFIER"},
+                "redirect_uri": "http://127.0.0.1:9876/callback",
+            }
+        )
+    document["targets"]["healthy"]["oauth"] = oauth
+    document["targets"]["healthy"]["expectations"]["grants"] = {flow: "required"}
+    document["targets"]["healthy"]["expectations"]["auth_methods"] = (
+        {auth_method: "required"} if auth_method != "none" else {}
+    )
+    transport: FixtureTransport | None = None
+
+    def factory(target: object) -> FixtureTransport:
+        nonlocal transport
+        transport = FixtureTransport(target)
+        return transport
+
+    report = await ProbeRunner(
+        transport_factory=factory,
+        environ={
+            "TEST_CLIENT_ID": "example-client",
+            "TEST_CLIENT_SECRET": CLIENT_SECRET,
+            "TEST_AUTH_CODE": "authorization-code-canary-123456789",
+            "TEST_PKCE_VERIFIER": "pkce-verifier-canary-123456789012345678901234567890",
+        },
+    ).run_manifest(loads_manifest(json.dumps(document)))
+    assert report.exit_code == 0
+    assert transport is not None
+    token_requests = [
+        request
+        for request in transport.requests
+        if request[1] == "https://auth.example.test/token"
+        and request[3]
+        and request[3].get("grant_type") == flow
+    ]
+    assert len(token_requests) == 1
+    form = token_requests[0][3]
+    assert form is not None
+    if flow == "client_credentials":
+        assert form.get("client_assertion_type")
+        assert form.get("client_assertion")
+    else:
+        assert form.get("code_verifier")
+        assert form.get("redirect_uri") == "http://127.0.0.1:9876/callback"
 
 
 @pytest.mark.asyncio

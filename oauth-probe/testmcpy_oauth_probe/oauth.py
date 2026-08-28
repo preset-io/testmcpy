@@ -14,6 +14,7 @@ from urllib.parse import urlsplit
 
 from testmcpy_oauth_probe.models import (
     AuthFlow,
+    CapabilityPolicy,
     CheckResult,
     CheckStatus,
     ClientAuthMethod,
@@ -246,10 +247,12 @@ async def acquire_token(
         "content-type": "application/x-www-form-urlencoded",
     }
     started = time.monotonic()
+    original_refresh_token: str | None = None
     try:
         if oauth.flow is AuthFlow.REFRESH_TOKEN:
             refresh_token = registry.resolve(oauth.refresh_token)
             assert refresh_token is not None
+            original_refresh_token = refresh_token
             form["refresh_token"] = refresh_token
         elif oauth.flow is AuthFlow.AUTHORIZATION_CODE:
             code = registry.resolve(oauth.authorization_code)
@@ -335,6 +338,56 @@ async def acquire_token(
                 reference="RFC 6749 §5.1",
             )
         )
+        if oauth.flow is AuthFlow.REFRESH_TOKEN:
+            rotation_policy = target.expectations.policy(
+                "refresh_rotation", CapabilityPolicy.SUPPORTED
+            )
+            rotated = (
+                isinstance(refresh, str) and bool(refresh) and refresh != original_refresh_token
+            )
+            if rotation_policy is CapabilityPolicy.IGNORE:
+                rotation_status = CheckStatus.SKIP
+                rotation_message = "refresh-token rotation ignored by policy"
+                applicable = False
+            elif rotation_policy is CapabilityPolicy.FORBIDDEN:
+                rotation_status = CheckStatus.FAIL if rotated else CheckStatus.PASS
+                rotation_message = (
+                    "refresh token rotated despite policy"
+                    if rotated
+                    else "refresh token did not rotate"
+                )
+                applicable = True
+            elif rotation_policy is CapabilityPolicy.REQUIRED:
+                rotation_status = CheckStatus.PASS if rotated else CheckStatus.FAIL
+                rotation_message = (
+                    "refresh token rotation observed"
+                    if rotated
+                    else "required refresh token rotation was not observed"
+                )
+                applicable = True
+            elif isinstance(refresh, str) and refresh:
+                rotation_status = CheckStatus.PASS
+                rotation_message = (
+                    "refresh token rotation observed"
+                    if rotated
+                    else "refresh token was reissued without rotation"
+                )
+                applicable = True
+            else:
+                rotation_status = CheckStatus.SKIP
+                rotation_message = "authorization server did not issue a new refresh token"
+                applicable = False
+            checks.append(
+                _check(
+                    "oauth.refresh.rotation",
+                    rotation_status,
+                    rotation_message,
+                    started=started,
+                    evidence={"rotated": rotated},
+                    reference="OAuth refresh-token deployment policy",
+                    applicable=applicable,
+                )
+            )
         granted_scope = payload.get("scope")
         granted = (
             set(granted_scope.split()) if isinstance(granted_scope, str) else set(oauth.scopes)
