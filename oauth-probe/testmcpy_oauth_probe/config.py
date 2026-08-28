@@ -69,6 +69,8 @@ def _strings(value: Any, path: str) -> tuple[str, ...]:
         return ()
     if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
         raise ConfigError(f"{path} must be an array of non-empty strings")
+    if len(set(value)) != len(value):
+        raise ConfigError(f"{path} must not contain duplicates")
     return tuple(value)
 
 
@@ -225,6 +227,8 @@ def _expectations(value: Any, path: str) -> Expectations:
         )
     ):
         raise ConfigError(f"{path}.initialized_statuses must be a non-empty array of HTTP statuses")
+    if len(set(initialized_statuses)) != len(initialized_statuses):
+        raise ConfigError(f"{path}.initialized_statuses must not contain duplicates")
     return Expectations(
         issuers=_strings(data.get("issuers"), f"{path}.issuers"),
         token_issuers=_strings(data.get("token_issuers"), f"{path}.token_issuers"),
@@ -367,14 +371,27 @@ def load_manifest(path: str | Path) -> Manifest:
     return loads_manifest(content, source=str(source))
 
 
-def manifest_json_schema() -> dict[str, Any]:
-    """Return the packaged machine-readable v1 schema."""
-    schema = files("testmcpy_oauth_probe").joinpath("schemas/oauth-smoke-v1.schema.json")
+def _json_schema(filename: str) -> dict[str, Any]:
+    schema = files("testmcpy_oauth_probe").joinpath(f"schemas/{filename}")
     value = json.loads(schema.read_text(encoding="utf-8"))
     if not isinstance(value, dict):  # pragma: no cover - package invariant
-        raise RuntimeError("packaged manifest schema is invalid")
+        raise RuntimeError("packaged schema is invalid")
     return value
+
+
+def manifest_json_schema() -> dict[str, Any]:
+    """Return the packaged machine-readable manifest v1 schema."""
+    return _json_schema("oauth-smoke-v1.schema.json")
+
+
+def report_json_schema() -> dict[str, Any]:
+    """Return the packaged machine-readable report v1 schema."""
+    return _json_schema("oauth-smoke-report-v1.schema.json")
 
 
 def dump_manifest_schema() -> str:
     return json.dumps(manifest_json_schema(), indent=2, sort_keys=True)
+
+
+def dump_report_schema() -> str:
+    return json.dumps(report_json_schema(), indent=2, sort_keys=True)

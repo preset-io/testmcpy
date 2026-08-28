@@ -5,49 +5,74 @@
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "run", "targets"],
+  "$defs": {
+    "correlation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "service", "region", "revision", "deployment_id"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "service": {"type": ["string", "null"]},
+        "region": {"type": ["string", "null"]},
+        "revision": {"type": ["string", "null"]},
+        "deployment_id": {"type": ["string", "null"]}
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pass", "fail", "skip", "warn", "error"],
+      "properties": {
+        "pass": {"type": "integer", "minimum": 0},
+        "fail": {"type": "integer", "minimum": 0},
+        "skip": {"type": "integer", "minimum": 0},
+        "warn": {"type": "integer", "minimum": 0},
+        "error": {"type": "integer", "minimum": 0}
+      }
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "stage", "status", "applicable", "message", "duration_ms", "evidence"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "stage": {"type": "string", "minLength": 1},
+        "status": {"enum": ["pass", "fail", "skip", "warn", "error"]},
+        "applicable": {"type": "boolean"},
+        "message": {"type": "string"},
+        "duration_ms": {"type": "integer", "minimum": 0},
+        "reference": {"type": "string", "minLength": 1},
+        "http_status": {"type": "integer", "minimum": 100, "maximum": 599},
+        "evidence": {"type": "object"}
+      }
+    },
+    "targetReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target", "spec_profile", "started_at", "duration_ms", "summary", "checks"],
+      "properties": {
+        "target": {"$ref": "#/$defs/correlation"},
+        "spec_profile": {"type": "string", "minLength": 1},
+        "started_at": {"type": "string", "format": "date-time"},
+        "duration_ms": {"type": "integer", "minimum": 0},
+        "summary": {"$ref": "#/$defs/summary"},
+        "checks": {"type": "array", "items": {"$ref": "#/$defs/check"}}
+      }
+    }
+  },
   "properties": {
     "schema": {"const": "testmcpy.io/oauth-smoke-report/v1"},
     "run": {
       "type": "object",
+      "additionalProperties": false,
       "required": ["id", "tool_version", "started_at", "duration_ms"],
       "properties": {
-        "id": {"type": "string"},
-        "tool_version": {"type": "string"},
+        "id": {"type": "string", "minLength": 1},
+        "tool_version": {"type": "string", "minLength": 1},
         "started_at": {"type": "string", "format": "date-time"},
         "duration_ms": {"type": "integer", "minimum": 0}
       }
     },
-    "targets": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["target", "spec_profile", "started_at", "duration_ms", "summary", "checks"],
-        "properties": {
-          "target": {"type": "object"},
-          "spec_profile": {"type": "string"},
-          "started_at": {"type": "string", "format": "date-time"},
-          "duration_ms": {"type": "integer", "minimum": 0},
-          "summary": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
-          "checks": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": ["id", "stage", "status", "applicable", "message", "duration_ms", "evidence"],
-              "properties": {
-                "id": {"type": "string"},
-                "stage": {"type": "string"},
-                "status": {"enum": ["pass", "fail", "skip", "warn", "error"]},
-                "applicable": {"type": "boolean"},
-                "message": {"type": "string"},
-                "duration_ms": {"type": "integer", "minimum": 0},
-                "reference": {"type": "string"},
-                "http_status": {"type": "integer", "minimum": 100, "maximum": 599},
-                "evidence": {"type": "object"}
-              }
-            }
-          }
-        }
-      }
-    }
+    "targets": {"type": "array", "items": {"$ref": "#/$defs/targetReport"}}
   }
 }

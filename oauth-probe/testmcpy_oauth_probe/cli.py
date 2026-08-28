@@ -11,6 +11,7 @@ from pathlib import Path
 from testmcpy_oauth_probe.config import (
     ConfigError,
     dump_manifest_schema,
+    dump_report_schema,
     load_manifest,
     loads_manifest,
 )
@@ -28,6 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
     validate = subparsers.add_parser("validate", help="Validate a manifest without network access")
     validate.add_argument("--config", required=True)
     schema = subparsers.add_parser("schema", help="Print the versioned manifest JSON Schema")
+    schema.add_argument("--kind", choices=("manifest", "report"), default="manifest")
     schema.set_defaults(command="schema")
     check = subparsers.add_parser("check", help="Run configured targets headlessly")
     check.add_argument("--config", required=True)
@@ -103,7 +105,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         if args.command == "schema":
-            print(dump_manifest_schema())
+            print(dump_report_schema() if args.kind == "report" else dump_manifest_schema())
             return 0
         if args.command == "validate":
             manifest = load_manifest(args.config)

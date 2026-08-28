@@ -7,7 +7,12 @@ from pathlib import Path
 from typing import Optional
 
 import typer
-from testmcpy_oauth_probe.config import ConfigError, dump_manifest_schema, load_manifest
+from testmcpy_oauth_probe.config import (
+    ConfigError,
+    dump_manifest_schema,
+    dump_report_schema,
+    load_manifest,
+)
 from testmcpy_oauth_probe.models import Correlation
 from testmcpy_oauth_probe.reporters import to_human, to_json, to_jsonl, to_junit
 from testmcpy_oauth_probe.runner import ProbeRunner
@@ -37,9 +42,15 @@ def validate(config: Path = typer.Option(..., "--config", exists=True, dir_okay=
 
 
 @auth_app.command("schema")
-def schema() -> None:
-    """Print the current manifest JSON Schema."""
-    console.print(dump_manifest_schema(), markup=False)
+def schema(
+    kind: str = typer.Option("manifest", "--kind", help="manifest or report"),
+) -> None:
+    """Print a current versioned JSON Schema."""
+    if kind not in {"manifest", "report"}:
+        console.print("[red]--kind must be manifest or report[/red]")
+        raise typer.Exit(2)
+    rendered = dump_report_schema() if kind == "report" else dump_manifest_schema()
+    console.print(rendered, markup=False)
 
 
 @auth_app.command("check")

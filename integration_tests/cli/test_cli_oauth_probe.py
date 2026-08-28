@@ -37,3 +37,7 @@ def test_standalone_headless_validate_and_schema(tmp_path: Path, capsys: object)
     _write_manifest(manifest)
     assert main(["validate", "--config", str(manifest)]) == 0
     assert main(["schema"]) == 0
+    assert main(["schema", "--kind", "report"]) == 0
+    result = runner.invoke(app, ["auth", "schema", "--kind", "report"])
+    assert result.exit_code == 0
+    assert "oauth-smoke-report/v1" in result.stdout

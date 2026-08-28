@@ -8,11 +8,13 @@ from collections.abc import Mapping
 from typing import Any
 
 import pytest
+from jsonschema import Draft202012Validator
 from testmcpy_oauth_probe.config import (
     ConfigError,
     load_manifest,
     loads_manifest,
     manifest_json_schema,
+    report_json_schema,
 )
 from testmcpy_oauth_probe.discovery import (
     authorization_metadata_urls,
@@ -352,6 +354,7 @@ async def test_healthy_json_and_sse_roundtrips_are_stage_visible_and_redacted(
     rendered = "".join((to_json(report), to_jsonl(report), to_human(report), to_junit(report)))
     for secret in (ACCESS_SECRET, REFRESH_SECRET, CLIENT_SECRET, SESSION_SECRET, _jwt()):
         assert secret not in rendered
+    Draft202012Validator(report_json_schema()).validate(report.to_dict())
     assert "example-revision" in rendered
     assert "test-region" in rendered
     assert "service=example-mcp" in to_human(report)
@@ -624,13 +627,10 @@ def test_packaged_schema_and_documented_example_stay_loadable() -> None:
     assert schema["$id"] == "testmcpy.io/oauth-smoke/v1"
     manifest = load_manifest("examples/oauth-smoke/auth-smoke.example.yaml")
     assert tuple(manifest.targets) == ("example-us",)
-    report_schema = json.loads(
-        open(
-            "oauth-probe/testmcpy_oauth_probe/schemas/oauth-smoke-report-v1.schema.json",
-            encoding="utf-8",
-        ).read()
-    )
+    report_schema = report_json_schema()
     assert report_schema["$id"] == "testmcpy.io/oauth-smoke-report/v1"
+    Draft202012Validator.check_schema(schema)
+    Draft202012Validator.check_schema(report_schema)
 
 
 def test_discovery_builders_and_multi_challenge_parser_cover_path_issuers() -> None:

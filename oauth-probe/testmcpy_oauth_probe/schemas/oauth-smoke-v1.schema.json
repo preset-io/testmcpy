@@ -18,10 +18,10 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "service": {"type": "string"},
-        "region": {"type": "string"},
-        "revision": {"type": "string"},
-        "deployment_id": {"type": "string"}
+        "service": {"type": "string", "minLength": 1},
+        "region": {"type": "string", "minLength": 1},
+        "revision": {"type": "string", "minLength": 1},
+        "deployment_id": {"type": "string", "minLength": 1}
       }
     },
     "oauth": {
@@ -36,7 +36,7 @@
         "client_id": {"oneOf": [{"type": "string"}, {"$ref": "#/$defs/secretRef"}]},
         "client_secret": {"$ref": "#/$defs/secretRef"},
         "client_auth_method": {"enum": ["none", "client_secret_basic", "client_secret_post", "client_secret_jwt"]},
-        "scopes": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "scopes": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
         "resource": {"type": "string", "format": "uri"},
         "audience": {"type": "string"},
         "token_endpoint": {"type": "string", "format": "uri"},
@@ -48,20 +48,32 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "issuers": {"type": "array", "items": {"type": "string", "format": "uri"}},
-        "token_issuers": {"type": "array", "items": {"type": "string", "format": "uri"}},
-        "resources": {"type": "array", "items": {"type": "string", "format": "uri"}},
-        "audiences": {"type": "array", "items": {"type": "string"}},
-        "scopes": {"type": "array", "items": {"type": "string"}},
+        "issuers": {"type": "array", "items": {"type": "string", "format": "uri"}, "uniqueItems": true},
+        "token_issuers": {"type": "array", "items": {"type": "string", "format": "uri"}, "uniqueItems": true},
+        "resources": {"type": "array", "items": {"type": "string", "format": "uri"}, "uniqueItems": true},
+        "audiences": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "scopes": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
         "grants": {"$ref": "#/$defs/policyMap"},
         "auth_methods": {"$ref": "#/$defs/policyMap"},
         "endpoints": {"$ref": "#/$defs/policyMap"},
         "capabilities": {"$ref": "#/$defs/policyMap"},
         "unauthorized_status": {"type": "integer", "minimum": 100, "maximum": 599},
         "initialize_status": {"type": "integer", "minimum": 100, "maximum": 599},
-        "initialized_statuses": {"type": "array", "items": {"type": "integer", "minimum": 100, "maximum": 599}},
+        "initialized_statuses": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "integer", "minimum": 100, "maximum": 599}},
         "tools_list_status": {"type": "integer", "minimum": 100, "maximum": 599},
         "min_tools": {"type": "integer", "minimum": 0}
+      }
+    },
+    "defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "spec_profile": {"type": "string", "minLength": 1},
+        "timeout_seconds": {"type": "number", "exclusiveMinimum": 0},
+        "max_response_bytes": {"type": "integer", "minimum": 1024},
+        "transient_retries": {"type": "integer", "minimum": 0, "maximum": 5},
+        "allow_http_loopback": {"type": "boolean"},
+        "allow_private_network": {"type": "boolean"}
       }
     },
     "target": {
@@ -70,7 +82,7 @@
       "required": ["mcp_url"],
       "properties": {
         "mcp_url": {"type": "string", "format": "uri"},
-        "spec_profile": {"type": "string"},
+        "spec_profile": {"type": "string", "minLength": 1},
         "correlation": {"$ref": "#/$defs/correlation"},
         "oauth": {"$ref": "#/$defs/oauth"},
         "expectations": {"$ref": "#/$defs/expectations"},
@@ -84,15 +96,16 @@
   },
   "properties": {
     "schema": {"const": "testmcpy.io/oauth-smoke/v1"},
-    "defaults": {"type": "object"},
-    "targets": {"type": "object", "minProperties": 1, "additionalProperties": {"$ref": "#/$defs/target"}},
+    "defaults": {"$ref": "#/$defs/defaults"},
+    "targets": {"type": "object", "minProperties": 1, "propertyNames": {"minLength": 1}, "additionalProperties": {"$ref": "#/$defs/target"}},
     "profiles": {
       "type": "object",
+      "propertyNames": {"minLength": 1},
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,
         "required": ["targets"],
-        "properties": {"targets": {"type": "array", "items": {"type": "string"}, "minItems": 1}}
+        "properties": {"targets": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1, "uniqueItems": true}}
       }
     }
   }
