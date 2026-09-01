@@ -9,7 +9,7 @@ import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
@@ -109,15 +109,31 @@ class HttpxTransport:
             trust_env=False,
         )
 
-    async def _validate_destination(self, url: str) -> None:
+    async def _validated_destinations(self, url: str) -> tuple[str, ...] | None:
+        """Validate a destination and return the addresses to connect to.
+
+        Returning the resolved addresses is important: validating one DNS lookup
+        and then allowing the HTTP stack to perform another leaves a DNS-rebinding
+        window between the policy check and the connection.
+        """
         hostname, port = validate_url_syntax(url, self.target)
         if self.target.allow_private_network:
-            return
+            return None
         addresses = await _resolved_addresses(hostname, port)
         if all(address.is_loopback for address in addresses) and self.target.allow_http_loopback:
-            return
+            return tuple(str(address) for address in addresses)
         if any(not address.is_global for address in addresses):
             raise TransportError("destination resolves to a non-public address blocked by policy")
+        return tuple(str(address) for address in addresses)
+
+    @staticmethod
+    def _connection_url(url: str, address: str) -> str:
+        """Replace only the URL host with an already validated IP address."""
+        parsed = urlsplit(url)
+        host = f"[{address}]" if ":" in address else address
+        if parsed.port is not None:
+            host = f"{host}:{parsed.port}"
+        return urlunsplit((parsed.scheme, host, parsed.path, parsed.query, ""))
 
     async def request(
         self,
@@ -129,12 +145,19 @@ class HttpxTransport:
         form_body: Mapping[str, str] | None = None,
         retry_safe: bool = False,
     ) -> HttpResponse:
-        await self._validate_destination(url)
+        destinations = await self._validated_destinations(url)
         attempts = self.target.transient_retries + 1 if retry_safe else 1
         response: httpx.Response | None = None
         started = time.monotonic()
         for attempt in range(attempts):
-            try:
+            response = None
+            last_error: httpx.RequestError | None = None
+            # When private-network protection is active, connect directly to an
+            # address from the validated DNS result.  Preserve the request's
+            # original Host header and TLS SNI so virtual hosting and certificate
+            # validation continue to use the configured hostname.
+            connection_targets = destinations or (None,)
+            for address in connection_targets:
                 request = self._client.build_request(
                     method,
                     url,
@@ -142,12 +165,22 @@ class HttpxTransport:
                     json=json_body,
                     data=form_body,
                 )
-                response = await self._client.send(request, stream=True)
-            except httpx.RequestError as exc:
+                if address is not None:
+                    original_hostname = request.url.host
+                    request.url = httpx.URL(self._connection_url(url, address))
+                    request.extensions["sni_hostname"] = original_hostname
+                try:
+                    response = await self._client.send(request, stream=True)
+                    break
+                except httpx.RequestError as exc:
+                    last_error = exc
+            if response is None:
                 if attempt + 1 < attempts:
                     await asyncio.sleep(min(0.1 * (2**attempt), 0.5))
                     continue
-                raise TransportError("HTTP request failed before receiving a response") from exc
+                raise TransportError(
+                    "HTTP request failed before receiving a response"
+                ) from last_error
             # Deterministic 4xx and 500 responses are never retried. Only
             # explicitly classified transient statuses on retry-safe requests are.
             if response.status_code not in _TRANSIENT_STATUSES or attempt + 1 >= attempts:
@@ -174,7 +207,10 @@ class HttpxTransport:
             headers={key.lower(): value for key, value in response.headers.items()},
             body=body,
             latency_ms=latency_ms,
-            url=str(response.url),
+            # The IP-address URL is an internal connection detail used to bind
+            # policy validation to the socket. Expose the configured URL to
+            # callers, not the pinned transport address.
+            url=url,
         )
         return result
 

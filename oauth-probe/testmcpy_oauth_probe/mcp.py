@@ -44,12 +44,23 @@ def _rpc_messages(response: HttpResponse) -> list[dict[str, Any]]:
     content_type = response.headers.get("content-type", "").lower()
     values: list[Any] = []
     if "text/event-stream" in content_type:
-        for line in response.text.splitlines():
-            if line.startswith("data:"):
+        # An SSE event may contain multiple data fields.  The event-stream
+        # algorithm joins them with newlines before the consumer interprets the
+        # payload; parsing each data line separately rejects valid pretty-printed
+        # or otherwise split JSON-RPC messages.
+        data_lines: list[str] = []
+        for line in [*response.text.splitlines(), ""]:
+            if not line:
+                if not data_lines:
+                    continue
                 try:
-                    values.append(json.loads(line[5:].strip()))
+                    values.append(json.loads("\n".join(data_lines)))
                 except json.JSONDecodeError as exc:
                     raise ValueError("MCP SSE response contains malformed JSON data") from exc
+                data_lines = []
+            elif line.startswith("data:"):
+                data = line[5:]
+                data_lines.append(data[1:] if data.startswith(" ") else data)
     elif "application/json" in content_type or "+json" in content_type:
         try:
             value = json.loads(response.body)

@@ -24,6 +24,7 @@ from testmcpy_oauth_probe.discovery import (
     parse_bearer_challenge,
     protected_resource_metadata_urls,
 )
+from testmcpy_oauth_probe.mcp import _rpc_messages
 from testmcpy_oauth_probe.models import CheckStatus, Correlation, TargetConfig
 from testmcpy_oauth_probe.reporters import to_human, to_json, to_jsonl, to_junit
 from testmcpy_oauth_probe.runner import ProbeRunner
@@ -695,3 +696,44 @@ async def test_http_transport_enforces_body_limit_while_streaming() -> None:
             await transport.request("GET", "https://healthy.example.test/oversized")
     finally:
         await transport.aclose()
+
+
+def test_mcp_sse_combines_multiline_event_data() -> None:
+    response = HttpResponse(
+        status=200,
+        headers={"content-type": "text/event-stream"},
+        body=b'data: {"jsonrpc": "2.0",\ndata: "id": "request-1",\ndata: "result": {}}\n\n',
+        latency_ms=1,
+        url=MCP_URL,
+    )
+
+    assert _rpc_messages(response) == [{"jsonrpc": "2.0", "id": "request-1", "result": {}}]
+
+
+@pytest.mark.asyncio
+async def test_http_transport_connects_to_validated_dns_address(monkeypatch) -> None:
+    target = TargetConfig(id="pinned", mcp_url=MCP_URL)
+    seen: list[httpx.Request] = []
+
+    async def resolved(hostname: str, port: int) -> tuple[Any, ...]:
+        assert (hostname, port) == ("healthy.example.test", 443)
+        import ipaddress
+
+        return (ipaddress.ip_address("8.8.8.8"),)
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, content=b"ok")
+
+    monkeypatch.setattr("testmcpy_oauth_probe.transport._resolved_addresses", resolved)
+    transport = HttpxTransport(target)
+    await transport._client.aclose()
+    transport._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        await transport.request("GET", MCP_URL)
+    finally:
+        await transport.aclose()
+
+    assert str(seen[0].url) == "https://8.8.8.8/mcp"
+    assert seen[0].headers["host"] == "healthy.example.test"
+    assert seen[0].extensions["sni_hostname"] == "healthy.example.test"
