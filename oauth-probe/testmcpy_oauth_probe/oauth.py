@@ -234,6 +234,7 @@ async def acquire_token(
     transport: HttpTransport,
     registry: SecretRegistry,
     token_endpoint: str | None,
+    discovered_resource: str | None = None,
 ) -> TokenResult:
     checks: list[CheckResult] = []
     oauth = target.oauth
@@ -326,8 +327,9 @@ async def acquire_token(
             )
         if oauth.scopes:
             form["scope"] = " ".join(oauth.scopes)
-        if oauth.resource:
-            form["resource"] = oauth.resource
+        resource = oauth.resource or discovered_resource
+        if resource:
+            form["resource"] = resource
         if oauth.audience:
             form["audience"] = oauth.audience
         _apply_client_auth(target, registry, token_endpoint, form, headers)

@@ -68,7 +68,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "spec_profile": {"type": "string", "minLength": 1},
+        "spec_profile": {"enum": ["mcp-2025-03-26", "mcp-2025-06-18", "mcp-2025-11-25"]},
         "timeout_seconds": {"type": "number", "exclusiveMinimum": 0},
         "max_response_bytes": {"type": "integer", "minimum": 1024},
         "transient_retries": {"type": "integer", "minimum": 0, "maximum": 5},
@@ -82,7 +82,7 @@
       "required": ["mcp_url"],
       "properties": {
         "mcp_url": {"type": "string", "format": "uri"},
-        "spec_profile": {"type": "string", "minLength": 1},
+        "spec_profile": {"enum": ["mcp-2025-03-26", "mcp-2025-06-18", "mcp-2025-11-25"]},
         "correlation": {"$ref": "#/$defs/correlation"},
         "oauth": {"$ref": "#/$defs/oauth"},
         "expectations": {"$ref": "#/$defs/expectations"},

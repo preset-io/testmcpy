@@ -39,6 +39,7 @@ class DiscoveryResult:
     authorization_metadata: dict[str, Any] | None
     oidc_metadata: dict[str, Any] | None
     token_endpoint: str | None
+    resource: str | None
 
 
 def _origin(url: str) -> str:
@@ -304,9 +305,12 @@ async def discover(target: TargetConfig, transport: HttpTransport) -> DiscoveryR
             )
         )
 
-    prm_policy = target.expectations.policy(
-        "protected_resource_metadata", CapabilityPolicy.REQUIRED
+    prm_default = (
+        CapabilityPolicy.SUPPORTED
+        if target.spec_profile == "mcp-2025-03-26"
+        else CapabilityPolicy.REQUIRED
     )
+    prm_policy = target.expectations.policy("protected_resource_metadata", prm_default)
     started = time.monotonic()
     try:
         prm_result = (
@@ -337,9 +341,10 @@ async def discover(target: TargetConfig, transport: HttpTransport) -> DiscoveryR
             resource = prm.get("resource")
             if not isinstance(resource, str) or not resource:
                 raise ValueError("protected-resource metadata resource must be a URL string")
-            expected_resources = target.expectations.resources or (
-                target.oauth.resource or target.mcp_url,
-            )
+            # RFC 9728 binds metadata to the protected resource used for
+            # discovery. Deployment expectations may tighten policy but may
+            # never replace this trust binding.
+            expected_resources = (target.mcp_url,)
             checks.append(
                 _check(
                     "rfc9728.resource.identity",
@@ -355,6 +360,17 @@ async def discover(target: TargetConfig, transport: HttpTransport) -> DiscoveryR
                 )
             )
             servers = _string_list(prm, "authorization_servers") or ()
+            if target.spec_profile != "mcp-2025-03-26" and not servers:
+                checks.append(
+                    _check(
+                        "rfc9728.authorization_servers.required",
+                        "protected_resource_metadata",
+                        CheckStatus.FAIL,
+                        "protected-resource metadata must advertise an authorization server",
+                        started=started,
+                        reference="MCP Authorization 2025-06-18 / RFC 9728 §2",
+                    )
+                )
             scopes = _string_list(prm, "scopes_supported") or ()
             missing_scopes = sorted(set(target.expectations.scopes) - set(scopes))
             checks.append(
@@ -409,6 +425,8 @@ async def discover(target: TargetConfig, transport: HttpTransport) -> DiscoveryR
                     evidence={"advertised_count": len(servers)},
                 )
             )
+    elif target.spec_profile != "mcp-2025-03-26":
+        selected_issuer = None
     elif expected_issuers:
         selected_issuer = expected_issuers[0] if len(expected_issuers) == 1 else None
     else:
@@ -640,7 +658,12 @@ async def discover(target: TargetConfig, transport: HttpTransport) -> DiscoveryR
             )
         )
 
-    oidc_policy = target.expectations.policy("oidc_discovery", CapabilityPolicy.SUPPORTED)
+    oidc_default = (
+        CapabilityPolicy.REQUIRED
+        if target.spec_profile == "mcp-2025-11-25"
+        else CapabilityPolicy.SUPPORTED
+    )
+    oidc_policy = target.expectations.policy("oidc_discovery", oidc_default)
     started = time.monotonic()
     try:
         oidc_result = (
@@ -693,4 +716,9 @@ async def discover(target: TargetConfig, transport: HttpTransport) -> DiscoveryR
         authorization_metadata=auth_metadata,
         oidc_metadata=oidc_metadata,
         token_endpoint=token_endpoint,
+        resource=(
+            prm.get("resource")
+            if isinstance(prm, dict) and prm.get("resource") == target.mcp_url
+            else None
+        ),
     )

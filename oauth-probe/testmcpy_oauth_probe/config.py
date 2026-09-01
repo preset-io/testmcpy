@@ -15,6 +15,7 @@ import yaml
 
 from testmcpy_oauth_probe.models import (
     CONFIG_SCHEMA,
+    SUPPORTED_SPEC_PROFILES,
     AuthFlow,
     CapabilityPolicy,
     ClientAuthMethod,
@@ -284,6 +285,10 @@ def _target(target_id: str, value: Any, defaults: Mapping[str, Any]) -> TargetCo
     mcp_url = _string(merged.get("mcp_url"), f"{path}.mcp_url", required=True)
     spec_profile = _string(merged.get("spec_profile", "mcp-2025-06-18"), f"{path}.spec_profile")
     assert mcp_url is not None and spec_profile is not None
+    if spec_profile not in SUPPORTED_SPEC_PROFILES:
+        raise ConfigError(
+            f"{path}.spec_profile must be one of: {', '.join(SUPPORTED_SPEC_PROFILES)}"
+        )
     timeout = merged.get("timeout_seconds", 20.0)
     if (
         not isinstance(timeout, (int, float))
@@ -294,7 +299,7 @@ def _target(target_id: str, value: Any, defaults: Mapping[str, Any]) -> TargetCo
         raise ConfigError(f"{path}.timeout_seconds must be positive")
     max_bytes = merged.get("max_response_bytes", 1_048_576)
     retries = merged.get("transient_retries", 1)
-    if not isinstance(max_bytes, int) or max_bytes < 1024:
+    if not isinstance(max_bytes, int) or isinstance(max_bytes, bool) or max_bytes < 1024:
         raise ConfigError(f"{path}.max_response_bytes must be an integer >= 1024")
     if not isinstance(retries, int) or isinstance(retries, bool) or not 0 <= retries <= 5:
         raise ConfigError(f"{path}.transient_retries must be between 0 and 5")

@@ -84,6 +84,11 @@ manifest produces a report even when a target errors.
 
 ## What is checked
 
+The manifest accepts only the implemented authorization profiles:
+`mcp-2025-03-26`, `mcp-2025-06-18`, and `mcp-2025-11-25`. The selected profile
+changes discovery requirements; arbitrary future version strings are rejected
+instead of being tested with incorrect rules.
+
 - exact unauthorized status and structured Bearer challenge hints;
 - RFC 9728 path/root discovery, JSON contract, exact resource identity,
   authorization-server selection, and scope policy;
@@ -116,6 +121,11 @@ access token valid when only metadata issuer identity is being asserted; the
 authenticated MCP response remains the authoritative audience/resource check.
 
 ## Compatibility and dual-run migration
+
+The **Auth Smoke** web page mirrors the CLI adapter. It validates the canonical
+YAML/JSON manifest, invokes the same `ProbeRunner` server-side, and renders its
+typed stage results. Credentials remain environment-variable references and
+are resolved and redacted only by the runner.
 
 This release is additive. Existing `smoke-test`, `tools`, Auth Debugger UI,
 profiles, OAuth cache, and reports keep their behavior. The new result is a

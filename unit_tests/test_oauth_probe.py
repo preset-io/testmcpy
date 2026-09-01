@@ -737,3 +737,17 @@ async def test_http_transport_connects_to_validated_dns_address(monkeypatch) -> 
     assert str(seen[0].url) == "https://8.8.8.8/mcp"
     assert seen[0].headers["host"] == "healthy.example.test"
     assert seen[0].extensions["sni_hostname"] == "healthy.example.test"
+
+
+def test_manifest_rejects_unknown_mcp_spec_profile() -> None:
+    document = json.loads(_manifest())
+    document["targets"]["healthy"]["spec_profile"] = "mcp-future"
+    with pytest.raises(ConfigError, match="spec_profile must be one of"):
+        loads_manifest(json.dumps(document))
+
+
+def test_manifest_rejects_boolean_response_limit() -> None:
+    document = json.loads(_manifest())
+    document["targets"]["healthy"]["max_response_bytes"] = True
+    with pytest.raises(ConfigError, match="max_response_bytes"):
+        loads_manifest(json.dumps(document))

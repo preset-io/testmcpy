@@ -122,6 +122,7 @@ class ProbeRunner:
                 transport,
                 registry,
                 discovery.token_endpoint,
+                discovery.resource,
             )
             checks.extend(token.checks)
             if token.access_token:

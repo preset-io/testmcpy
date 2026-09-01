@@ -8,6 +8,11 @@ from typing import Any
 
 CONFIG_SCHEMA = "testmcpy.io/oauth-smoke/v1"
 REPORT_SCHEMA = "testmcpy.io/oauth-smoke-report/v1"
+SUPPORTED_SPEC_PROFILES = (
+    "mcp-2025-03-26",
+    "mcp-2025-06-18",
+    "mcp-2025-11-25",
+)
 
 
 class CapabilityPolicy(str, Enum):
