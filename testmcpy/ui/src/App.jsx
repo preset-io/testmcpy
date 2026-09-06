@@ -18,6 +18,7 @@ import {
   Moon,
   Monitor,
   TrendingUp,
+  ShieldCheck,
 } from 'lucide-react'
 
 import MCPExplorer from './pages/MCPExplorer'
@@ -32,6 +33,7 @@ import Reports from './pages/Reports'
 import Performance from './pages/Performance'
 import Servers from './pages/Servers'
 import SecurityDashboard from './pages/SecurityDashboard'
+import OAuthProbe from './pages/OAuthProbe'
 import { TestRunProvider } from './contexts/TestRunContext'
 import { ThemeProvider, useTheme } from './contexts/ThemeContext'
 import { NotificationProvider } from './components/NotificationProvider'
@@ -355,6 +357,7 @@ function AppContent() {
     { section: 'Settings' },
     { path: '/security', label: 'Security', icon: Shield },
     { path: '/auth-debugger', label: 'Auth Debug', icon: Shield },
+    { path: '/auth-smoke', label: 'Auth Smoke', icon: ShieldCheck },
     { path: '/config', label: 'Config', icon: Settings },
   ]
 
@@ -620,6 +623,7 @@ function AppContent() {
               <Route path="/compatibility" element={<Navigate to="/servers" replace />} />
               <Route path="/security" element={<SecurityDashboard />} />
               <Route path="/auth-debugger" element={<AuthDebugger />} />
+              <Route path="/auth-smoke" element={<OAuthProbe />} />
               <Route path="/config" element={<Configuration />} />
               <Route path="/mcp-profiles" element={
                 <MCPProfiles

@@ -6,6 +6,7 @@ from testmcpy.cli.app import app, console
 from testmcpy.cli.commands import (
     agent,  # noqa: F401
     analytics,  # noqa: F401
+    auth,  # noqa: F401
     badge,  # noqa: F401
     baseline,  # noqa: F401
     bench,  # noqa: F401

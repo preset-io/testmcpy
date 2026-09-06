@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "testmcpy.io/oauth-smoke/v1",
+  "title": "testmcpy OAuth/MCP probe manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "targets"],
+  "$defs": {
+    "secretRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["env"],
+      "properties": {"env": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"}}
+    },
+    "policy": {"enum": ["required", "supported", "forbidden", "ignore"]},
+    "policyMap": {"type": "object", "additionalProperties": {"$ref": "#/$defs/policy"}},
+    "correlation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "service": {"type": "string", "minLength": 1},
+        "region": {"type": "string", "minLength": 1},
+        "revision": {"type": "string", "minLength": 1},
+        "deployment_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "oauth": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "flow": {"enum": ["none", "bearer", "refresh_token", "client_credentials", "authorization_code"]},
+        "access_token": {"$ref": "#/$defs/secretRef"},
+        "refresh_token": {"$ref": "#/$defs/secretRef"},
+        "authorization_code": {"$ref": "#/$defs/secretRef"},
+        "pkce_verifier": {"$ref": "#/$defs/secretRef"},
+        "client_id": {"oneOf": [{"type": "string"}, {"$ref": "#/$defs/secretRef"}]},
+        "client_secret": {"$ref": "#/$defs/secretRef"},
+        "client_auth_method": {"enum": ["none", "client_secret_basic", "client_secret_post", "client_secret_jwt"]},
+        "scopes": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "resource": {"type": "string", "format": "uri"},
+        "audience": {"type": "string"},
+        "token_endpoint": {"type": "string", "format": "uri"},
+        "redirect_uri": {"type": "string", "format": "uri"},
+        "error_probe": {"type": "boolean"}
+      }
+    },
+    "expectations": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "issuers": {"type": "array", "items": {"type": "string", "format": "uri"}, "uniqueItems": true},
+        "token_issuers": {"type": "array", "items": {"type": "string", "format": "uri"}, "uniqueItems": true},
+        "resources": {"type": "array", "items": {"type": "string", "format": "uri"}, "uniqueItems": true},
+        "audiences": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "scopes": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "grants": {"$ref": "#/$defs/policyMap"},
+        "auth_methods": {"$ref": "#/$defs/policyMap"},
+        "endpoints": {"$ref": "#/$defs/policyMap"},
+        "capabilities": {"$ref": "#/$defs/policyMap"},
+        "unauthorized_status": {"type": "integer", "minimum": 100, "maximum": 599},
+        "initialize_status": {"type": "integer", "minimum": 100, "maximum": 599},
+        "initialized_statuses": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "integer", "minimum": 100, "maximum": 599}},
+        "tools_list_status": {"type": "integer", "minimum": 100, "maximum": 599},
+        "min_tools": {"type": "integer", "minimum": 0}
+      }
+    },
+    "defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "spec_profile": {"enum": ["mcp-2025-03-26", "mcp-2025-06-18", "mcp-2025-11-25"]},
+        "timeout_seconds": {"type": "number", "exclusiveMinimum": 0},
+        "max_response_bytes": {"type": "integer", "minimum": 1024},
+        "transient_retries": {"type": "integer", "minimum": 0, "maximum": 5},
+        "allow_http_loopback": {"type": "boolean"},
+        "allow_private_network": {"type": "boolean"}
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mcp_url"],
+      "properties": {
+        "mcp_url": {"type": "string", "format": "uri"},
+        "spec_profile": {"enum": ["mcp-2025-03-26", "mcp-2025-06-18", "mcp-2025-11-25"]},
+        "correlation": {"$ref": "#/$defs/correlation"},
+        "oauth": {"$ref": "#/$defs/oauth"},
+        "expectations": {"$ref": "#/$defs/expectations"},
+        "timeout_seconds": {"type": "number", "exclusiveMinimum": 0},
+        "max_response_bytes": {"type": "integer", "minimum": 1024},
+        "transient_retries": {"type": "integer", "minimum": 0, "maximum": 5},
+        "allow_http_loopback": {"type": "boolean"},
+        "allow_private_network": {"type": "boolean"}
+      }
+    }
+  },
+  "properties": {
+    "schema": {"const": "testmcpy.io/oauth-smoke/v1"},
+    "defaults": {"$ref": "#/$defs/defaults"},
+    "targets": {"type": "object", "minProperties": 1, "propertyNames": {"minLength": 1}, "additionalProperties": {"$ref": "#/$defs/target"}},
+    "profiles": {
+      "type": "object",
+      "propertyNames": {"minLength": 1},
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["targets"],
+        "properties": {"targets": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1, "uniqueItems": true}}
+      }
+    }
+  }
+}

@@ -34,6 +34,11 @@ async def search(q: str = Query(..., min_length=1, max_length=200)) -> dict:
         {"name": "MCP Health", "path": "/health", "keywords": "mcp health status"},
         {"name": "Security", "path": "/security", "keywords": "security audit"},
         {"name": "Auth Debugger", "path": "/auth-debugger", "keywords": "auth debug oauth jwt"},
+        {
+            "name": "Auth Smoke",
+            "path": "/auth-smoke",
+            "keywords": "auth oauth smoke probe interoperability",
+        },
         {"name": "Config", "path": "/config", "keywords": "config settings configuration"},
         {"name": "MCP Profiles", "path": "/mcp-profiles", "keywords": "mcp profiles server"},
         {

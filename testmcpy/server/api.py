@@ -49,6 +49,7 @@ from testmcpy.server.routers import health as health_router  # noqa: E402
 from testmcpy.server.routers import llm as llm_router  # noqa: E402
 from testmcpy.server.routers import mcp_profiles as mcp_profiles_router  # noqa: E402
 from testmcpy.server.routers import metrics as metrics_router  # noqa: E402
+from testmcpy.server.routers import oauth_probe as oauth_probe_router  # noqa: E402
 from testmcpy.server.routers import results as results_router  # noqa: E402
 from testmcpy.server.routers import runs as runs_router  # noqa: E402
 from testmcpy.server.routers import search as search_router  # noqa: E402
@@ -742,6 +743,7 @@ app.include_router(compatibility_router.router)
 app.include_router(compare_router.router)
 app.include_router(health_router.router)
 app.include_router(metrics_router.router)
+app.include_router(oauth_probe_router.router)
 app.include_router(security_router.router)
 app.include_router(tools_router.router)
 app.include_router(search_router.router)

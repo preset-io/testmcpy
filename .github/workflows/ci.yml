@@ -29,11 +29,14 @@ jobs:
 
       - name: Lint with ruff
         run: |
-          ruff check testmcpy unit_tests integration_tests
-          ruff format --check testmcpy unit_tests integration_tests
+          ruff check testmcpy oauth-probe/testmcpy_oauth_probe unit_tests integration_tests
+          ruff format --check testmcpy oauth-probe/testmcpy_oauth_probe unit_tests integration_tests
 
       - name: Type check with mypy (ratchet — fails only if error count grows)
         run: bash scripts/check_mypy_ratchet.sh
+
+      - name: Type check headless OAuth probe (strict)
+        run: mypy --strict oauth-probe/testmcpy_oauth_probe
 
       - name: Run tests with pytest
         run: pytest unit_tests/ --cov=testmcpy --cov-report=xml --cov-report=term
@@ -47,6 +50,46 @@ jobs:
         with:
           file: ./coverage.xml
           fail_ci_if_error: false
+
+  oauth-probe-package:
+    name: Headless OAuth probe package
+    runs-on: ubuntu-latest
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: 'pip'
+          cache-dependency-path: oauth-probe/pyproject.toml
+      - name: Build minimal wheel and sdist
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          python -m build oauth-probe --outdir oauth-probe/dist
+          python -m twine check oauth-probe/dist/*
+          printf '%s\n' "$SOURCE_SHA" > oauth-probe/dist/SOURCE_COMMIT
+          (cd oauth-probe/dist && sha256sum *.whl *.tar.gz SOURCE_COMMIT > SHA256SUMS)
+          (cd oauth-probe/dist && sha256sum --check SHA256SUMS)
+      - name: Smoke clean minimal install
+        run: |
+          python -m venv /tmp/oauth-probe-venv
+          (cd oauth-probe/dist && sha256sum --check SHA256SUMS)
+          test "$(cat oauth-probe/dist/SOURCE_COMMIT)" = "$SOURCE_SHA"
+          /tmp/oauth-probe-venv/bin/pip install oauth-probe/dist/*.whl
+          /tmp/oauth-probe-venv/bin/testmcpy-oauth schema >/dev/null
+          /tmp/oauth-probe-venv/bin/testmcpy-oauth schema --kind report >/dev/null
+          /tmp/oauth-probe-venv/bin/testmcpy-oauth validate \
+            --config examples/oauth-smoke/auth-smoke.example.yaml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: testmcpy-oauth-probe-${{ env.SOURCE_SHA }}
+          path: oauth-probe/dist/*
+          if-no-files-found: error
 
   mcp-prerelease-canary:
     # Early warning for the MCP stateless-spec transition (2026-07-28 RC):
