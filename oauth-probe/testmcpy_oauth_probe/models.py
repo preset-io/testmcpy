@@ -118,7 +118,7 @@ class TargetConfig:
     timeout_seconds: float = 20.0
     max_response_bytes: int = 1_048_576
     transient_retries: int = 1
-    allow_http_loopback: bool = True
+    allow_http_loopback: bool = False
     allow_private_network: bool = False
 
 

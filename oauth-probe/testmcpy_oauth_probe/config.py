@@ -304,7 +304,7 @@ def _target(target_id: str, value: Any, defaults: Mapping[str, Any]) -> TargetCo
     if not isinstance(retries, int) or isinstance(retries, bool) or not 0 <= retries <= 5:
         raise ConfigError(f"{path}.transient_retries must be between 0 and 5")
     for boolean_name in ("allow_http_loopback", "allow_private_network"):
-        if not isinstance(merged.get(boolean_name, boolean_name == "allow_http_loopback"), bool):
+        if not isinstance(merged.get(boolean_name, False), bool):
             raise ConfigError(f"{path}.{boolean_name} must be a boolean")
     return TargetConfig(
         id=target_id,
@@ -316,7 +316,7 @@ def _target(target_id: str, value: Any, defaults: Mapping[str, Any]) -> TargetCo
         timeout_seconds=float(timeout),
         max_response_bytes=max_bytes,
         transient_retries=retries,
-        allow_http_loopback=merged.get("allow_http_loopback", True),
+        allow_http_loopback=merged.get("allow_http_loopback", False),
         allow_private_network=merged.get("allow_private_network", False),
     )
 

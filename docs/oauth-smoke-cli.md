@@ -74,6 +74,10 @@ Credentials are accepted only through named environment references in the
 manifest. The probe never accepts credential values on argv, never writes
 tokens/codes/verifiers/client secrets/session IDs to files, and sanitizes at
 event and serialization boundaries. Use masked, least-privilege CI variables.
+All target, challenge-supplied metadata, discovery, redirect, and token endpoint
+destinations must resolve exclusively to public addresses by default. Local
+fixtures must explicitly set `allow_http_loopback: true`; access to any other
+private network requires the broader `allow_private_network: true` opt-in.
 Token acquisition, refresh, and authenticated MCP requests are never retried;
 deterministic 4xx, HTTP 500, and protocol failures are reported once. Only
 explicitly classified transient discovery GETs may retry.

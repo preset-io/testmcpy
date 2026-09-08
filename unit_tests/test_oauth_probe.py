@@ -29,7 +29,12 @@ from testmcpy_oauth_probe.models import CheckStatus, Correlation, TargetConfig
 from testmcpy_oauth_probe.reporters import to_human, to_json, to_jsonl, to_junit
 from testmcpy_oauth_probe.runner import ProbeRunner
 from testmcpy_oauth_probe.secrets import safe_url
-from testmcpy_oauth_probe.transport import HttpResponse, HttpxTransport, TransportError
+from testmcpy_oauth_probe.transport import (
+    HttpResponse,
+    HttpxTransport,
+    TransportError,
+    validate_url_syntax,
+)
 
 ACCESS_SECRET = "access-token-secret-canary-123456789"
 REFRESH_SECRET = "refresh-token-secret-canary-123456789"
@@ -737,6 +742,46 @@ async def test_http_transport_connects_to_validated_dns_address(monkeypatch) -> 
     assert str(seen[0].url) == "https://8.8.8.8/mcp"
     assert seen[0].headers["host"] == "healthy.example.test"
     assert seen[0].extensions["sni_hostname"] == "healthy.example.test"
+
+
+@pytest.mark.asyncio
+async def test_http_transport_requires_explicit_loopback_opt_in(monkeypatch) -> None:
+    import ipaddress
+
+    async def resolved(hostname: str, port: int) -> tuple[Any, ...]:
+        assert port == 443
+        return (ipaddress.ip_address("127.0.0.1"),)
+
+    monkeypatch.setattr("testmcpy_oauth_probe.transport._resolved_addresses", resolved)
+    default_target = TargetConfig(id="public", mcp_url=MCP_URL)
+    default_transport = HttpxTransport(default_target)
+    try:
+        with pytest.raises(TransportError, match="non-public address blocked by policy"):
+            await default_transport._validated_destinations("https://metadata.example.test/oauth")
+    finally:
+        await default_transport.aclose()
+
+    opted_in_target = TargetConfig(
+        id="local-fixture",
+        mcp_url="http://localhost:8000/mcp",
+        allow_http_loopback=True,
+    )
+    assert validate_url_syntax("http://localhost:8000/mcp", opted_in_target) == (
+        "localhost",
+        8000,
+    )
+    opted_in_transport = HttpxTransport(opted_in_target)
+    try:
+        assert await opted_in_transport._validated_destinations(
+            "https://metadata.example.test/oauth"
+        ) == ("127.0.0.1",)
+    finally:
+        await opted_in_transport.aclose()
+
+
+def test_manifest_disables_loopback_access_by_default() -> None:
+    manifest = loads_manifest(_manifest())
+    assert manifest.targets["healthy"].allow_http_loopback is False
 
 
 def test_manifest_rejects_unknown_mcp_spec_profile() -> None:
