@@ -73,6 +73,7 @@ class OAuthConfig:
     flow: AuthFlow = AuthFlow.NONE
     access_token: SecretRef | None = None
     refresh_token: SecretRef | None = None
+    refresh_token_disposable: bool = False
     authorization_code: SecretRef | None = None
     pkce_verifier: SecretRef | None = None
     client_id: ValueRef | None = None

@@ -58,7 +58,8 @@ def test_validate_rejects_invalid_and_oversized_manifests() -> None:
     assert "1 MiB" in oversized.json()["detail"]
 
 
-def test_check_forwards_selection_and_correlation() -> None:
+def test_check_forwards_selection_and_correlation(monkeypatch) -> None:
+    monkeypatch.setenv("TESTMCPY_API_KEY", "test-key")
     report = Mock()
     report.to_dict.return_value = {"schema": "testmcpy.io/oauth-smoke-report/v1"}
     run_manifest = AsyncMock(return_value=report)
@@ -66,6 +67,7 @@ def test_check_forwards_selection_and_correlation() -> None:
         runner_type.return_value.run_manifest = run_manifest
         response = _client().post(
             "/api/oauth-probe/check",
+            headers={"authorization": "Bearer test-key"},
             json={
                 "manifest": MANIFEST,
                 "targets": ["edge"],
@@ -91,14 +93,44 @@ def test_check_forwards_selection_and_correlation() -> None:
     assert correlation.deployment_id == "dep-1"
 
 
-def test_check_turns_selection_errors_into_422() -> None:
+def test_check_turns_selection_errors_into_422(monkeypatch) -> None:
+    monkeypatch.setenv("TESTMCPY_API_KEY", "test-key")
     with patch.object(oauth_probe, "ProbeRunner") as runner_type:
         runner_type.return_value.run_manifest = AsyncMock(
             side_effect=ValueError("Unknown target: missing")
         )
         response = _client().post(
-            "/api/oauth-probe/check", json={"manifest": MANIFEST, "targets": ["missing"]}
+            "/api/oauth-probe/check",
+            headers={"authorization": "Bearer test-key"},
+            json={"manifest": MANIFEST, "targets": ["missing"]},
         )
 
     assert response.status_code == 422
     assert response.json() == {"detail": "Unknown target: missing"}
+
+
+def test_check_requires_configured_authentication(monkeypatch) -> None:
+    monkeypatch.delenv("TESTMCPY_API_KEY", raising=False)
+    assert _client().post("/api/oauth-probe/check", json={"manifest": MANIFEST}).status_code == 503
+    monkeypatch.setenv("TESTMCPY_API_KEY", "test-key")
+    assert _client().post("/api/oauth-probe/check", json={"manifest": MANIFEST}).status_code == 401
+
+
+def test_check_cannot_read_server_environment_or_enable_private_networks(monkeypatch) -> None:
+    monkeypatch.setenv("TESTMCPY_API_KEY", "test-key")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "server-secret")
+    headers = {"authorization": "Bearer test-key"}
+    env_manifest = MANIFEST.replace("flow: none", "flow: none\n    correlation:\n      service: ${AWS_SECRET_ACCESS_KEY}")
+    private_manifest = MANIFEST.replace(
+        "mcp_url: https://mcp.example.test/mcp",
+        "mcp_url: http://127.0.0.1:8000/mcp\n    allow_http_loopback: true",
+    )
+    with patch.object(oauth_probe, "ProbeRunner") as runner_type:
+        env_response = _client().post(
+            "/api/oauth-probe/check", headers=headers, json={"manifest": env_manifest}
+        )
+        private_response = _client().post(
+            "/api/oauth-probe/check", headers=headers, json={"manifest": private_manifest}
+        )
+    assert env_response.status_code == private_response.status_code == 422
+    runner_type.assert_not_called()

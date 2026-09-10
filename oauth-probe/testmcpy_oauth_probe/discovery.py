@@ -245,6 +245,7 @@ async def discover(target: TargetConfig, transport: HttpTransport) -> DiscoveryR
     auth_metadata: dict[str, Any] | None = None
     oidc_metadata: dict[str, Any] | None = None
     token_endpoint: str | None = target.oauth.token_endpoint
+    resource_identity_ok = True
     initialize = {
         "jsonrpc": "2.0",
         "id": "challenge",
@@ -341,17 +342,20 @@ async def discover(target: TargetConfig, transport: HttpTransport) -> DiscoveryR
             resource = prm.get("resource")
             if not isinstance(resource, str) or not resource:
                 raise ValueError("protected-resource metadata resource must be a URL string")
-            # RFC 9728 binds metadata to the protected resource used for
-            # discovery. Deployment expectations may tighten policy but may
-            # never replace this trust binding.
-            expected_resources = (target.mcp_url,)
+            # Bind metadata to the deployment's explicit resource policy, or
+            # to the requested MCP URL when no policy override is configured.
+            expected_resources = target.expectations.resources or (target.mcp_url,)
+            resource_ok = resource in expected_resources
+            resource_identity_ok = resource_ok
+            if not resource_ok:
+                token_endpoint = None
             checks.append(
                 _check(
                     "rfc9728.resource.identity",
                     "protected_resource_metadata",
-                    CheckStatus.PASS if resource in expected_resources else CheckStatus.FAIL,
+                    CheckStatus.PASS if resource_ok else CheckStatus.FAIL,
                     "protected-resource identity matches exactly"
-                    if resource in expected_resources
+                    if resource_ok
                     else "protected-resource identity does not match any expected resource",
                     started=started,
                     reference="RFC 9728 §3.3",
@@ -359,7 +363,9 @@ async def discover(target: TargetConfig, transport: HttpTransport) -> DiscoveryR
                     evidence={"metadata_url": safe_url(prm_url), "resource": safe_url(resource)},
                 )
             )
-            servers = _string_list(prm, "authorization_servers") or ()
+            # Metadata with the wrong identity is untrusted. Do not use any
+            # authorization server it advertises for subsequent credentialed calls.
+            servers = (_string_list(prm, "authorization_servers") or ()) if resource_ok else ()
             if target.spec_profile != "mcp-2025-03-26" and not servers:
                 checks.append(
                     _check(
@@ -718,7 +724,8 @@ async def discover(target: TargetConfig, transport: HttpTransport) -> DiscoveryR
         token_endpoint=token_endpoint,
         resource=(
             prm.get("resource")
-            if isinstance(prm, dict) and prm.get("resource") == target.mcp_url
+            if resource_identity_ok and isinstance(prm, dict)
+            and prm.get("resource") in (target.expectations.resources or (target.mcp_url,))
             else None
         ),
     )

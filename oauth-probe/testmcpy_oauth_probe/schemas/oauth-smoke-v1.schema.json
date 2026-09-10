@@ -31,6 +31,7 @@
         "flow": {"enum": ["none", "bearer", "refresh_token", "client_credentials", "authorization_code"]},
         "access_token": {"$ref": "#/$defs/secretRef"},
         "refresh_token": {"$ref": "#/$defs/secretRef"},
+        "refresh_token_disposable": {"type": "boolean", "default": false},
         "authorization_code": {"$ref": "#/$defs/secretRef"},
         "pkce_verifier": {"$ref": "#/$defs/secretRef"},
         "client_id": {"oneOf": [{"type": "string"}, {"$ref": "#/$defs/secretRef"}]},

@@ -57,6 +57,7 @@ def _manifest(*, flow: str = "refresh_token", capabilities: str = "supported") -
         oauth.update(
             {
                 "refresh_token": {"env": "TEST_REFRESH_TOKEN"},
+                "refresh_token_disposable": True,
                 "client_id": {"env": "TEST_CLIENT_ID"},
                 "client_secret": {"env": "TEST_CLIENT_SECRET"},
                 "client_auth_method": "client_secret_basic",
@@ -314,7 +315,9 @@ class FixtureTransport:
                     "refresh_token": "rotated-refresh-secret-987654321",
                     "token_type": "Bearer",
                     "expires_in": 300,
-                    "scope": "mcp.read",
+                    "scope": ["mcp.read"]
+                    if self.scenario == "malformed_scope"
+                    else "mcp.read",
                 },
                 headers={"cache-control": "no-store", "pragma": "no-cache"},
             )
@@ -588,6 +591,74 @@ async def test_incident_and_malformed_protocol_scenarios_fail_deterministically(
         assert len(authenticated_initialize) == 1
 
 
+@pytest.mark.asyncio
+async def test_untrusted_resource_metadata_cannot_select_token_endpoint() -> None:
+    transport: FixtureTransport | None = None
+
+    def factory(target: object) -> FixtureTransport:
+        nonlocal transport
+        transport = FixtureTransport(target, scenario="wrong_resource")
+        return transport
+
+    report = await ProbeRunner(
+        transport_factory=factory,
+        environ={
+            "TEST_REFRESH_TOKEN": REFRESH_SECRET,
+            "TEST_CLIENT_ID": "example-client",
+            "TEST_CLIENT_SECRET": CLIENT_SECRET,
+        },
+    ).run_manifest(loads_manifest(_manifest()))
+
+    assert transport is not None
+    assert not any(request[1] == "https://auth.example.test/token" for request in transport.requests)
+    checks = {check.id: check for check in report.reports[0].checks}
+    assert checks["rfc9728.resource.identity"].status is CheckStatus.FAIL
+    assert checks["oauth.token.endpoint"].status is CheckStatus.ERROR
+
+
+@pytest.mark.asyncio
+async def test_malformed_token_scope_is_a_contract_error() -> None:
+    report = await ProbeRunner(
+        transport_factory=lambda target: FixtureTransport(target, scenario="malformed_scope"),
+        environ={
+            "TEST_REFRESH_TOKEN": REFRESH_SECRET,
+            "TEST_CLIENT_ID": "example-client",
+            "TEST_CLIENT_SECRET": CLIENT_SECRET,
+        },
+    ).run_manifest(loads_manifest(_manifest()))
+    matching = [
+        check
+        for check in report.reports[0].checks
+        if check.id == "oauth.token.acquire" and check.status is CheckStatus.ERROR
+    ]
+    assert matching
+    assert "scope must be a string" in matching[-1].message
+    assert not any(check.id == "oauth.token.scope.policy" for check in report.reports[0].checks)
+
+
+@pytest.mark.asyncio
+async def test_refresh_token_must_be_explicitly_disposable_before_network_use() -> None:
+    document = json.loads(_manifest())
+    document["targets"]["healthy"]["oauth"]["refresh_token_disposable"] = False
+    transport: FixtureTransport | None = None
+
+    def factory(target: object) -> FixtureTransport:
+        nonlocal transport
+        transport = FixtureTransport(target)
+        return transport
+
+    report = await ProbeRunner(
+        transport_factory=factory,
+        environ={"TEST_REFRESH_TOKEN": REFRESH_SECRET},
+    ).run_manifest(loads_manifest(json.dumps(document)))
+    assert transport is not None
+    assert not any(request[1] == "https://auth.example.test/token" for request in transport.requests)
+    assert any(
+        check.id == "oauth.token.acquire"
+        and check.status is CheckStatus.ERROR
+        and "refresh_token_disposable" in check.message
+        for check in report.reports[0].checks
+    )
 @pytest.mark.asyncio
 @pytest.mark.parametrize("scenario", ["malformed_metadata", "metadata_redirect", "malformed_token"])
 async def test_malformed_metadata_redirect_and_token_never_leak_bodies(scenario: str) -> None:

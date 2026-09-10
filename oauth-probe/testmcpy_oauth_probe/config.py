@@ -122,6 +122,7 @@ def _oauth(value: Any, path: str) -> OAuthConfig:
             "flow",
             "access_token",
             "refresh_token",
+            "refresh_token_disposable",
             "authorization_code",
             "pkce_verifier",
             "client_id",
@@ -144,10 +145,14 @@ def _oauth(value: Any, path: str) -> OAuthConfig:
     error_probe = data.get("error_probe", True)
     if not isinstance(error_probe, bool):
         raise ConfigError(f"{path}.error_probe must be a boolean")
+    disposable = data.get("refresh_token_disposable", False)
+    if not isinstance(disposable, bool):
+        raise ConfigError(f"{path}.refresh_token_disposable must be a boolean")
     config = OAuthConfig(
         flow=flow,
         access_token=_secret_ref(data.get("access_token"), f"{path}.access_token"),
         refresh_token=_secret_ref(data.get("refresh_token"), f"{path}.refresh_token"),
+        refresh_token_disposable=disposable,
         authorization_code=_secret_ref(
             data.get("authorization_code"), f"{path}.authorization_code"
         ),

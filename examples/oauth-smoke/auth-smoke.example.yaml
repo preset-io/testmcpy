@@ -18,6 +18,8 @@ targets:
       flow: refresh_token
       refresh_token:
         env: MCP_REFRESH_TOKEN
+      # The probe may consume this token if the server rotates refresh tokens.
+      refresh_token_disposable: true
       client_id:
         env: MCP_CLIENT_ID
       client_secret:

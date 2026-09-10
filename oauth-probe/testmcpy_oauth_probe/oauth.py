@@ -269,6 +269,17 @@ async def acquire_token(
             )
         )
         return TokenResult(None, tuple(checks))
+    if oauth.flow is AuthFlow.REFRESH_TOKEN and not oauth.refresh_token_disposable:
+        checks.append(
+            _check(
+                "oauth.token.acquire",
+                CheckStatus.ERROR,
+                "refresh-token probing requires refresh_token_disposable: true; "
+                "the authorization server may rotate and invalidate the credential",
+                started=time.monotonic(),
+            )
+        )
+        return TokenResult(None, tuple(checks))
     if token_endpoint is None:
         checks.append(
             _check(
@@ -450,9 +461,9 @@ async def acquire_token(
                 )
             )
         granted_scope = payload.get("scope")
-        granted = (
-            set(granted_scope.split()) if isinstance(granted_scope, str) else set(oauth.scopes)
-        )
+        if granted_scope is not None and not isinstance(granted_scope, str):
+            raise ValueError("successful token response scope must be a string when present")
+        granted = set(granted_scope.split()) if granted_scope is not None else set(oauth.scopes)
         required = set(target.expectations.scopes)
         missing = sorted(required - granted)
         checks.append(

@@ -101,7 +101,7 @@ testmcpy_oauth_probe = ["schemas/*.json"]
 
 [project]
 name = "testmcpy"
-version = "0.11.19"
+version = "0.11.20"
 description = "A comprehensive testing framework for validating LLM tool calling capabilities with MCP services"
 authors = [{name = "Amin Ghadersohi"}]
 license = "Apache-2.0"
