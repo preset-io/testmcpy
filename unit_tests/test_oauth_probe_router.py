@@ -120,7 +120,9 @@ def test_check_cannot_read_server_environment_or_enable_private_networks(monkeyp
     monkeypatch.setenv("TESTMCPY_API_KEY", "test-key")
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "server-secret")
     headers = {"authorization": "Bearer test-key"}
-    env_manifest = MANIFEST.replace("flow: none", "flow: none\n    correlation:\n      service: ${AWS_SECRET_ACCESS_KEY}")
+    env_manifest = MANIFEST.replace(
+        "flow: none", "flow: none\n    correlation:\n      service: ${AWS_SECRET_ACCESS_KEY}"
+    )
     private_manifest = MANIFEST.replace(
         "mcp_url: https://mcp.example.test/mcp",
         "mcp_url: http://127.0.0.1:8000/mcp\n    allow_http_loopback: true",

@@ -724,7 +724,8 @@ async def discover(target: TargetConfig, transport: HttpTransport) -> DiscoveryR
         token_endpoint=token_endpoint,
         resource=(
             prm.get("resource")
-            if resource_identity_ok and isinstance(prm, dict)
+            if resource_identity_ok
+            and isinstance(prm, dict)
             and prm.get("resource") in (target.expectations.resources or (target.mcp_url,))
             else None
         ),

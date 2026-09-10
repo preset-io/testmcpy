@@ -315,9 +315,7 @@ class FixtureTransport:
                     "refresh_token": "rotated-refresh-secret-987654321",
                     "token_type": "Bearer",
                     "expires_in": 300,
-                    "scope": ["mcp.read"]
-                    if self.scenario == "malformed_scope"
-                    else "mcp.read",
+                    "scope": ["mcp.read"] if self.scenario == "malformed_scope" else "mcp.read",
                 },
                 headers={"cache-control": "no-store", "pragma": "no-cache"},
             )
@@ -610,7 +608,9 @@ async def test_untrusted_resource_metadata_cannot_select_token_endpoint() -> Non
     ).run_manifest(loads_manifest(_manifest()))
 
     assert transport is not None
-    assert not any(request[1] == "https://auth.example.test/token" for request in transport.requests)
+    assert not any(
+        request[1] == "https://auth.example.test/token" for request in transport.requests
+    )
     checks = {check.id: check for check in report.reports[0].checks}
     assert checks["rfc9728.resource.identity"].status is CheckStatus.FAIL
     assert checks["oauth.token.endpoint"].status is CheckStatus.ERROR
@@ -652,13 +652,17 @@ async def test_refresh_token_must_be_explicitly_disposable_before_network_use() 
         environ={"TEST_REFRESH_TOKEN": REFRESH_SECRET},
     ).run_manifest(loads_manifest(json.dumps(document)))
     assert transport is not None
-    assert not any(request[1] == "https://auth.example.test/token" for request in transport.requests)
+    assert not any(
+        request[1] == "https://auth.example.test/token" for request in transport.requests
+    )
     assert any(
         check.id == "oauth.token.acquire"
         and check.status is CheckStatus.ERROR
         and "refresh_token_disposable" in check.message
         for check in report.reports[0].checks
     )
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("scenario", ["malformed_metadata", "metadata_redirect", "malformed_token"])
 async def test_malformed_metadata_redirect_and_token_never_leak_bodies(scenario: str) -> None:
