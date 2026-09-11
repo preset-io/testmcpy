@@ -617,6 +617,33 @@ async def test_untrusted_resource_metadata_cannot_select_token_endpoint() -> Non
 
 
 @pytest.mark.asyncio
+async def test_untrusted_authorization_metadata_cannot_receive_credentials() -> None:
+    transport: FixtureTransport | None = None
+
+    def factory(target: object) -> FixtureTransport:
+        nonlocal transport
+        transport = FixtureTransport(target, scenario="wrong_issuer")
+        return transport
+
+    report = await ProbeRunner(
+        transport_factory=factory,
+        environ={
+            "TEST_REFRESH_TOKEN": REFRESH_SECRET,
+            "TEST_CLIENT_ID": "example-client",
+            "TEST_CLIENT_SECRET": CLIENT_SECRET,
+        },
+    ).run_manifest(loads_manifest(_manifest()))
+
+    assert transport is not None
+    assert not any(
+        request[1] == "https://auth.example.test/token" for request in transport.requests
+    )
+    checks = {check.id: check for check in report.reports[0].checks}
+    assert checks["rfc8414.issuer.identity"].status is CheckStatus.FAIL
+    assert checks["oauth.token.endpoint"].status is CheckStatus.ERROR
+
+
+@pytest.mark.asyncio
 async def test_malformed_token_scope_is_a_contract_error() -> None:
     report = await ProbeRunner(
         transport_factory=lambda target: FixtureTransport(target, scenario="malformed_scope"),

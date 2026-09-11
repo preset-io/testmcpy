@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import OAuthProbe from '../OAuthProbe'
 
@@ -16,16 +16,11 @@ describe('OAuthProbe', () => {
     expect(fetch).toHaveBeenCalledWith('/api/oauth-probe/validate', expect.objectContaining({ method: 'POST' }))
   })
 
-  it('renders structured check results', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({
-      targets: [{ target: { id: 'edge' }, spec_profile: 'mcp-2025-06-18', duration_ms: 4,
-        summary: { pass: 1 }, checks: [{ id: 'target.url.policy', status: 'pass', stage: 'target', message: 'safe' }] }]
-    }) }))
+  it('does not offer web execution without a safe credential channel', () => {
     render(<OAuthProbe />)
-    fireEvent.click(screen.getByRole('button', { name: /Run checks/ }))
-    await waitFor(() => expect(screen.getByText('target.url.policy')).toBeInTheDocument())
-    expect(screen.getByText('edge')).toBeInTheDocument()
-    expect(screen.getByText('pass: 1')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Run checks/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('note')).toHaveTextContent('does not yet provide a safe channel')
+    expect(screen.getByRole('note')).toHaveTextContent('testmcpy auth check')
   })
 
   it('restores and persists the edited manifest', async () => {
@@ -51,10 +46,9 @@ describe('OAuthProbe', () => {
       json: async () => ({ detail: 'Unknown profile: strict' }),
     }))
     render(<OAuthProbe />)
-    fireEvent.click(screen.getByRole('button', { name: /Run checks/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Validate' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Unknown profile: strict')
     expect(screen.getByRole('button', { name: 'Validate' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: /Run checks/ })).toBeEnabled()
   })
 
   it('reports network failures', async () => {

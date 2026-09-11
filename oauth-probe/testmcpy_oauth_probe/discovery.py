@@ -486,14 +486,14 @@ async def discover(target: TargetConfig, transport: HttpTransport) -> DiscoveryR
                     evidence={"issuer": safe_url(issuer), "metadata_url": safe_url(metadata_url)},
                 )
             )
-            token_endpoint = target.oauth.token_endpoint or _absolute_url(
-                auth_metadata, "token_endpoint"
-            )
             response_types = _string_list(auth_metadata, "response_types_supported")
             if response_types is None:
                 raise ValueError("metadata field response_types_supported is required")
             endpoint_values = {
-                field: _absolute_url(auth_metadata, field)
+                # Endpoint values are actionable metadata, not merely evidence.
+                # An identity-mismatched document is untrusted, so none of its
+                # endpoints may be installed or consumed by later stages.
+                field: _absolute_url(auth_metadata, field) if issuer_ok else None
                 for field in (
                     "authorization_endpoint",
                     "token_endpoint",
@@ -503,13 +503,14 @@ async def discover(target: TargetConfig, transport: HttpTransport) -> DiscoveryR
                     "jwks_uri",
                 )
             }
+            token_endpoint = target.oauth.token_endpoint or endpoint_values["token_endpoint"]
             for endpoint in endpoint_values.values():
                 if endpoint is not None:
                     validate_url_syntax(endpoint, target)
             for endpoint_name, policy in target.expectations.endpoints.items():
-                endpoint = endpoint_values.get(endpoint_name) or _absolute_url(
-                    auth_metadata, endpoint_name
-                )
+                endpoint = endpoint_values.get(endpoint_name)
+                if endpoint_name not in endpoint_values and issuer_ok:
+                    endpoint = _absolute_url(auth_metadata, endpoint_name)
                 if endpoint is not None:
                     validate_url_syntax(endpoint, target)
                 checks.append(
@@ -646,7 +647,7 @@ async def discover(target: TargetConfig, transport: HttpTransport) -> DiscoveryR
                     check_id="rfc7591.registration.available",
                     stage="authorization_server_metadata",
                     name="dynamic client registration",
-                    present=_absolute_url(auth_metadata, "registration_endpoint") is not None,
+                    present=endpoint_values["registration_endpoint"] is not None,
                     policy=dcr_policy,
                     started=started,
                     reference="RFC 7591",
