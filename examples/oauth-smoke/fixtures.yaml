@@ -1,0 +1,43 @@
+# Generic scenario catalog mirrored by unit_tests/test_oauth_probe.py. All
+# names use the reserved .test namespace and contain no deployable credentials.
+schema: testmcpy.io/oauth-smoke-fixtures/v1
+base:
+  resource: https://healthy.example.test/mcp
+  issuer: https://auth.example.test/tenant
+  audience: mcp-api
+scenarios:
+  healthy-json:
+    description: RFC metadata, refresh exchange, JSON MCP initialize and tools/list
+    expect_exit: 0
+  healthy-sse:
+    description: Same lifecycle with initialize delivered as an SSE data event
+    expect_exit: 0
+  wrong-region-resource:
+    resource: https://wrong-region.example.test/mcp
+    expect_check: rfc9728.resource.identity
+  wrong-region-issuer:
+    issuer: https://wrong-region.example.test
+    expect_check: rfc8414.issuer.identity
+  wrong-audience-token:
+    audience: wrong-region-api
+    expect_check: oauth.token.claims.policy
+  authenticated-mcp-500:
+    authenticated_initialize_status: 500
+    expect_check: mcp.initialize.http_status
+    expected_request_count: 1
+  malformed-challenge:
+    www_authenticate: Basic realm=legacy
+    expect_check: mcp.auth.challenge.bearer
+  malformed-metadata:
+    metadata_body: not-json
+    expect_check: rfc9728.metadata.contract
+  metadata-redirect:
+    metadata_status: 302
+    location: https://other.example.test/meta
+    expect_check: rfc9728.metadata.contract
+  malformed-token:
+    token_content_type: text/plain
+    expect_check: oauth.token.acquire
+  wrong-json-rpc-correlation:
+    initialize_response_id: wrong-correlation
+    expect_check: mcp.initialize.protocol_contract

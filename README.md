@@ -160,6 +160,24 @@ tests:
 
 ![Chat Interface — interactive chat against your MCP service from the browser](https://raw.githubusercontent.com/preset-io/testmcpy/main/docs/screenshots/chat.png)
 
+### Headless OAuth/MCP Probe
+
+Run vendor-neutral RFC 9728/RFC 8414/OIDC discovery, noninteractive OAuth token
+paths, and a stage-visible authenticated MCP `initialize` + `tools/list` check:
+
+```bash
+testmcpy auth validate --config examples/oauth-smoke/auth-smoke.example.yaml
+testmcpy auth check --config examples/oauth-smoke/auth-smoke.example.yaml \
+  --profile canary --format json --output auth.json --junit auth.xml
+```
+
+The versioned manifest uses environment **references**, never credential values.
+Human, JSON, JSONL, and JUnit outputs are strictly redacted and correlated by
+target/region/revision. This is an interoperability and deployment-policy tool,
+not formal compliance certification. CI consumers can install the minimal
+`oauth-probe/` distribution without the UI/LLM stack. See the
+[headless probe guide](docs/oauth-smoke-cli.md).
+
 ## Architecture
 
 testmcpy connects your LLM provider to your MCP service and validates the interactions:

@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- A typed, vendor-neutral headless OAuth/MCP interoperability probe with
+  versioned manifests and reports, RFC 8414/RFC 9728 discovery, optional OIDC,
+  noninteractive bearer/refresh/confidential-client paths, raw authenticated
+  MCP checks, strict redaction, JSON/JSONL/JUnit output, and an independently
+  installable minimal `testmcpy-oauth-probe` package.
 - Reasoning-**effort** benchmark dimension. `testmcpy run --effort <level>` and
   `testmcpy bench --efforts low,medium,high` sweep reasoning effort for the
   providers that support it (claude-sdk → `ClaudeAgentOptions.effort`;

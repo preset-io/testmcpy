@@ -1,0 +1,218 @@
+"""Bounded HTTP transport with redirect, retry, and destination safety policy."""
+
+from __future__ import annotations
+
+import asyncio
+import ipaddress
+import socket
+import time
+from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import Any, Protocol
+from urllib.parse import urlsplit, urlunsplit
+
+import httpx
+
+from testmcpy_oauth_probe.models import TargetConfig
+
+_TRANSIENT_STATUSES = frozenset({408, 429, 502, 503, 504})
+
+
+class TransportError(RuntimeError):
+    """A deliberately secret-free network or safety failure."""
+
+
+@dataclass(frozen=True)
+class HttpResponse:
+    status: int
+    headers: dict[str, str]
+    body: bytes
+    latency_ms: int
+    url: str
+
+    @property
+    def text(self) -> str:
+        return self.body.decode("utf-8", errors="replace")
+
+
+class HttpTransport(Protocol):
+    async def request(
+        self,
+        method: str,
+        url: str,
+        *,
+        headers: Mapping[str, str] | None = None,
+        json_body: Mapping[str, Any] | None = None,
+        form_body: Mapping[str, str] | None = None,
+        retry_safe: bool = False,
+    ) -> HttpResponse: ...
+
+    async def aclose(self) -> None: ...
+
+
+def _is_loopback_host(hostname: str) -> bool:
+    if hostname.lower() == "localhost" or hostname.lower().endswith(".localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(hostname).is_loopback
+    except ValueError:
+        return False
+
+
+def validate_url_syntax(url: str, target: TargetConfig) -> tuple[str, int]:
+    try:
+        parsed = urlsplit(url)
+        port = parsed.port
+    except ValueError as exc:
+        raise TransportError("URL has invalid syntax") from exc
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise TransportError("URL must be an absolute HTTP(S) URL")
+    if parsed.username is not None or parsed.password is not None:
+        raise TransportError("URL userinfo is forbidden")
+    if parsed.fragment:
+        raise TransportError("URL fragments are forbidden")
+    if parsed.scheme != "https" and not (
+        target.allow_http_loopback and _is_loopback_host(parsed.hostname)
+    ):
+        raise TransportError("URL must use HTTPS (HTTP is allowed only for loopback fixtures)")
+    return parsed.hostname, port or (443 if parsed.scheme == "https" else 80)
+
+
+async def _resolved_addresses(
+    hostname: str, port: int
+) -> tuple[ipaddress.IPv4Address | ipaddress.IPv6Address, ...]:
+    try:
+        values = await asyncio.to_thread(
+            socket.getaddrinfo,
+            hostname,
+            port,
+            type=socket.SOCK_STREAM,
+        )
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise TransportError("destination hostname could not be resolved") from exc
+    addresses: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = []
+    for value in values:
+        address = ipaddress.ip_address(value[4][0])
+        if address not in addresses:
+            addresses.append(address)
+    if not addresses:
+        raise TransportError("destination hostname resolved to no addresses")
+    return tuple(addresses)
+
+
+class HttpxTransport:
+    def __init__(self, target: TargetConfig) -> None:
+        self.target = target
+        self._client = httpx.AsyncClient(
+            timeout=target.timeout_seconds,
+            follow_redirects=False,
+            trust_env=False,
+        )
+
+    async def _validated_destinations(self, url: str) -> tuple[str, ...] | None:
+        """Validate a destination and return the addresses to connect to.
+
+        Returning the resolved addresses is important: validating one DNS lookup
+        and then allowing the HTTP stack to perform another leaves a DNS-rebinding
+        window between the policy check and the connection.
+        """
+        hostname, port = validate_url_syntax(url, self.target)
+        if self.target.allow_private_network:
+            return None
+        addresses = await _resolved_addresses(hostname, port)
+        if all(address.is_loopback for address in addresses) and self.target.allow_http_loopback:
+            return tuple(str(address) for address in addresses)
+        if any(not address.is_global for address in addresses):
+            raise TransportError("destination resolves to a non-public address blocked by policy")
+        return tuple(str(address) for address in addresses)
+
+    @staticmethod
+    def _connection_url(url: str, address: str) -> str:
+        """Replace only the URL host with an already validated IP address."""
+        parsed = urlsplit(url)
+        host = f"[{address}]" if ":" in address else address
+        if parsed.port is not None:
+            host = f"{host}:{parsed.port}"
+        return urlunsplit((parsed.scheme, host, parsed.path, parsed.query, ""))
+
+    async def request(
+        self,
+        method: str,
+        url: str,
+        *,
+        headers: Mapping[str, str] | None = None,
+        json_body: Mapping[str, Any] | None = None,
+        form_body: Mapping[str, str] | None = None,
+        retry_safe: bool = False,
+    ) -> HttpResponse:
+        destinations = await self._validated_destinations(url)
+        attempts = self.target.transient_retries + 1 if retry_safe else 1
+        response: httpx.Response | None = None
+        started = time.monotonic()
+        for attempt in range(attempts):
+            response = None
+            last_error: httpx.RequestError | None = None
+            # When private-network protection is active, connect directly to an
+            # address from the validated DNS result.  Preserve the request's
+            # original Host header and TLS SNI so virtual hosting and certificate
+            # validation continue to use the configured hostname.
+            connection_targets = destinations or (None,)
+            for address in connection_targets:
+                request = self._client.build_request(
+                    method,
+                    url,
+                    headers=headers,
+                    json=json_body,
+                    data=form_body,
+                )
+                if address is not None:
+                    original_hostname = request.url.host
+                    request.url = httpx.URL(self._connection_url(url, address))
+                    request.extensions["sni_hostname"] = original_hostname
+                try:
+                    response = await self._client.send(request, stream=True)
+                    break
+                except httpx.RequestError as exc:
+                    last_error = exc
+            if response is None:
+                if attempt + 1 < attempts:
+                    await asyncio.sleep(min(0.1 * (2**attempt), 0.5))
+                    continue
+                raise TransportError(
+                    "HTTP request failed before receiving a response"
+                ) from last_error
+            # Deterministic 4xx and 500 responses are never retried. Only
+            # explicitly classified transient statuses on retry-safe requests are.
+            if response.status_code not in _TRANSIENT_STATUSES or attempt + 1 >= attempts:
+                break
+            await response.aclose()
+            await asyncio.sleep(min(0.1 * (2**attempt), 0.5))
+        assert response is not None
+        body_parts: list[bytes] = []
+        body_size = 0
+        try:
+            async for part in response.aiter_bytes():
+                body_size += len(part)
+                if body_size > self.target.max_response_bytes:
+                    raise TransportError("HTTP response exceeded the configured body-size limit")
+                body_parts.append(part)
+        except httpx.RequestError as exc:
+            raise TransportError("HTTP response failed while reading its body") from exc
+        finally:
+            await response.aclose()
+        body = b"".join(body_parts)
+        latency_ms = int((time.monotonic() - started) * 1000)
+        result = HttpResponse(
+            status=response.status_code,
+            headers={key.lower(): value for key, value in response.headers.items()},
+            body=body,
+            latency_ms=latency_ms,
+            # The IP-address URL is an internal connection detail used to bind
+            # policy validation to the socket. Expose the configured URL to
+            # callers, not the pinned transport address.
+            url=url,
+        )
+        return result
+
+    async def aclose(self) -> None:
+        await self._client.aclose()

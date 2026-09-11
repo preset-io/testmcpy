@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "testmcpy-oauth-probe"
+version = "0.1.0"
+description = "Headless, vendor-neutral OAuth and MCP interoperability probe"
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+license = "Apache-2.0"
+dependencies = [
+    "httpx>=0.27.0,<1.0.0",
+    "pyyaml>=6.0,<7.0",
+]
+
+[project.scripts]
+testmcpy-oauth = "testmcpy_oauth_probe.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["testmcpy_oauth_probe*"]
+
+[tool.setuptools.package-data]
+testmcpy_oauth_probe = ["schemas/*.json"]
