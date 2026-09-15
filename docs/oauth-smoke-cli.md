@@ -126,10 +126,12 @@ authenticated MCP response remains the authoritative audience/resource check.
 
 ## Compatibility and dual-run migration
 
-The **Auth Smoke** web page mirrors the CLI adapter. It validates the canonical
-YAML/JSON manifest, invokes the same `ProbeRunner` server-side, and renders its
-typed stage results. Credentials remain environment-variable references and
-are resolved and redacted only by the runner.
+The **Auth Smoke** web page is validation-only. It validates the canonical
+YAML/JSON manifest, but deliberately does not execute `ProbeRunner` or resolve
+credential references in the web process. This boundary prevents the page from
+becoming a credentialed network-request channel. Save the validated manifest
+and run `testmcpy auth check --config <path>` in the CLI environment that holds
+its referenced credentials; the CLI emits the typed stage results.
 
 This release is additive. Existing `smoke-test`, `tools`, Auth Debugger UI,
 profiles, OAuth cache, and reports keep their behavior. The new result is a

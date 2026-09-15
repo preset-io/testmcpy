@@ -34,7 +34,7 @@
         "refresh_token_disposable": {"type": "boolean", "default": false},
         "authorization_code": {"$ref": "#/$defs/secretRef"},
         "pkce_verifier": {"$ref": "#/$defs/secretRef"},
-        "client_id": {"oneOf": [{"type": "string"}, {"$ref": "#/$defs/secretRef"}]},
+        "client_id": {"oneOf": [{"type": "string", "minLength": 1}, {"$ref": "#/$defs/secretRef"}]},
         "client_secret": {"$ref": "#/$defs/secretRef"},
         "client_auth_method": {"enum": ["none", "client_secret_basic", "client_secret_post", "client_secret_jwt"]},
         "scopes": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
@@ -43,7 +43,26 @@
         "token_endpoint": {"type": "string", "format": "uri"},
         "redirect_uri": {"type": "string", "format": "uri"},
         "error_probe": {"type": "boolean"}
-      }
+      },
+      "allOf": [
+        {"if": {"required": ["flow"], "properties": {"flow": {"const": "bearer"}}}, "then": {"required": ["access_token"]}},
+        {"if": {"required": ["flow"], "properties": {"flow": {"const": "refresh_token"}}}, "then": {"required": ["refresh_token"]}},
+        {"if": {"required": ["flow"], "properties": {"flow": {"const": "authorization_code"}}}, "then": {"required": ["authorization_code", "pkce_verifier", "redirect_uri"]}},
+        {
+          "if": {"required": ["flow"], "properties": {"flow": {"const": "client_credentials"}}},
+          "then": {
+            "required": ["client_id", "client_secret", "client_auth_method"],
+            "properties": {"client_auth_method": {"enum": ["client_secret_basic", "client_secret_post", "client_secret_jwt"]}}
+          }
+        },
+        {
+          "if": {
+            "required": ["client_auth_method"],
+            "properties": {"client_auth_method": {"enum": ["client_secret_basic", "client_secret_post", "client_secret_jwt"]}}
+          },
+          "then": {"required": ["client_id", "client_secret"]}
+        }
+      ]
     },
     "expectations": {
       "type": "object",

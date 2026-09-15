@@ -230,6 +230,22 @@ jobs:
           tags: testmcpy:agents-ci
       - name: Verify no resolver conflict (pip check)
         run: docker run --rm testmcpy:agents-ci pip check
+      - name: Verify installed testmcpy CLI starts
+        # Exercises the built artifact rather than the checkout. In particular,
+        # this catches source packages imported by command registration that
+        # were omitted from the Docker build context before `pip install`.
+        run: docker run --rm testmcpy:agents-ci testmcpy serve --help
+      - name: Verify installed image becomes healthy
+        run: |
+          docker run -d --name testmcpy-health-smoke testmcpy:agents-ci
+          trap 'docker logs testmcpy-health-smoke; docker rm -f testmcpy-health-smoke >/dev/null 2>&1 || true' EXIT
+          for attempt in $(seq 1 30); do
+            if docker exec testmcpy-health-smoke curl -fsS http://localhost:8000/health; then
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1
       - name: Verify openai-agents import paths exist at pinned version
         run: |
           docker run --rm testmcpy:agents-ci python -c "

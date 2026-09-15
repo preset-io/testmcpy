@@ -54,7 +54,7 @@ export default function OAuthProbe() {
         <h2 className="font-semibold mb-3">Run checks from the CLI</h2>
         <div role="note" className="space-y-3 text-sm text-text-secondary">
           <p>Web execution is disabled because this page does not yet provide a safe channel for probe authentication and referenced credentials.</p>
-          <p>Save the manifest locally and run <code className="text-text-primary">testmcpy auth check --manifest &lt;path&gt;</code> in an environment containing its referenced credentials.</p>
+          <p>Save the manifest locally and run <code className="text-text-primary">testmcpy auth check --config &lt;path&gt;</code> in an environment containing its referenced credentials.</p>
         </div>
       </section>
     </div>

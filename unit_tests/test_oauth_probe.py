@@ -760,6 +760,49 @@ def test_packaged_schema_and_documented_example_stay_loadable() -> None:
     Draft202012Validator.check_schema(report_schema)
 
 
+@pytest.mark.parametrize(
+    ("oauth", "missing"),
+    [
+        ({"flow": "bearer"}, "access_token"),
+        ({"flow": "refresh_token"}, "refresh_token"),
+        ({"flow": "authorization_code"}, "authorization_code"),
+        (
+            {
+                "flow": "client_credentials",
+                "client_id": "client",
+                "client_secret": {"env": "CLIENT_SECRET"},
+            },
+            "client_auth_method",
+        ),
+        ({"client_auth_method": "client_secret_basic"}, "client_id"),
+    ],
+)
+def test_manifest_schema_requires_runtime_oauth_inputs(oauth: dict[str, Any], missing: str) -> None:
+    document = {
+        "schema": "testmcpy.io/oauth-smoke/v1",
+        "targets": {"target": {"mcp_url": MCP_URL, "oauth": oauth}},
+    }
+    errors = list(Draft202012Validator(manifest_json_schema()).iter_errors(document))
+
+    assert errors
+    assert any(missing in error.message for error in errors)
+
+
+def test_manifest_schema_accepts_executable_bearer_flow(monkeypatch) -> None:
+    document = {
+        "schema": "testmcpy.io/oauth-smoke/v1",
+        "targets": {
+            "target": {
+                "mcp_url": MCP_URL,
+                "oauth": {"flow": "bearer", "access_token": {"env": "ACCESS_TOKEN"}},
+            }
+        },
+    }
+    Draft202012Validator(manifest_json_schema()).validate(document)
+    monkeypatch.setenv("ACCESS_TOKEN", ACCESS_SECRET)
+    assert loads_manifest(json.dumps(document)).targets["target"].oauth.access_token is not None
+
+
 def test_discovery_builders_and_multi_challenge_parser_cover_path_issuers() -> None:
     assert protected_resource_metadata_urls(
         "https://mcp.example.test/tenant/mcp",
@@ -844,6 +887,60 @@ async def test_http_transport_connects_to_validated_dns_address(monkeypatch) -> 
     assert str(seen[0].url) == "https://8.8.8.8/mcp"
     assert seen[0].headers["host"] == "healthy.example.test"
     assert seen[0].extensions["sni_hostname"] == "healthy.example.test"
+
+
+@pytest.mark.asyncio
+async def test_http_transport_does_not_fail_over_one_shot_request(monkeypatch) -> None:
+    import ipaddress
+
+    async def resolved(hostname: str, port: int) -> tuple[Any, ...]:
+        return (ipaddress.ip_address("8.8.8.8"), ipaddress.ip_address("1.1.1.1"))
+
+    seen: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        raise httpx.ReadError("response reset after send", request=request)
+
+    monkeypatch.setattr("testmcpy_oauth_probe.transport._resolved_addresses", resolved)
+    transport = HttpxTransport(TargetConfig(id="one-shot", mcp_url=MCP_URL))
+    await transport._client.aclose()
+    transport._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        with pytest.raises(TransportError, match="before receiving a response"):
+            await transport.request("POST", MCP_URL, retry_safe=False)
+    finally:
+        await transport.aclose()
+
+    assert [request.url.host for request in seen] == ["8.8.8.8"]
+
+
+@pytest.mark.asyncio
+async def test_http_transport_can_fail_over_retry_safe_request(monkeypatch) -> None:
+    import ipaddress
+
+    async def resolved(hostname: str, port: int) -> tuple[Any, ...]:
+        return (ipaddress.ip_address("8.8.8.8"), ipaddress.ip_address("1.1.1.1"))
+
+    seen: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        if len(seen) == 1:
+            raise httpx.ConnectError("first address unavailable", request=request)
+        return httpx.Response(200, content=b"ok")
+
+    monkeypatch.setattr("testmcpy_oauth_probe.transport._resolved_addresses", resolved)
+    transport = HttpxTransport(TargetConfig(id="retry-safe", mcp_url=MCP_URL))
+    await transport._client.aclose()
+    transport._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        response = await transport.request("GET", MCP_URL, retry_safe=True)
+    finally:
+        await transport.aclose()
+
+    assert response.status == 200
+    assert [request.url.host for request in seen] == ["8.8.8.8", "1.1.1.1"]
 
 
 @pytest.mark.asyncio

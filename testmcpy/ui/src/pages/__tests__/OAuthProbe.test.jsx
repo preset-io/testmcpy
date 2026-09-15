@@ -20,7 +20,7 @@ describe('OAuthProbe', () => {
     render(<OAuthProbe />)
     expect(screen.queryByRole('button', { name: /Run checks/ })).not.toBeInTheDocument()
     expect(screen.getByRole('note')).toHaveTextContent('does not yet provide a safe channel')
-    expect(screen.getByRole('note')).toHaveTextContent('testmcpy auth check')
+    expect(screen.getByRole('note')).toHaveTextContent('testmcpy auth check --config <path>')
   })
 
   it('restores and persists the edited manifest', async () => {

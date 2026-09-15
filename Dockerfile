@@ -113,9 +113,14 @@ RUN if [ "$INSTALL_CODEX_CLI" = "true" ]; then \
 # Install Python dependencies
 COPY pyproject.toml .
 COPY testmcpy/ testmcpy/
+COPY oauth-probe/testmcpy_oauth_probe/ oauth-probe/testmcpy_oauth_probe/
 # Copy built frontend before pip install so it's included in package data
 COPY --from=frontend /app/testmcpy/ui/dist testmcpy/ui/dist
 RUN pip install --no-cache-dir ".[server]"
+# Wheel installation gives packaged UI sources fresh mtimes, which can make the
+# already-built bundle look stale to the source-checkout guard. Mark the bundle
+# as the final build output so the slim runtime never needs Node.js to start.
+RUN python -c "import site; from pathlib import Path; roots = [Path('/app/testmcpy'), *(Path(p) / 'testmcpy' for p in site.getsitepackages())]; [f.touch() for root in roots for f in (root / 'ui' / 'dist').rglob('*') if f.is_file()]"
 
 # Create data directory for persistent storage
 RUN mkdir -p /app/.testmcpy

@@ -157,6 +157,13 @@ class HttpxTransport:
             # original Host header and TLS SNI so virtual hosting and certificate
             # validation continue to use the configured hostname.
             connection_targets = destinations or (None,)
+            # A connection reset does not prove the peer did not process the
+            # request.  For one-shot token operations, trying a second DNS
+            # address could therefore redeem a code or rotate a refresh token
+            # twice. Address failover is a retry and is allowed only when the
+            # caller has explicitly classified the request as retry-safe.
+            if not retry_safe:
+                connection_targets = connection_targets[:1]
             for address in connection_targets:
                 request = self._client.build_request(
                     method,
