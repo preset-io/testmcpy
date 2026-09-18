@@ -7,11 +7,13 @@ import json
 import xml.etree.ElementTree as ET
 from collections.abc import Mapping
 from dataclasses import replace
+from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
 from jsonschema import Draft202012Validator
+from testmcpy_oauth_probe import cli as cli_module
 from testmcpy_oauth_probe.config import (
     ConfigError,
     load_manifest,
@@ -112,6 +114,7 @@ class FixtureTransport:
         self.scenario = scenario
         self.requests: list[tuple[str, str, Mapping[str, str], Mapping[str, str] | None]] = []
         self.closed = False
+        self.error_probes = 0
 
     def response(
         self,
@@ -288,10 +291,16 @@ class FixtureTransport:
             )
         if url == "https://auth.example.test/token":
             if form_body and form_body.get("grant_type") == "urn:testmcpy:unsupported-grant":
+                self.error_probes += 1
+                error = (
+                    "totally-made-up"
+                    if self.scenario == "unregistered_error_code"
+                    else "unsupported_grant_type"
+                )
                 return self.response(
                     url,
                     400,
-                    payload={"error": "unsupported_grant_type"},
+                    payload={"error": error},
                     headers={"cache-control": "no-store", "pragma": "no-cache"},
                 )
             if self.scenario == "malformed_token":
@@ -995,3 +1004,212 @@ def test_manifest_rejects_boolean_response_limit() -> None:
     document["targets"]["healthy"]["max_response_bytes"] = True
     with pytest.raises(ConfigError, match="max_response_bytes"):
         loads_manifest(json.dumps(document))
+
+
+def _bearer_document(*, error_probe: bool | None = None) -> dict[str, Any]:
+    """Bearer manifest that still performs discovery, so a token endpoint exists."""
+    document = json.loads(_manifest())
+    oauth: dict[str, Any] = {"flow": "bearer", "access_token": {"env": "TEST_ACCESS_TOKEN"}}
+    if error_probe is not None:
+        oauth["error_probe"] = error_probe
+    document["targets"]["healthy"]["oauth"] = oauth
+    return document
+
+
+async def _run_bearer(document: dict[str, Any]) -> tuple[Any, FixtureTransport]:
+    transport: FixtureTransport | None = None
+
+    def factory(target_config: object) -> FixtureTransport:
+        nonlocal transport
+        transport = FixtureTransport(target_config)
+        return transport
+
+    report = await ProbeRunner(
+        transport_factory=factory,
+        environ={"TEST_ACCESS_TOKEN": _jwt()},
+    ).run_manifest(loads_manifest(json.dumps(document)))
+    assert transport is not None
+    return report, transport
+
+
+@pytest.mark.asyncio
+async def test_error_contract_is_not_silently_dropped_under_bearer() -> None:
+    """`flow: bearer` used to accept error_probe: true and then emit nothing."""
+    report, transport = await _run_bearer(_bearer_document())
+
+    checks = {check.id: check for check in report.reports[0].checks}
+    assert "oauth.token.error_contract" in checks, (
+        "the manifest requested the error probe and the report has no record of it; "
+        "a check that disappears makes a failing deployment look clean"
+    )
+    assert checks["oauth.token.error_contract"].status is CheckStatus.PASS
+    assert transport.error_probes == 1
+
+
+@pytest.mark.asyncio
+async def test_error_contract_is_skipped_visibly_when_opted_out() -> None:
+    report, transport = await _run_bearer(_bearer_document(error_probe=False))
+
+    checks = {check.id for check in report.reports[0].checks}
+    assert "oauth.token.error_contract" not in checks
+    assert transport.error_probes == 0
+
+
+@pytest.mark.asyncio
+async def test_error_contract_states_why_it_could_not_run() -> None:
+    """No token endpoint is a reason, not an excuse to emit nothing."""
+    document = _bearer_document()
+    document["targets"]["healthy"]["expectations"]["capabilities"].update(
+        {
+            "protected_resource_metadata": "ignore",
+            "authorization_server_metadata": "ignore",
+            "oidc_discovery": "ignore",
+        }
+    )
+    report, transport = await _run_bearer(document)
+
+    checks = {check.id: check for check in report.reports[0].checks}
+    contract = checks["oauth.token.error_contract"]
+    assert contract.status is CheckStatus.SKIP
+    assert contract.applicable is False
+    assert "token endpoint" in contract.message
+    assert transport.error_probes == 0
+    assert report.exit_code == 0
+
+
+@pytest.mark.asyncio
+async def test_error_contract_rejects_unregistered_rfc6749_codes() -> None:
+    """RFC 6749 §5.2 closes the set; any non-empty string used to pass."""
+    report = await ProbeRunner(
+        transport_factory=lambda target: FixtureTransport(
+            target, scenario="unregistered_error_code"
+        ),
+        environ={
+            "TEST_REFRESH_TOKEN": REFRESH_SECRET,
+            "TEST_CLIENT_ID": "example-client",
+            "TEST_CLIENT_SECRET": CLIENT_SECRET,
+        },
+    ).run_manifest(loads_manifest(_manifest()))
+
+    contract = {check.id: check for check in report.reports[0].checks}["oauth.token.error_contract"]
+    assert contract.status is CheckStatus.FAIL
+    assert contract.evidence["registered_code"] is False
+    assert contract.evidence["error"] == "totally-made-up"
+    assert report.exit_code == 1
+
+
+@pytest.mark.asyncio
+async def test_error_contract_records_the_same_check_id_for_every_flow() -> None:
+    """A/B the two flows the adoption review compared."""
+    bearer_report, _ = await _run_bearer(_bearer_document())
+    refresh_report = await ProbeRunner(
+        transport_factory=lambda target: FixtureTransport(target),
+        environ={
+            "TEST_REFRESH_TOKEN": REFRESH_SECRET,
+            "TEST_CLIENT_ID": "example-client",
+            "TEST_CLIENT_SECRET": CLIENT_SECRET,
+        },
+    ).run_manifest(loads_manifest(_manifest()))
+
+    for report in (bearer_report, refresh_report):
+        ids = {check.id for check in report.reports[0].checks}
+        assert "oauth.token.error_contract" in ids
+
+
+def test_env_references_expand_inside_string_arrays(monkeypatch) -> None:
+    """`${ENV}` worked on scalars but not on array items, which broke ephemeral targets."""
+    monkeypatch.setenv("SMOKE_ORIGIN", AUTH_ISSUER)
+    monkeypatch.setenv("SMOKE_MCP_URL", MCP_URL)
+    monkeypatch.delenv("SMOKE_SCOPE", raising=False)
+
+    document = json.loads(_manifest())
+    target = document["targets"]["healthy"]
+    target["mcp_url"] = "${SMOKE_MCP_URL}"
+    target["expectations"].update(
+        {
+            "issuers": ["${SMOKE_ORIGIN}"],
+            "token_issuers": ["${SMOKE_ORIGIN}"],
+            "resources": ["${SMOKE_MCP_URL}"],
+            "scopes": ["${SMOKE_SCOPE:-mcp.read}"],
+        }
+    )
+    target["oauth"]["scopes"] = ["${SMOKE_SCOPE:-mcp.read}"]
+
+    manifest = loads_manifest(json.dumps(document))
+    expectations = manifest.targets["healthy"].expectations
+    assert expectations.issuers == (AUTH_ISSUER,)
+    assert expectations.token_issuers == (AUTH_ISSUER,)
+    assert expectations.resources == (MCP_URL,)
+    assert expectations.scopes == ("mcp.read",)
+    assert manifest.targets["healthy"].oauth.scopes == ("mcp.read",)
+
+
+@pytest.mark.asyncio
+async def test_static_manifest_with_env_injection_passes_issuer_policy(monkeypatch) -> None:
+    """The end the consumers cared about: no generated-per-run manifest."""
+    monkeypatch.setenv("SMOKE_ORIGIN", AUTH_ISSUER)
+
+    document = json.loads(_manifest())
+    document["targets"]["healthy"]["expectations"]["issuers"] = ["${SMOKE_ORIGIN}"]
+
+    report = await ProbeRunner(
+        transport_factory=lambda target: FixtureTransport(target),
+        environ={
+            "TEST_REFRESH_TOKEN": REFRESH_SECRET,
+            "TEST_CLIENT_ID": "example-client",
+            "TEST_CLIENT_SECRET": CLIENT_SECRET,
+        },
+    ).run_manifest(loads_manifest(json.dumps(document)))
+
+    checks = {check.id: check for check in report.reports[0].checks}
+    # `oauth.issuer.selection` is emitted only when selection fails. Comparing
+    # the literal "${SMOKE_ORIGIN}" against the advertised issuer produced
+    # exactly that failure, which is what forced a per-run generated manifest.
+    assert "oauth.issuer.selection" not in checks
+    assert checks["rfc8414.issuer.identity"].status is CheckStatus.PASS
+    assert report.exit_code == 0
+
+
+def test_unset_env_reference_in_an_array_is_a_configuration_error() -> None:
+    document = json.loads(_manifest())
+    document["targets"]["healthy"]["expectations"]["issuers"] = ["${SMOKE_ORIGIN_UNSET_XYZ}"]
+
+    with pytest.raises(ConfigError) as excinfo:
+        loads_manifest(json.dumps(document))
+    assert "SMOKE_ORIGIN_UNSET_XYZ" in str(excinfo.value)
+    assert "expectations.issuers[0]" in str(excinfo.value)
+
+
+def test_array_duplicates_are_detected_after_expansion(monkeypatch) -> None:
+    monkeypatch.setenv("SMOKE_ORIGIN_A", AUTH_ISSUER)
+    monkeypatch.setenv("SMOKE_ORIGIN_B", AUTH_ISSUER)
+
+    document = json.loads(_manifest())
+    document["targets"]["healthy"]["expectations"]["issuers"] = [
+        "${SMOKE_ORIGIN_A}",
+        "${SMOKE_ORIGIN_B}",
+    ]
+
+    with pytest.raises(ConfigError, match="duplicates"):
+        loads_manifest(json.dumps(document))
+
+
+@pytest.mark.parametrize("flag", ["--config", "--manifest"])
+@pytest.mark.parametrize("command", ["validate", "check"])
+def test_cli_accepts_both_manifest_flag_spellings(command: str, flag: str) -> None:
+    """Docs, schema and UI all call the file a manifest; the parser now agrees."""
+    from testmcpy_oauth_probe.cli import build_parser
+
+    args = build_parser().parse_args([command, flag, "auth-smoke.yaml"])
+    assert args.config == "auth-smoke.yaml"
+
+
+def test_discover_does_not_probe_the_token_endpoint() -> None:
+    """`discover` is advertised as read-only, and error_probe defaults to true."""
+    from testmcpy_oauth_probe.cli import build_parser
+
+    args = build_parser().parse_args(["discover", "--url", MCP_URL])
+    assert args.url == MCP_URL
+
+    source = Path(cli_module.__file__).read_text(encoding="utf-8")
+    assert "error_probe: false" in source

@@ -51,19 +51,24 @@ def _only(data: Mapping[str, Any], allowed: set[str], path: str) -> None:
         raise ConfigError(f"{path} contains unknown field(s): {', '.join(unknown)}")
 
 
+def _expand_env(value: str, path: str) -> str:
+    """Resolve a whole-scalar `${NAME}` / `${NAME:-default}` reference."""
+    match = _ENV_RE.match(value)
+    if match is None:
+        return value
+    env_name, default = match.groups()
+    resolved = os.environ.get(env_name, default)
+    if resolved is None:
+        raise ConfigError(f"{path} references unset environment variable {env_name!r}")
+    return resolved
+
+
 def _string(value: Any, path: str, *, required: bool = False) -> str | None:
     if value is None and not required:
         return None
     if not isinstance(value, str) or not value:
         raise ConfigError(f"{path} must be a non-empty string")
-    match = _ENV_RE.match(value)
-    if match:
-        env_name, default = match.groups()
-        resolved = os.environ.get(env_name, default)
-        if resolved is None:
-            raise ConfigError(f"{path} references unset environment variable {env_name!r}")
-        return resolved
-    return value
+    return _expand_env(value, path)
 
 
 def _strings(value: Any, path: str) -> tuple[str, ...]:
@@ -71,9 +76,17 @@ def _strings(value: Any, path: str) -> tuple[str, ...]:
         return ()
     if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
         raise ConfigError(f"{path} must be an array of non-empty strings")
-    if len(set(value)) != len(value):
+    # Array elements expand exactly like scalars. Without this, `mcp_url:
+    # ${SMOKE_MCP_URL}` resolved while `issuers: ["${SMOKE_ORIGIN}"]` was
+    # compared literally, which forced a manifest generated per run for any
+    # ephemeral target. Duplicates are judged after expansion, since two
+    # references that resolve to the same value are the same expectation.
+    expanded = tuple(_expand_env(item, f"{path}[{index}]") for index, item in enumerate(value))
+    if any(not item for item in expanded):
+        raise ConfigError(f"{path} must not contain empty values after expansion")
+    if len(set(expanded)) != len(expanded):
         raise ConfigError(f"{path} must not contain duplicates")
-    return tuple(value)
+    return expanded
 
 
 def _secret_ref(value: Any, path: str) -> SecretRef | None:

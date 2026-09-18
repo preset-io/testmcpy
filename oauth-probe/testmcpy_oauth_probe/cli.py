@@ -19,6 +19,16 @@ from testmcpy_oauth_probe.models import CONFIG_SCHEMA, Correlation
 from testmcpy_oauth_probe.reporters import to_human, to_json, to_jsonl, to_junit
 from testmcpy_oauth_probe.runner import ProbeRunner
 
+# `--config` stays first so it remains the name in `--help` output and in every
+# existing pipeline; `--manifest` is an accepted alias. argparse stores both
+# under `dest="config"`.
+_MANIFEST_FLAGS = ("--config", "--manifest")
+_MANIFEST_KWARGS = {
+    "dest": "config",
+    "metavar": "PATH",
+    "help": "Path to the versioned probe manifest (YAML or JSON)",
+}
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -27,22 +37,33 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
     validate = subparsers.add_parser("validate", help="Validate a manifest without network access")
-    validate.add_argument("--config", required=True)
+    # Everything else — the docs, the schema name, the Auth Smoke page, this
+    # tool's own help text — calls the file a manifest, so `--manifest` is the
+    # flag people reach for first. Accept both rather than make them guess.
+    validate.add_argument(*_MANIFEST_FLAGS, required=True, **_MANIFEST_KWARGS)
     schema = subparsers.add_parser("schema", help="Print a versioned JSON Schema")
     schema.add_argument("--kind", choices=("manifest", "report"), default="manifest")
     schema.set_defaults(command="schema")
     check = subparsers.add_parser("check", help="Run configured targets headlessly")
-    check.add_argument("--config", required=True)
+    check.add_argument(*_MANIFEST_FLAGS, required=True, **_MANIFEST_KWARGS)
     check.add_argument("--target", action="append", dest="targets")
     check.add_argument("--profile")
     check.add_argument("--format", choices=("human", "json", "jsonl"), default="human")
     check.add_argument("--output", default="-")
     check.add_argument("--junit")
     check.add_argument("--run-id")
-    check.add_argument("--service")
-    check.add_argument("--region")
-    check.add_argument("--revision")
-    check.add_argument("--deployment-id")
+    check.add_argument("--service", help="Report label only: recorded in correlation.service.")
+    check.add_argument("--region", help="Report label only: recorded in correlation.region.")
+    check.add_argument(
+        "--revision",
+        help=(
+            "Report label only: recorded in correlation.revision and never "
+            "compared against the deployed revision. This is not a revision assertion."
+        ),
+    )
+    check.add_argument(
+        "--deployment-id", help="Report label only: recorded in correlation.deployment_id."
+    )
     discover = subparsers.add_parser("discover", help="Run discovery without credentials")
     discover.add_argument("--url", required=True)
     discover.add_argument("--format", choices=("human", "json", "jsonl"), default="human")
@@ -76,6 +97,10 @@ targets:
     mcp_url: {args.url!r}
     oauth:
       flow: none
+      # `discover` is advertised as read-only reconnaissance. error_probe
+      # defaults to true and now applies to every flow, so opt out explicitly
+      # rather than POST an unsupported grant to someone's token endpoint.
+      error_probe: false
 """
         )
         report = await ProbeRunner().run_manifest(manifest)

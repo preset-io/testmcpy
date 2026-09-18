@@ -26,6 +26,20 @@ from testmcpy_oauth_probe.transport import HttpResponse, HttpTransport, Transpor
 
 _ASSERTION_TYPE = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
 
+# RFC 6749 §5.2 error codes. The list is closed: the RFC says the value "MUST be
+# one of" these, so an unregistered code is a contract violation even when the
+# rest of the response is well formed.
+_RFC6749_ERROR_CODES = frozenset(
+    {
+        "invalid_request",
+        "invalid_client",
+        "invalid_grant",
+        "unauthorized_client",
+        "unsupported_grant_type",
+        "invalid_scope",
+    }
+)
+
 
 @dataclass(frozen=True)
 class TokenResult:
@@ -166,17 +180,29 @@ async def _safe_error_probe(
         )
         payload = _json_object(response)
         error = payload.get("error")
-        valid_error = isinstance(error, str) and bool(error)
+        # RFC 6749 §5.2 defines a closed set of codes for this response. Any
+        # non-empty string used to pass, which accepted free-text errors that a
+        # conforming client cannot branch on.
+        registered = isinstance(error, str) and error in _RFC6749_ERROR_CODES
+        present = isinstance(error, str) and bool(error)
         valid_status = response.status in {400, 401}
+        if registered and valid_status:
+            message = "token endpoint returned a registered OAuth error code"
+        elif present and not registered:
+            message = "token endpoint returned an unregistered OAuth error code"
+        else:
+            message = "token endpoint did not return the expected OAuth error contract"
         return _check(
             "oauth.token.error_contract",
-            CheckStatus.PASS if valid_error and valid_status else CheckStatus.FAIL,
-            "token endpoint returned a structured OAuth error"
-            if valid_error and valid_status
-            else "token endpoint did not return the expected OAuth error contract",
+            CheckStatus.PASS if registered and valid_status else CheckStatus.FAIL,
+            message,
             started=started,
             http_status=response.status,
-            evidence={"error": error if isinstance(error, str) else "missing"},
+            evidence={
+                "error": error if isinstance(error, str) else "missing",
+                "registered_code": registered,
+                "expected_codes": sorted(_RFC6749_ERROR_CODES),
+            },
             reference="RFC 6749 §5.2",
         )
     except (TransportError, ValueError) as exc:
@@ -187,6 +213,55 @@ async def _safe_error_probe(
             started=started,
             reference="RFC 6749 §5.2",
         )
+
+
+def _unsafe_token_endpoint(token_endpoint: str) -> bool:
+    parsed = urlsplit(token_endpoint)
+    return bool(parsed.query or parsed.fragment or parsed.username or parsed.password)
+
+
+def _error_contract_skip(reason: str) -> CheckResult:
+    return _check(
+        "oauth.token.error_contract",
+        CheckStatus.SKIP,
+        reason,
+        started=time.monotonic(),
+        applicable=False,
+        reference="RFC 6749 §5.2",
+    )
+
+
+async def _error_contract(
+    target: TargetConfig,
+    token_endpoint: str | None,
+    transport: HttpTransport,
+    *,
+    blocked: str | None = None,
+) -> CheckResult | None:
+    """Resolve the error-contract probe for every flow, or say why it did not run.
+
+    This check used to be reachable only from the grant-exchange path, so
+    `flow: bearer` accepted `error_probe: true` and then silently produced no
+    `oauth.token.error_contract` record at all — a report that looks clean
+    because a check disappeared. The probe itself is credential-free, so the
+    only real precondition is a usable token endpoint.
+    """
+    if not target.oauth.error_probe:
+        # Explicitly opted out in the manifest; absence is the operator's choice.
+        return None
+    if blocked is not None:
+        # A caller-level rule forbids touching the token endpoint at all.
+        return _error_contract_skip(blocked)
+    if token_endpoint is None:
+        return _error_contract_skip(
+            "error probe requires a token endpoint, and discovery did not find one"
+        )
+    if _unsafe_token_endpoint(token_endpoint):
+        return _error_contract_skip(
+            "error probe skipped: discovered token endpoint contains "
+            "forbidden query, fragment, or userinfo"
+        )
+    return await _safe_error_probe(token_endpoint, transport)
 
 
 def _apply_client_auth(
@@ -238,6 +313,26 @@ async def acquire_token(
 ) -> TokenResult:
     checks: list[CheckResult] = []
     oauth = target.oauth
+    # Runs first, and for every flow, so that no later early return can make it
+    # disappear from the report. It needs no credentials of ours, but it must
+    # still respect the rule that a non-disposable refresh token means the
+    # token endpoint is not contacted at all.
+    non_disposable_refresh = (
+        oauth.flow is AuthFlow.REFRESH_TOKEN and not oauth.refresh_token_disposable
+    )
+    error_contract = await _error_contract(
+        target,
+        token_endpoint,
+        transport,
+        blocked=(
+            "error probe skipped: refresh_token_disposable is not set, so no "
+            "token-endpoint request is made for this target"
+            if non_disposable_refresh
+            else None
+        ),
+    )
+    if error_contract is not None:
+        checks.append(error_contract)
     if oauth.flow is AuthFlow.BEARER:
         started = time.monotonic()
         try:
@@ -291,8 +386,7 @@ async def acquire_token(
         )
         return TokenResult(None, tuple(checks))
 
-    parsed = urlsplit(token_endpoint)
-    if parsed.query or parsed.fragment or parsed.username or parsed.password:
+    if _unsafe_token_endpoint(token_endpoint):
         checks.append(
             _check(
                 "oauth.token.endpoint",
@@ -303,9 +397,6 @@ async def acquire_token(
             )
         )
         return TokenResult(None, tuple(checks))
-
-    if oauth.error_probe:
-        checks.append(await _safe_error_probe(token_endpoint, transport))
 
     form: dict[str, str] = {"grant_type": oauth.flow.value}
     headers = {

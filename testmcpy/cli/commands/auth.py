@@ -19,6 +19,10 @@ from testmcpy_oauth_probe.runner import ProbeRunner
 
 from testmcpy.cli.app import app, console
 
+# Matches `testmcpy-oauth`: the file is called a manifest everywhere else, so
+# both spellings are accepted. `--config` stays the primary name.
+_MANIFEST_FLAGS = ("--config", "--manifest")
+
 auth_app = typer.Typer(
     name="auth",
     help="Headless OAuth/MCP interoperability checks (not formal certification)",
@@ -28,7 +32,9 @@ app.add_typer(auth_app, name="auth")
 
 
 @auth_app.command("validate")
-def validate(config: Path = typer.Option(..., "--config", exists=True, dir_okay=False)) -> None:
+def validate(
+    config: Path = typer.Option(..., *_MANIFEST_FLAGS, exists=True, dir_okay=False),
+) -> None:
     """Validate the versioned manifest without resolving secrets or using the network."""
     try:
         manifest = load_manifest(config)
@@ -55,7 +61,7 @@ def schema(
 
 @auth_app.command("check")
 def check(
-    config: Path = typer.Option(..., "--config", exists=True, dir_okay=False),
+    config: Path = typer.Option(..., *_MANIFEST_FLAGS, exists=True, dir_okay=False),
     target: Optional[list[str]] = typer.Option(None, "--target"),
     profile: Optional[str] = typer.Option(None, "--profile"),
     output_format: str = typer.Option("human", "--format", help="human, json, or jsonl"),
@@ -64,7 +70,14 @@ def check(
     run_id: Optional[str] = typer.Option(None, "--run-id"),
     service: Optional[str] = typer.Option(None, "--service"),
     region: Optional[str] = typer.Option(None, "--region"),
-    revision: Optional[str] = typer.Option(None, "--revision"),
+    revision: Optional[str] = typer.Option(
+        None,
+        "--revision",
+        help=(
+            "Report label only: recorded in correlation.revision and never "
+            "compared against the deployed revision."
+        ),
+    ),
     deployment_id: Optional[str] = typer.Option(None, "--deployment-id"),
 ) -> None:
     """Run one or more safe, noninteractive target probes."""
