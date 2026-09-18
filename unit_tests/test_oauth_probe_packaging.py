@@ -12,6 +12,8 @@ that is exactly where the defect lived: nothing in the runtime was wrong.
 
 from __future__ import annotations
 
+import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -183,6 +185,145 @@ def test_release_script_publishes_the_probe_before_testmcpy() -> None:
     assert probe_upload < testmcpy_upload, (
         "scripts/publish.sh uploads testmcpy before the probe it depends on"
     )
+
+
+_GIT_STUB = """#!/bin/bash
+case "$1" in
+  diff-index) exit 0 ;;
+  rev-parse) echo "test-branch"; exit 0 ;;
+  *) exit 0 ;;
+esac
+"""
+
+_CURL_STUB = """#!/bin/bash
+# Simulate PyPI not having propagated the new tarball yet: touch an empty
+# file at the -o destination so the script's own emptiness check skips the
+# SHA256/Homebrew step instead of needing a real download.
+prev=""
+for arg in "$@"; do
+  if [ "$prev" = "-o" ]; then
+    : > "$arg"
+  fi
+  prev="$arg"
+done
+exit 0
+"""
+
+_PYTHON_STUB = """#!/bin/bash
+echo "$*" >> "$CALL_LOG"
+if [ "$1" = "-m" ] && [ "$2" = "build" ]; then
+  outdir="dist"
+  prev=""
+  for arg in "$@"; do
+    if [ "$prev" = "--outdir" ]; then
+      outdir="$arg"
+    fi
+    prev="$arg"
+  done
+  mkdir -p "$outdir"
+  touch "$outdir/dummy-0.1.0.tar.gz"
+  exit 0
+fi
+if [ "$1" = "-m" ] && [ "$2" = "twine" ]; then
+  case "$*" in
+    *oauth-probe/dist*) exit "${PROBE_UPLOAD_EXIT:-0}" ;;
+    *) exit 0 ;;
+  esac
+fi
+if [ "$1" = "-m" ] && [ "$2" = "pip" ]; then
+  exit "${PIP_DOWNLOAD_EXIT:-0}"
+fi
+exit 0
+"""
+
+
+def _write_executable(path: Path, content: str) -> None:
+    path.write_text(content)
+    path.chmod(0o755)
+
+
+def _run_publish_sh(
+    tmp_path: Path, *, pip_exit: int, probe_exit: int = 0
+) -> tuple[subprocess.CompletedProcess[str], list[str]]:
+    """Run a copy of scripts/publish.sh with git/curl/python/twine/pip stubbed out.
+
+    The gate that refuses to publish testmcpy against an unresolvable probe
+    (added alongside this test) had no coverage at all — not even a text
+    assertion — so this actually executes the script's control flow instead
+    of inspecting its source.
+    """
+    repo = tmp_path / "repo"
+    (repo / "scripts").mkdir(parents=True)
+    shutil.copy(REPO_ROOT / "scripts" / "publish.sh", repo / "scripts" / "publish.sh")
+    (repo / "oauth-probe").mkdir()
+    (repo / "pyproject.toml").write_text(
+        'version = "0.1.0"\n'
+        "dependencies = [\n"
+        '    "testmcpy-oauth-probe>=0.1.0,<0.2.0",\n'
+        "]\n"
+    )
+    (repo / "oauth-probe" / "pyproject.toml").write_text('version = "0.1.0"\n')
+
+    fakebin = tmp_path / "fakebin"
+    fakebin.mkdir()
+    _write_executable(fakebin / "git", _GIT_STUB)
+    _write_executable(fakebin / "curl", _CURL_STUB)
+    _write_executable(fakebin / "sleep", "#!/bin/bash\nexit 0\n")
+    _write_executable(fakebin / "python", _PYTHON_STUB)
+
+    call_log = tmp_path / "calls.log"
+    env = dict(os.environ)
+    env["PATH"] = f"{fakebin}:{env['PATH']}"
+    env["CALL_LOG"] = str(call_log)
+    env["PROBE_UPLOAD_EXIT"] = str(probe_exit)
+    env["PIP_DOWNLOAD_EXIT"] = str(pip_exit)
+
+    result = subprocess.run(
+        ["bash", str(repo / "scripts" / "publish.sh")],
+        cwd=repo,
+        input="y\n",
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=60,
+    )
+    calls = call_log.read_text().splitlines() if call_log.exists() else []
+    return result, calls
+
+
+def test_release_script_refuses_testmcpy_upload_when_probe_is_not_yet_resolvable(
+    tmp_path: Path,
+) -> None:
+    """The regression was shipping testmcpy against a probe nobody could install.
+
+    scripts/publish.sh now re-checks that the exact probe requirement resolves
+    from PyPI before uploading testmcpy. If it never does (index lag, a first
+    upload that silently failed, ...), testmcpy must not be uploaded either.
+    """
+    result, calls = _run_publish_sh(tmp_path, pip_exit=1)
+
+    assert result.returncode != 0, (
+        "scripts/publish.sh must fail when the probe it depends on is not "
+        f"resolvable from PyPI.\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+    testmcpy_uploads = [c for c in calls if "twine" in c and "oauth-probe/dist" not in c]
+    assert not testmcpy_uploads, (
+        "scripts/publish.sh uploaded testmcpy even though the probe requirement "
+        "never resolved from PyPI — this is exactly how 0.11.21 shipped broken"
+    )
+    probe_uploads = [c for c in calls if "twine" in c and "oauth-probe/dist" in c]
+    assert probe_uploads, "expected the probe upload to run before the gate is checked"
+
+
+def test_release_script_publishes_testmcpy_once_the_probe_resolves(tmp_path: Path) -> None:
+    result, calls = _run_publish_sh(tmp_path, pip_exit=0)
+
+    assert result.returncode == 0, (
+        f"expected success once the probe resolves.\nstdout:\n{result.stdout}\n"
+        f"stderr:\n{result.stderr}"
+    )
+    testmcpy_uploads = [c for c in calls if "twine" in c and "oauth-probe/dist" not in c]
+    assert testmcpy_uploads, "scripts/publish.sh never uploaded testmcpy even though the probe resolved"
 
 
 def test_source_installs_use_the_in_tree_probe() -> None:
