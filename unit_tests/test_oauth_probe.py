@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import xml.etree.ElementTree as ET
 from collections.abc import Mapping
 from dataclasses import replace
@@ -767,6 +768,74 @@ def test_packaged_schema_and_documented_example_stay_loadable() -> None:
     assert report_schema["$id"] == "testmcpy.io/oauth-smoke-report/v1"
     Draft202012Validator.check_schema(schema)
     Draft202012Validator.check_schema(report_schema)
+
+
+def test_packaged_schema_accepts_env_references_under_format_assertion() -> None:
+    """A consumer that turns on format checking must still accept `${ENV}`."""
+    validator = Draft202012Validator(
+        manifest_json_schema(),
+        format_checker=Draft202012Validator.FORMAT_CHECKER,
+    )
+    document = {
+        "schema": "testmcpy.io/oauth-smoke/v1",
+        "targets": {
+            "ephemeral": {
+                "mcp_url": "${SMOKE_MCP_URL}",
+                "oauth": {"flow": "none"},
+                "expectations": {
+                    "issuers": ["${SMOKE_ORIGIN}"],
+                    "resources": ["${SMOKE_MCP_URL:-https://mcp.example.test/mcp}"],
+                },
+            }
+        },
+    }
+
+    assert not list(validator.iter_errors(document))
+
+    literal_urls = {
+        "schema": "testmcpy.io/oauth-smoke/v1",
+        "targets": {
+            "static": {
+                "mcp_url": MCP_URL,
+                "oauth": {"flow": "none"},
+                "expectations": {"issuers": [AUTH_ISSUER]},
+            }
+        },
+    }
+    assert not list(validator.iter_errors(literal_urls))
+
+    # jsonschema only asserts `format: uri` when an RFC 3986 library is
+    # installed, so the documents above cannot prove the union on their own.
+    # Assert the structure directly: every URI-typed field must go through the
+    # union, and the reference pattern must be a reference pattern.
+    schema = manifest_json_schema()
+    pattern = re.compile(schema["$defs"]["envReference"]["pattern"])
+    assert pattern.fullmatch("${SMOKE_ORIGIN}")
+    assert pattern.fullmatch("${SMOKE_ORIGIN:-https://auth.example.test}")
+    assert not pattern.fullmatch("${not a reference}")
+    assert not pattern.fullmatch("https://auth.example.test")
+
+    def uri_typed_leaves(node: Any, path: str = "") -> list[str]:
+        found: list[str] = []
+        if isinstance(node, dict):
+            if node.get("format") == "uri" and "anyOf" not in node:
+                found.append(path)
+            for key, value in node.items():
+                found.extend(uri_typed_leaves(value, f"{path}.{key}"))
+        elif isinstance(node, list):
+            for index, value in enumerate(node):
+                found.extend(uri_typed_leaves(value, f"{path}[{index}]"))
+        return found
+
+    union = schema["$defs"]["uriOrEnvReference"]
+    assert uri_typed_leaves(union), "the union must still carry the uri format branch"
+    for section in ("oauth", "expectations", "target"):
+        leaves = uri_typed_leaves(schema["$defs"][section], section)
+        assert not leaves, (
+            f"{leaves} constrain a URI without allowing an ${{ENV}} reference; "
+            "a consumer validating with format assertion would reject an "
+            "environment-injected manifest"
+        )
 
 
 @pytest.mark.parametrize(
