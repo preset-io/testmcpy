@@ -157,6 +157,34 @@ def test_publish_workflow_releases_the_probe_before_testmcpy() -> None:
     )
 
 
+def test_release_script_publishes_the_probe_before_testmcpy() -> None:
+    """The workflow is not the only release path; scripts/publish.sh is used by hand.
+
+    testmcpy 0.11.21 shipped depending on a distribution that was never
+    uploaded, because this script built and uploaded the root project only.
+    """
+    script = (REPO_ROOT / "scripts/publish.sh").read_text(encoding="utf-8")
+
+    assert "build oauth-probe" in script, (
+        "scripts/publish.sh never builds the probe distribution; a release cut "
+        "with it publishes a testmcpy that pip cannot resolve"
+    )
+
+    uploads = [
+        index
+        for index, line in enumerate(script.splitlines())
+        if "twine upload" in line and not line.strip().startswith("#")
+    ]
+    assert len(uploads) >= 2, "scripts/publish.sh uploads only one distribution"
+
+    lines = script.splitlines()
+    probe_upload = next(index for index in uploads if "oauth-probe/dist" in lines[index])
+    testmcpy_upload = next(index for index in uploads if "oauth-probe/dist" not in lines[index])
+    assert probe_upload < testmcpy_upload, (
+        "scripts/publish.sh uploads testmcpy before the probe it depends on"
+    )
+
+
 def test_source_installs_use_the_in_tree_probe() -> None:
     """A source checkout must test its own probe, not the last PyPI release."""
     ci = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")

@@ -23,13 +23,19 @@ echo -e "\n${YELLOW}Current branch: ${BRANCH}${NC}"
 
 # Get current version from pyproject.toml
 VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+# Two distributions ship from this repo. testmcpy declares a hard dependency on
+# testmcpy-oauth-probe, so publishing testmcpy alone leaves a release on PyPI
+# that cannot be installed at all.
+PROBE_VERSION=$(grep '^version = ' oauth-probe/pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+PROBE_REQUIREMENT=$(grep -o 'testmcpy-oauth-probe[^"]*' pyproject.toml | head -1)
 echo -e "${YELLOW}Current version: ${VERSION}${NC}"
+echo -e "${YELLOW}Probe version:   ${PROBE_VERSION}  (testmcpy requires: ${PROBE_REQUIREMENT})${NC}"
 
 # Confirm publication
 echo -e "\n${YELLOW}This will:${NC}"
 echo "1. Clean previous builds"
-echo "2. Build new package"
-echo "3. Upload to PyPI"
+echo "2. Build testmcpy-oauth-probe ${PROBE_VERSION} and testmcpy ${VERSION}"
+echo "3. Upload testmcpy-oauth-probe to PyPI, then testmcpy"
 echo "4. Create git tag v${VERSION}"
 echo "5. Update Homebrew formula with SHA256"
 echo ""
@@ -43,9 +49,13 @@ fi
 # Clean previous builds
 echo -e "\n${GREEN}🧹 Cleaning previous builds...${NC}"
 rm -rf dist/ build/ *.egg-info testmcpy.egg-info
+rm -rf oauth-probe/dist/ oauth-probe/build/ oauth-probe/*.egg-info
 
-# Build package
-echo -e "\n${GREEN}🔨 Building package...${NC}"
+# Build packages
+echo -e "\n${GREEN}🔨 Building testmcpy-oauth-probe...${NC}"
+python -m build oauth-probe --outdir oauth-probe/dist
+
+echo -e "\n${GREEN}🔨 Building testmcpy...${NC}"
 python -m build
 
 # Check if PyPI credentials are configured
@@ -56,8 +66,40 @@ if [ ! -f ~/.pypirc ]; then
     echo "Password: <your-pypi-token>"
 fi
 
-# Upload to PyPI
-echo -e "\n${GREEN}📤 Uploading to PyPI...${NC}"
+# Upload to PyPI. Order matters: testmcpy depends on testmcpy-oauth-probe, so
+# uploading testmcpy first publishes a release that pip cannot resolve.
+# --skip-existing makes the probe upload a no-op when its version is unchanged,
+# which is the normal case (the two are versioned independently).
+echo -e "\n${GREEN}📤 Uploading testmcpy-oauth-probe to PyPI...${NC}"
+if ! python -m twine upload --skip-existing oauth-probe/dist/*; then
+    echo -e "\n${RED}❌ Probe upload failed${NC}"
+    echo -e "${YELLOW}If this is the first ever upload of testmcpy-oauth-probe, a"
+    echo -e "project-scoped PyPI token cannot create it. Use an account-scoped"
+    echo -e "token once, then scope a new token to the project.${NC}"
+    exit 1
+fi
+
+# Guard the ordering above rather than trusting it: refuse to publish testmcpy
+# against a probe version that is not installable from PyPI.
+echo -e "\n${GREEN}🔎 Verifying ${PROBE_REQUIREMENT} is installable from PyPI...${NC}"
+PROBE_AVAILABLE=false
+for attempt in 1 2 3 4 5; do
+    if python -m pip download --no-deps --dest /tmp/probe-publish-check "${PROBE_REQUIREMENT}" >/dev/null 2>&1; then
+        PROBE_AVAILABLE=true
+        break
+    fi
+    echo "  not on PyPI yet; retrying in 15s (attempt ${attempt}/5)"
+    sleep 15
+done
+rm -rf /tmp/probe-publish-check
+if [ "$PROBE_AVAILABLE" != "true" ]; then
+    echo -e "\n${RED}❌ ${PROBE_REQUIREMENT} is not installable from PyPI${NC}"
+    echo -e "${RED}Refusing to publish testmcpy ${VERSION} against it — the release"
+    echo -e "would be unresolvable for every consumer.${NC}"
+    exit 1
+fi
+
+echo -e "\n${GREEN}📤 Uploading testmcpy to PyPI...${NC}"
 python -m twine upload dist/*
 
 if [ $? -ne 0 ]; then
