@@ -257,10 +257,7 @@ def _run_publish_sh(
     shutil.copy(REPO_ROOT / "scripts" / "publish.sh", repo / "scripts" / "publish.sh")
     (repo / "oauth-probe").mkdir()
     (repo / "pyproject.toml").write_text(
-        'version = "0.1.0"\n'
-        "dependencies = [\n"
-        '    "testmcpy-oauth-probe>=0.1.0,<0.2.0",\n'
-        "]\n"
+        'version = "0.1.0"\ndependencies = [\n    "testmcpy-oauth-probe>=0.1.0,<0.2.0",\n]\n'
     )
     (repo / "oauth-probe" / "pyproject.toml").write_text('version = "0.1.0"\n')
 
@@ -323,7 +320,9 @@ def test_release_script_publishes_testmcpy_once_the_probe_resolves(tmp_path: Pat
         f"stderr:\n{result.stderr}"
     )
     testmcpy_uploads = [c for c in calls if "twine" in c and "oauth-probe/dist" not in c]
-    assert testmcpy_uploads, "scripts/publish.sh never uploaded testmcpy even though the probe resolved"
+    assert testmcpy_uploads, (
+        "scripts/publish.sh never uploaded testmcpy even though the probe resolved"
+    )
 
 
 def test_source_installs_use_the_in_tree_probe() -> None:
