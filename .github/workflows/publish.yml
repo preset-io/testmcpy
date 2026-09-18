@@ -47,10 +47,48 @@ jobs:
         python -m pip install --upgrade pip
         pip install build twine
     
-    - name: Build package
-      run: python -m build
-    
-    - name: Publish to PyPI
+    # Two distributions come out of this repo:
+    #   testmcpy-oauth-probe  — oauth-probe/, httpx + pyyaml only, owns the
+    #                           `testmcpy-oauth` console script
+    #   testmcpy              — everything else; depends on the probe
+    # They are versioned independently, so most testmcpy releases re-upload an
+    # unchanged probe version; --skip-existing turns that into a no-op.
+    - name: Build both distributions
+      run: |
+        python -m build oauth-probe --outdir oauth-probe/dist
+        python -m build
+        python -m twine check oauth-probe/dist/* dist/*
+
+    # Ordering matters: testmcpy declares a hard dependency on
+    # testmcpy-oauth-probe. Publishing testmcpy first would leave a window in
+    # which `pip install testmcpy` cannot resolve.
+    - name: Publish testmcpy-oauth-probe to PyPI
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+      run: python -m twine upload --skip-existing oauth-probe/dist/*
+
+    - name: Verify the probe dependency is resolvable before publishing testmcpy
+      # Guards the ordering above: if the probe version testmcpy requires is not
+      # on PyPI, fail here rather than shipping a testmcpy that cannot install.
+      run: |
+        REQUIRED=$(python -c "
+        import tomllib, pathlib
+        data = tomllib.loads(pathlib.Path('pyproject.toml').read_text())
+        print(next(d for d in data['project']['dependencies'] if d.startswith('testmcpy-oauth-probe')))
+        ")
+        echo "testmcpy requires: ${REQUIRED}"
+        for attempt in 1 2 3 4 5; do
+          if pip download --no-deps --dest /tmp/probe-check "${REQUIRED}"; then
+            exit 0
+          fi
+          echo "Not on PyPI yet; retrying in 15s (attempt ${attempt}/5)"
+          sleep 15
+        done
+        echo "::error::${REQUIRED} is not installable from PyPI; refusing to publish testmcpy against it"
+        exit 1
+
+    - name: Publish testmcpy to PyPI
       env:
         TWINE_USERNAME: __token__
         TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}

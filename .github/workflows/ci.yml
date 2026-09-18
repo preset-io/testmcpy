@@ -25,6 +25,10 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          # testmcpy depends on the separately published testmcpy-oauth-probe.
+          # Install the in-tree copy first so a source checkout tests its own
+          # probe rather than resolving the last release from PyPI.
+          pip install -e ./oauth-probe
           pip install -e ".[dev,server]"
 
       - name: Lint with ruff
@@ -81,6 +85,14 @@ jobs:
           (cd oauth-probe/dist && sha256sum --check SHA256SUMS)
           test "$(cat oauth-probe/dist/SOURCE_COMMIT)" = "$SOURCE_SHA"
           /tmp/oauth-probe-venv/bin/pip install oauth-probe/dist/*.whl
+          # The whole point of the split: a release pipeline that installs the
+          # probe must not receive testmcpy's agent/server stack. Assert the
+          # closure rather than trusting the metadata.
+          /tmp/oauth-probe-venv/bin/pip list --format=freeze | tee /tmp/probe-closure.txt
+          if grep -iE '^(testmcpy|fastmcp|mcp|anthropic|sqlalchemy|alembic|typer|textual|ollama|uvicorn|starlette|fastapi|claude-agent-sdk|openai-agents|google-adk)==' /tmp/probe-closure.txt; then
+            echo "::error::testmcpy-oauth-probe pulled in a heavy dependency; the split is broken"
+            exit 1
+          fi
           /tmp/oauth-probe-venv/bin/testmcpy-oauth schema >/dev/null
           /tmp/oauth-probe-venv/bin/testmcpy-oauth schema --kind report >/dev/null
           /tmp/oauth-probe-venv/bin/testmcpy-oauth validate \
@@ -110,6 +122,7 @@ jobs:
       - name: Install with mcp/fastmcp pre-releases
         run: |
           python -m pip install --upgrade pip
+          pip install -e ./oauth-probe
           pip install -e ".[dev,server]"
           pip install --upgrade --pre mcp fastmcp
           pip list | grep -E "^(mcp|fastmcp) "

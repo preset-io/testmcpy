@@ -88,8 +88,12 @@ line-length = 100
 requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
+# `testmcpy_oauth_probe` deliberately does NOT ship in this wheel. It is its own
+# distribution (`oauth-probe/pyproject.toml`) so CI consumers can install the
+# probe without this package's agent/server stack. Shipping it from both would
+# put the same import package in two distributions.
 [tool.setuptools.packages.find]
-where = [".", "oauth-probe"]
+where = ["."]
 include = ["testmcpy*"]
 
 [tool.setuptools.package-data]
@@ -97,7 +101,6 @@ testmcpy = [
     "ui/**/*",
     "server/**/*",
 ]
-testmcpy_oauth_probe = ["schemas/*.json"]
 
 [project]
 name = "testmcpy"
@@ -146,6 +149,12 @@ dependencies = [
     "textual>=0.47.0,<1.0.0",
     "sqlalchemy>=2.0.0,<3.0.0",
     "alembic>=1.13.0,<2.0.0",
+    # The headless OAuth/MCP probe, published separately so release pipelines
+    # can install it on its own (httpx + pyyaml only). `testmcpy auth` and
+    # `testmcpy.oauth_probe` are thin adapters over it, so the dependency is
+    # required rather than an extra. Compatible-release bound: the probe's
+    # schemas are versioned in their own contract, not in its version number.
+    "testmcpy-oauth-probe>=0.1.0,<0.2.0",
 ]
 
 [project.optional-dependencies]
@@ -161,6 +170,9 @@ dev = [
     "twine>=5.0.0",
     "types-pyyaml>=6.0.0",
     "types-requests>=2.28.0",
+    # unit_tests/test_oauth_probe_packaging.py reads pyproject.toml directly to
+    # keep the two-distribution split honest. tomllib is stdlib from 3.11.
+    "tomli>=2.0.0; python_version < '3.11'",
     "textual-dev>=1.0.0",
 ]
 server = [
@@ -228,8 +240,10 @@ all = [
 ]
 
 [project.scripts]
+# `testmcpy-oauth` is the entry point of the testmcpy-oauth-probe distribution
+# depended on above; declaring it here too would make two distributions fight
+# over the same console script.
 testmcpy = "testmcpy.cli:app"
-testmcpy-oauth = "testmcpy_oauth_probe.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/preset-io/testmcpy"

@@ -4,11 +4,29 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "testmcpy-oauth-probe"
+# Versioned independently of `testmcpy`. This distribution is release-pipeline
+# infrastructure: consumers pin it exactly and expect its dependency closure to
+# stay at two libraries, so it must not inherit testmcpy's release cadence.
 version = "0.1.0"
 description = "Headless, vendor-neutral OAuth and MCP interoperability probe"
 readme = "README.md"
+authors = [{name = "Amin Ghadersohi"}]
 requires-python = ">=3.10,<3.13"
 license = "Apache-2.0"
+keywords = ["oauth", "mcp", "ci", "smoke-test", "interoperability"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Testing",
+]
+# Two libraries, deliberately. Consumers install this into release pipelines
+# that pin conflicting versions of the agent/server stack (sqlalchemy, fastmcp),
+# so anything added here has to survive being resolved against someone else's
+# lockfile. `unit_tests/test_oauth_probe_packaging.py` enforces the closure.
 dependencies = [
     "httpx>=0.27.0,<1.0.0",
     "pyyaml>=6.0,<7.0",
@@ -16,6 +34,11 @@ dependencies = [
 
 [project.scripts]
 testmcpy-oauth = "testmcpy_oauth_probe.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/preset-io/testmcpy"
+Repository = "https://github.com/preset-io/testmcpy"
+Issues = "https://github.com/preset-io/testmcpy/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]
