@@ -13,6 +13,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   noninteractive bearer/refresh/confidential-client paths, raw authenticated
   MCP checks, strict redaction, JSON/JSONL/JUnit output, and an independently
   installable minimal `testmcpy-oauth-probe` package.
+- `testmcpy-oauth-probe` is now a real, separately published distribution
+  rather than a package bundled inside the `testmcpy` wheel. It depends on
+  HTTPX and PyYAML only (~9 distributions installed, against ~107 for
+  `testmcpy`) and owns the `testmcpy-oauth` console script, so release
+  pipelines that pin their own `sqlalchemy`/`fastmcp` can install it without a
+  resolver conflict. `testmcpy` now **depends** on it; both may be installed
+  together. Pin it exactly: `pip install "testmcpy-oauth-probe==0.1.0"`. It is
+  versioned independently of `testmcpy`.
+- `--manifest` is accepted as an alias for `--config` on `testmcpy-oauth` and
+  `testmcpy auth`; every other surface calls the file a manifest.
 - Reasoning-**effort** benchmark dimension. `testmcpy run --effort <level>` and
   `testmcpy bench --efforts low,medium,high` sweep reasoning effort for the
   providers that support it (claude-sdk → `ClaudeAgentOptions.effort`;
@@ -28,7 +38,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   average output tokens, and average tool "steps" — on `/api/analytics`
   matrix + leaderboard and the `leaderboard` CLI (`--by-effort` / `--by-suite`).
 
+### Changed
+- `testmcpy-oauth discover` now sets `error_probe: false` in the manifest it
+  generates, so it stays read-only. `error_probe` defaults to true and applies
+  to all flows, which otherwise would have made `discover` POST an unsupported
+  grant to the discovered token endpoint.
+
 ### Fixed
+- The headless probe no longer drops `oauth.token.error_contract` under
+  `flow: bearer`. Token acquisition returned before the error-probe block, so a
+  manifest could set `error_probe: true` and receive a report with the check
+  silently missing — the failure mode where a report looks clean because a
+  check stopped running. The check is now resolved for every flow, and when it
+  cannot run it records why (no token endpoint discovered, unsafe discovered
+  endpoint, or `refresh_token_disposable` unset so the endpoint is never
+  contacted). `error_probe: false` remains the only way to omit it.
+- `oauth.token.error_contract` now requires one of the six RFC 6749 §5.2 error
+  codes instead of accepting any non-empty `error` string.
+- `${NAME}` / `${NAME:-default}` expansion now applies to string **arrays**
+  (`expectations.issuers`, `token_issuers`, `resources`, `audiences`, `scopes`,
+  `oauth.scopes`, `profiles.*.targets`), not only to scalars. Previously
+  `issuers: ["${SMOKE_ORIGIN}"]` was compared literally and failed
+  `oauth.issuer.selection`, forcing a manifest generated per run for ephemeral
+  targets. Duplicates are detected after expansion; an unset reference with no
+  default is a configuration error.
 - Silenced the noisy `authlib.jose module is deprecated` warning that fastmcp's
   JWT verifier triggers transitively on every CLI and test run touching MCP
   auth. It's a third-party migration notice we can't act on. authlib installs

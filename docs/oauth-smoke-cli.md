@@ -8,11 +8,16 @@ vectors owned upstream.
 
 ## Architecture
 
-The independently packaged `testmcpy_oauth_probe` module contains strict
-manifest/result models, destination safety, RFC 9728 and RFC 8414 discovery,
-optional OIDC discovery, noninteractive token paths, raw stage-visible MCP
-requests, mandatory redaction, and reporters. The main distribution re-exports
-the API as `testmcpy.oauth_probe` and adds the `testmcpy auth` Typer adapter.
+`testmcpy_oauth_probe` is published as its own distribution,
+**`testmcpy-oauth-probe`**, whose only dependencies are HTTPX and PyYAML. It
+contains strict manifest/result models, destination safety, RFC 9728 and RFC
+8414 discovery, optional OIDC discovery, noninteractive token paths, raw
+stage-visible MCP requests, mandatory redaction, and reporters, and it owns the
+`testmcpy-oauth` console script.
+
+The main `testmcpy` distribution **depends** on it — it does not bundle a copy —
+and adds the `testmcpy.oauth_probe` re-export plus the `testmcpy auth` Typer
+adapter. Installing both is safe; the import package ships from one place.
 
 Raw Streamable HTTP is deliberate here: the report must retain exact status,
 JSON/SSE framing, JSON-RPC correlation, session propagation, and the stage at
@@ -44,10 +49,15 @@ fixtures.
 
 ## Safe CI usage
 
-Install either the main immutable artifact or the minimal subproject artifact:
+Install the probe on its own. Do **not** install `testmcpy` for this — that
+resolves the UI/LLM/agent stack (anthropic, fastmcp, sqlalchemy, textual,
+uvicorn, …) and will conflict with any pipeline that pins those itself:
 
 ```bash
-# From an immutable source checkout/tag:
+# Pin exactly; this is release-pipeline infrastructure.
+python -m pip install "testmcpy-oauth-probe==0.1.0"
+
+# Or, from an immutable source checkout/tag:
 python -m pip install ./oauth-probe
 
 testmcpy-oauth validate --config auth-smoke.yaml
@@ -56,11 +66,27 @@ testmcpy-oauth check --config auth-smoke.yaml --profile canary \
   --revision "$GIT_COMMIT" --region "$REGION" --run-id "$CI_RUN_ID"
 ```
 
-The minimal wheel has only HTTPX and PyYAML as dependencies. Its version can be
-pinned independently; config and report schemas are also versioned separately.
-The main CLI offers equivalent `testmcpy auth validate|check|schema` commands.
-Use `testmcpy-oauth schema --kind report` (or the equivalent main CLI command)
-to materialize the report contract.
+The resulting environment is HTTPX, PyYAML and their transitive closure —
+roughly nine distributions. `testmcpy-oauth-probe` is versioned independently
+of `testmcpy`, so its version moves only when the probe changes; the manifest
+and report schemas are versioned separately again, in their own contract
+strings. `--config` and `--manifest` are the same option; pick whichever reads
+better in your pipeline.
+
+The main CLI offers equivalent `testmcpy auth validate|check|schema` commands
+for environments that already have testmcpy. Use `testmcpy-oauth schema --kind
+report` (or the equivalent main CLI command) to materialize the report
+contract.
+
+### Correlation flags are labels, not assertions
+
+`--service`, `--region`, `--revision` and `--deployment-id` are recorded
+verbatim in the report's `correlation` block so a downstream consumer can join
+the report to a build. **The probe never fetches or compares the deployed
+revision** — passing `--revision "$GIT_COMMIT"` does not verify that the target
+is running that commit, and a target advertising a different revision will not
+fail the run. If you need a deployed-revision gate, keep it in the pipeline
+that owns the deployment.
 
 The package CI job explicitly checks out the PR head (rather than GitHub's
 synthetic merge ref) and uploads an artifact named
@@ -70,8 +96,24 @@ the clean-install smoke. CI consumers should pin the full commit/artifact name,
 then run `sha256sum --check SHA256SUMS` before installing; the mutable branch
 name is not a provenance boundary.
 
+Every string in the manifest — scalars and string-array elements alike —
+supports `${NAME}` and `${NAME:-default}` expansion, so a single static
+manifest can target an ephemeral stack through injected environment variables:
+
+```yaml
+targets:
+  ephemeral:
+    mcp_url: ${SMOKE_MCP_URL}
+    expectations:
+      issuers: [ "${SMOKE_ORIGIN}" ]
+      scopes:  [ "${SMOKE_SCOPE:-mcp.read}" ]
+```
+
+An unset reference with no default is a configuration error rather than a
+literal comparison. Array duplicates are detected after expansion.
+
 Credentials are accepted only through named environment references in the
-manifest. The probe never accepts credential values on argv, never writes
+manifest (the `{env: NAME}` form), never through `${...}` interpolation. The probe never accepts credential values on argv, never writes
 tokens/codes/verifiers/client secrets/session IDs to files, and sanitizes at
 event and serialization boundaries. Use masked, least-privilege CI variables.
 All target, challenge-supplied metadata, discovery, redirect, and token endpoint
@@ -104,10 +146,10 @@ instead of being tested with incorrect rules.
   authorization-code + PKCE exchanges;
 - public clients plus `client_secret_basic`, `client_secret_post`, and
   `client_secret_jwt` confidential authentication;
-- a safe unsupported-grant OAuth error probe, token media/type/cache/scope
-contracts, refresh rotation policy, and optional unverified JWT routing-claim
-diagnostics (opaque access tokens remain valid unless a claim policy is
-explicitly configured);
+- a safe unsupported-grant OAuth error probe (`oauth.token.error_contract`),
+  token media/type/cache/scope contracts, refresh rotation policy, and optional
+  unverified JWT routing-claim diagnostics (opaque access tokens remain valid
+  unless a claim policy is explicitly configured);
 - authenticated `initialize`, `notifications/initialized`, and paginated
   `tools/list` using JSON or SSE, exact HTTP statuses, JSON-RPC ID correlation,
   negotiated protocol, session propagation, and a page safety bound.
@@ -118,6 +160,19 @@ RFC features are never made mandatory merely because another provider has it.
 An `ignore` metadata capability is not requested at all. The
 `client_credentials` grant is rejected at configuration time unless a
 confidential client-authentication method is configured.
+
+`oauth.token.error_contract` is resolved for **every** flow, including `bearer`
+and `none`, because the probe needs no credentials of its own to send one
+unsupported-grant request. When it cannot run it still emits a record saying
+why — no token endpoint was discovered, the discovered endpoint carries
+forbidden query/fragment/userinfo, or `refresh_token_disposable` is unset and
+the target is therefore never contacted. Set `error_probe: false` to opt out;
+that is the only configuration in which the check is absent from the report.
+The response must carry one of the six RFC 6749 §5.2 codes
+(`invalid_request`, `invalid_client`, `invalid_grant`, `unauthorized_client`,
+`unsupported_grant_type`, `invalid_scope`) — an unregistered code fails,
+because a conforming client cannot branch on free text. `testmcpy-oauth
+discover` sets `error_probe: false` so it stays read-only.
 `expectations.issuers` constrains RFC 8414/OIDC metadata, while
 `expectations.token_issuers` and `expectations.audiences` explicitly opt into
 unverified JWT routing-claim diagnostics. This separation keeps an opaque
@@ -140,7 +195,8 @@ consumers do not receive a silent schema change.
 
 Suggested consumer adoption:
 
-1. Pin the minimal wheel or full testmcpy artifact by immutable version/commit.
+1. Pin `testmcpy-oauth-probe` by exact version (or the subproject by immutable
+   commit). Do not pull `testmcpy` into a release pipeline for this.
 2. Translate deployment output into the generic manifest: URL, target, region,
    revision/deployment ID, secret environment names, and explicit expectations.
 3. Run the existing product smoke and testmcpy probe in parallel, nonblocking,

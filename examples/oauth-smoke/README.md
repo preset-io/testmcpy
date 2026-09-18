@@ -19,7 +19,19 @@ testmcpy auth check --config examples/oauth-smoke/auth-smoke.example.yaml \
   --junit auth-report.xml --run-id "$CI_RUN_ID"
 ```
 
-The independently installable `oauth-probe/` distribution exposes the same
-core as `testmcpy-oauth` while avoiding the UI and LLM dependency stack.
-Its versioned result schema is available with
-`testmcpy-oauth schema --kind report`.
+In a release pipeline, install the probe on its own instead — `pip install
+"testmcpy-oauth-probe==0.1.0"` pulls HTTPX and PyYAML rather than testmcpy's UI
+and LLM stack, and provides the same `testmcpy-oauth` command. Its versioned
+result schema is available with `testmcpy-oauth schema --kind report`.
+
+Every string in the manifest, including array elements, expands `${NAME}` and
+`${NAME:-default}`, so one static manifest can target an ephemeral stack:
+
+```yaml
+    mcp_url: ${SMOKE_MCP_URL}
+    expectations:
+      issuers: [ "${SMOKE_ORIGIN}" ]
+```
+
+Credentials are the exception: they stay as `{env: NAME}` references and are
+resolved at run time, never interpolated into the document.

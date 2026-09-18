@@ -175,8 +175,9 @@ The versioned manifest uses environment **references**, never credential values.
 Human, JSON, JSONL, and JUnit outputs are strictly redacted and correlated by
 target/region/revision. This is an interoperability and deployment-policy tool,
 not formal compliance certification. CI consumers can install the minimal
-`oauth-probe/` distribution without the UI/LLM stack. See the
-[headless probe guide](docs/oauth-smoke-cli.md).
+`testmcpy-oauth-probe` distribution (`pip install testmcpy-oauth-probe`), whose
+only dependencies are HTTPX and PyYAML — use that one in release pipelines. See
+the [headless probe guide](docs/oauth-smoke-cli.md).
 
 ## Architecture
 
