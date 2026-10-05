@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Evaluators are now gateway-aware. `was_mcp_tool_called` no longer passes
+  (score 0.8, `match_type: "search"`) when the model only ran
+  `search_tools(query=...)`; discovery is reported as `match_type:
+  "discovery_only"` with the calls under `details.discovery_calls`, and
+  `was_mcp_tool_called` with no `tool_name` now needs at least one non-discovery
+  call. `tool_called_with_parameters` (and the single-parameter, range, count,
+  sequence and chart evaluators) read the current `call_tool(workspace_id,
+  tool_name, args)` shape, including a nested `request` wrapper, as well as
+  direct, `mcp__ns__tool` and legacy gateway calls, through one shared
+  normalizer (`testmcpy/evals/tool_trace.py`). `was_mcp_tool_called` and
+  `tool_called_with_parameters` accept an optional `workspace_id`.
+
 ### Added
 - A typed, vendor-neutral headless OAuth/MCP interoperability probe with
   versioned manifests and reports, RFC 8414/RFC 9728 discovery, optional OIDC,

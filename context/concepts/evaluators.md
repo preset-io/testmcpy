@@ -18,6 +18,14 @@ Checks if a specific MCP tool was called, or if any tool was called.
 
 **Parameters:**
 - `tool_name` (optional): Name of the specific tool to check for
+- `workspace_id` (optional): Require the gateway call to target this workspace
+
+Only *executions* count. A tool run directly, with an `mcp__ns__` prefix, or
+through the `call_tool` gateway (`workspace_id`/`tool_name`/`args`, or the
+legacy `name`/`arguments`) is called. Discovery calls such as `search_tools`
+never satisfy this check, even if the query names the tool; they are listed
+under `details.discovery_calls`. The parameter, count, range and sequence
+evaluators read the trace the same way.
 
 **Examples:**
 
@@ -93,6 +101,11 @@ Checks if a tool was called with multiple specific parameters.
 - `tool_name` (required): Name of the tool
 - `parameters` (required): Dictionary of parameter_name → expected_value
 - `partial_match` (optional, default: false): If true, allows additional parameters beyond those specified
+- `workspace_id` (optional): Only consider gateway calls that target this workspace
+
+Parameters are compared against the tool's own arguments, so a gateway call
+such as `call_tool(workspace_id, tool_name, args={"request": {...}})` matches
+the same `parameters` as a direct call; a `request` wrapper is flattened.
 
 **Examples:**
 
