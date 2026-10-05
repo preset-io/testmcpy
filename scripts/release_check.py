@@ -96,7 +96,7 @@ def _specifier_contains(specifier: str, version: str) -> bool:
         raise ReleaseError(
             "`packaging` is required to evaluate the probe pin: pip install packaging"
         )
-    return SpecifierSet(specifier).contains(version, prereleases=True)
+    return bool(SpecifierSet(specifier).contains(version, prereleases=True))
 
 
 def pypi_has_version(name: str, version: str, *, index: str = PYPI_URL) -> bool:
