@@ -21,16 +21,12 @@ testmcpy --help
 
 ### After Publishing to PyPI
 
-Once testmcpy is published to PyPI, update the formula with the correct SHA256:
+The publish workflow updates `url` and `sha256` together after each release, using
+`scripts/update_homebrew_formula.py`, which only writes values derived from a
+validated download of the sdist PyPI serves. To do it by hand:
 
 ```bash
-# Download the package from PyPI
-wget https://files.pythonhosted.org/packages/source/t/testmcpy/testmcpy-0.1.0.tar.gz
-
-# Calculate SHA256
-shasum -a 256 testmcpy-0.1.0.tar.gz
-
-# Update the sha256 in testmcpy.rb with the calculated value
+python3 scripts/update_homebrew_formula.py 0.1.0   # then commit Formula/testmcpy.rb
 ```
 
 ### Testing the Formula

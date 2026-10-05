@@ -500,50 +500,26 @@ Before opening a PR:
 
 ## Release Process
 
-### Version Bumping
+Releases are tag-driven and published by GitHub Actions via PyPI Trusted
+Publishing; see `RELEASING.md` at the repo root for the full flow.
+
+- Bump `version` in `pyproject.toml` (and `oauth-probe/pyproject.toml` only if the
+  probe changed) through a normal PR; merge to `main`.
+- `scripts/publish.sh --dry-run` validates and builds locally; `scripts/publish.sh`
+  creates the tag and asks before pushing it. It never uploads.
+- Tags: `vX.Y.Z` releases `testmcpy` (and the probe first, if its in-tree version
+  is unpublished); `oauth-probe-vX.Y.Z` releases only `testmcpy-oauth-probe`. The
+  tag version must equal the package version or the release fails.
+- A required reviewer approves the `pypi` GitHub environment before anything is
+  uploaded. Do not run `twine upload` by hand.
+
+To build the packages locally (no upload), build the UI first:
 
 ```bash
-# Update version in setup.py and __init__.py
-# Follow semantic versioning (MAJOR.MINOR.PATCH)
-
-# Commit version bump
-git commit -m "chore: bump version to 0.3.0"
-
-# Tag release
-git tag v0.3.0
-git push origin v0.3.0
-```
-
-### Building Package
-
-```bash
-# Install build tools
-pip install build twine
-
-# Build UI
-cd testmcpy/ui
-npm install
-npm run build
-cd ../..
-
-# Build package
-python -m build
-
-# Check built package
-twine check dist/*
-```
-
-### Publishing to PyPI
-
-```bash
-# Test on TestPyPI first
-twine upload --repository testpypi dist/*
-
-# Install from TestPyPI
-pip install --index-url https://test.pypi.org/simple/ testmcpy
-
-# If all good, publish to PyPI
-twine upload dist/*
+(cd testmcpy/ui && npm install && npm run build)
+python -m build                       # testmcpy
+python -m build oauth-probe --outdir oauth-probe/dist
+twine check dist/* oauth-probe/dist/*
 ```
 
 ## Documentation
