@@ -1,134 +1,271 @@
 name: Publish to PyPI
 
+# Releases are requested by pushing a tag (see RELEASING.md):
+#
+#   vX.Y.Z               -> testmcpy X.Y.Z (and testmcpy-oauth-probe first, if its
+#                           in-tree version is not on PyPI yet)
+#   oauth-probe-vX.Y.Z   -> testmcpy-oauth-probe X.Y.Z only
+#
+# The tag version must equal the version in the tagged tree's pyproject.toml.
+#
+# Publishing uses PyPI Trusted Publishing (GitHub OIDC); there is no PyPI API
+# token anywhere. The PyPI side trusts exactly this repository + this workflow
+# filename (`publish.yml`) + the `pypi` environment. Do NOT rename this file or
+# the environment without updating both PyPI projects' trusted-publisher settings.
+#
+# Three jobs, deliberately separated by privilege:
+#
+#   build     read-only, no OIDC. Runs repository code (tests, builds, installs).
+#   publish   `id-token: write` + environment `pypi` (approval-gated). Runs NO
+#             repository code: it downloads the build artifact, re-verifies it,
+#             and uploads. Anything running here can mint a PyPI upload token.
+#   homebrew  `contents: write` only, after a successful publish. No OIDC.
+#
+# Every action is pinned to a full commit SHA (version in the trailing comment).
+# This is stricter than ci.yml's tag pins on purpose: this is the privileged path.
+
 on:
-  # Primary trigger: pushing a vX.Y.Z tag is enough — no need to also
-  # create a GitHub Release. This matches the existing
-  # `git tag vX.Y.Z && git push --tags` flow used after every version bump.
   push:
     tags:
       - 'v*'
-  # Kept as a fallback so creating a GitHub Release (web UI / gh release
-  # create) still triggers a publish if you prefer that flow.
-  release:
-    types: [published]
+      - 'oauth-probe-v*'
 
-# Don't allow two publishes for the same ref to race. Idempotency on
-# twine upload (--skip-existing below) means the second one is harmless,
-# but we still don't want simultaneous Homebrew commits clobbering each
-# other.
+# One release per tag at a time; never cancel a release that is mid-flight.
 concurrency:
   group: publish-${{ github.ref }}
   cancel-in-progress: false
 
+permissions: {}
+
 jobs:
-  publish:
-    # Restrict to v* tags for both event paths. The `push.tags` trigger
-    # above already filters at the event level, but `release: published`
-    # has no tag filter — without this guard, publishing a GitHub Release
-    # for a non-version tag (e.g. a `preview` or `latest` tag) would fire
-    # the workflow and the downstream `VERSION=${GITHUB_REF#refs/tags/v}`
-    # parse would produce garbage. `github.ref_name` is the short tag
-    # name for both push.tags and release events.
-    if: startsWith(github.ref_name, 'v')
+  build:
+    name: Build and validate distributions
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # Needed to push Homebrew formula updates
-
+      contents: read
+    outputs:
+      release_testmcpy: ${{ steps.plan.outputs.release_testmcpy }}
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
-    
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install build twine
-    
-    # Two distributions come out of this repo:
-    #   testmcpy-oauth-probe  — oauth-probe/, httpx + pyyaml only, owns the
-    #                           `testmcpy-oauth` console script
-    #   testmcpy              — everything else; depends on the probe
-    # They are versioned independently, so most testmcpy releases re-upload an
-    # unchanged probe version; --skip-existing turns that into a no-op.
-    - name: Build both distributions
-      run: |
-        python -m build oauth-probe --outdir oauth-probe/dist
-        python -m build
-        python -m twine check oauth-probe/dist/* dist/*
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0 # full history: the tag commit must be reachable from main
+          persist-credentials: false
 
-    # Ordering matters: testmcpy declares a hard dependency on
-    # testmcpy-oauth-probe. Publishing testmcpy first would leave a window in
-    # which `pip install testmcpy` cannot resolve.
-    - name: Publish testmcpy-oauth-probe to PyPI
-      env:
-        TWINE_USERNAME: __token__
-        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-      run: python -m twine upload --skip-existing oauth-probe/dist/*
+      - name: Require the tagged commit to be on main
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" FETCH_HEAD; then
+            echo "::error::${GITHUB_REF_NAME} points at a commit that is not on main; releases are cut from main only"
+            exit 1
+          fi
 
-    - name: Verify the probe dependency is resolvable before publishing testmcpy
-      # Guards the ordering above: if the probe version testmcpy requires is not
-      # on PyPI, fail here rather than shipping a testmcpy that cannot install.
-      run: |
-        REQUIRED=$(python -c "
-        import tomllib, pathlib
-        data = tomllib.loads(pathlib.Path('pyproject.toml').read_text())
-        print(next(d for d in data['project']['dependencies'] if d.startswith('testmcpy-oauth-probe')))
-        ")
-        echo "testmcpy requires: ${REQUIRED}"
-        for attempt in 1 2 3 4 5; do
-          if pip download --no-deps --dest /tmp/probe-check "${REQUIRED}"; then
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.11'
+
+      - name: Install build and test tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine packaging pytest pyyaml
+
+      # Fails the release when the tag is malformed, the tag version differs from
+      # the package version, or the version is already on PyPI. Decides which
+      # distributions this tag publishes.
+      - name: Validate tag against package versions
+        id: plan
+        run: |
+          mkdir -p release
+          python scripts/release_check.py plan --tag "$GITHUB_REF_NAME" --output release/plan.json
+          if [ "$(python -c "import json; print(json.load(open('release/plan.json'))['kind'])")" = "testmcpy" ]; then
+            echo "release_testmcpy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "release_testmcpy=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run release and packaging tests
+        run: python -m pytest unit_tests/test_oauth_probe_packaging.py unit_tests/test_release_tooling.py -q
+
+      # Two distributions come out of this repo:
+      #   testmcpy-oauth-probe  oauth-probe/ - httpx + pyyaml only; owns the
+      #                         `testmcpy-oauth` console script
+      #   testmcpy              everything else; hard-depends on the probe
+      # Only what the plan lists is built, so nothing unplanned can be uploaded.
+      - name: Build planned distributions
+        run: |
+          python scripts/release_check.py build --plan release/plan.json --release-dir release
+          python -m twine check --strict release/*/*
+          python scripts/release_check.py verify-dists --plan release/plan.json --release-dir release
+
+      - name: Smoke-test installing the built artifacts in clean virtualenvs
+        run: |
+          if [ -d release/probe ]; then
+            python -m venv /tmp/probe-venv
+            /tmp/probe-venv/bin/pip install release/probe/*.whl
+            /tmp/probe-venv/bin/testmcpy-oauth schema >/dev/null
+            /tmp/probe-venv/bin/pip check
+          fi
+          if [ -d release/testmcpy ]; then
+            python -m venv /tmp/testmcpy-venv
+            # Install the probe wheel alongside when it is part of this release;
+            # otherwise testmcpy must resolve the already-published probe from PyPI.
+            /tmp/testmcpy-venv/bin/pip install release/testmcpy/*.whl $(ls release/probe/*.whl 2>/dev/null)
+            /tmp/testmcpy-venv/bin/pip check
+            /tmp/testmcpy-venv/bin/testmcpy --help >/dev/null
+            /tmp/testmcpy-venv/bin/testmcpy-oauth schema >/dev/null
+          fi
+
+      - name: Record checksums
+        run: (cd release && find . -type f ! -name SHA256SUMS | sort | xargs sha256sum > SHA256SUMS && cat SHA256SUMS)
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-distributions
+          path: release/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish to PyPI (approval required)
+    needs: build
+    runs-on: ubuntu-latest
+    # The GitHub environment `pypi` must have required reviewers configured BEFORE
+    # the first tag is pushed: GitHub creates a missing environment on first use,
+    # unprotected, which would publish without approval. See RELEASING.md.
+    environment:
+      name: pypi
+      url: https://pypi.org/project/testmcpy/
+    permissions:
+      id-token: write # PyPI Trusted Publishing (OIDC); this job only
+    steps:
+      - name: Download the build artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-distributions
+          path: release
+
+      # No checkout and no repository code in this job. Re-derive everything from
+      # the tag that triggered the run rather than trusting the build job's word.
+      - name: Verify artifacts match the tag
+        id: verify
+        run: |
+          (cd release && sha256sum --check --strict SHA256SUMS)
+          python3 - <<'PY'
+          import json, os, pathlib, re, sys
+
+          tag = os.environ["GITHUB_REF_NAME"]
+          release = pathlib.Path("release")
+          plan = json.loads((release / "plan.json").read_text())
+
+          main = re.fullmatch(r"v(\d+\.\d+\.\d+(?:(?:a|b|rc)\d+)?)", tag)
+          probe = re.fullmatch(r"oauth-probe-v(\d+\.\d+\.\d+(?:(?:a|b|rc)\d+)?)", tag)
+          if not (main or probe):
+              sys.exit(f"tag {tag!r} is not a release tag")
+          if plan["tag"] != tag:
+              sys.exit(f"plan is for {plan['tag']!r}, run is for {tag!r}")
+
+          # The tag's version must be exactly the version of the dist it releases.
+          wanted = "testmcpy" if main else "testmcpy-oauth-probe"
+          version = (main or probe).group(1)
+          planned = {d["name"]: d for d in plan["distributions"]}
+          if wanted not in planned or planned[wanted]["version"] != version:
+              sys.exit(f"tag {tag!r} does not release {wanted} {version}: plan {plan['distributions']}")
+          if probe and set(planned) != {"testmcpy-oauth-probe"}:
+              sys.exit("a probe tag may only release the probe")
+          if main and not set(planned) <= {"testmcpy", "testmcpy-oauth-probe"}:
+              sys.exit("unexpected distribution in plan")
+
+          # Every uploaded file must be exactly <dist>-<version> and nothing else.
+          dirs = {"testmcpy-oauth-probe": "probe", "testmcpy": "testmcpy"}
+          expected_dirs = {dirs[n] for n in planned}
+          actual_dirs = {p.name for p in release.iterdir() if p.is_dir()}
+          if actual_dirs != expected_dirs:
+              sys.exit(f"artifact dirs {sorted(actual_dirs)} != planned {sorted(expected_dirs)}")
+          for name, dist in planned.items():
+              stem = name.replace("-", "_") + "-" + dist["version"]
+              files = sorted(p.name for p in (release / dirs[name]).iterdir())
+              if len(files) != 2 or not any(f == stem + ".tar.gz" for f in files) or not any(
+                  f.startswith(stem + "-") and f.endswith(".whl") for f in files
+              ):
+                  sys.exit(f"{name}: files {files} are not exactly the {version} wheel + sdist")
+
+          out = pathlib.Path(os.environ["GITHUB_OUTPUT"]).open("a")
+          out.write(f"publish_probe={'true' if 'testmcpy-oauth-probe' in planned else 'false'}\n")
+          out.write(f"publish_testmcpy={'true' if 'testmcpy' in planned else 'false'}\n")
+          out.write(f"probe_version={plan['probe_version']}\n")
+          PY
+
+      # Ordering matters: testmcpy declares a hard dependency on
+      # testmcpy-oauth-probe. Publishing testmcpy first would leave a window in
+      # which `pip install testmcpy` cannot resolve.
+      - name: Publish testmcpy-oauth-probe to PyPI
+        if: steps.verify.outputs.publish_probe == 'true'
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          packages-dir: release/probe/
+
+      # Refuse to publish testmcpy against a probe version consumers cannot
+      # install. Checks the exact in-tree probe version (not merely "something in
+      # the allowed range"), whether it was just uploaded above or earlier.
+      - name: Verify the probe dependency is installable from PyPI
+        if: steps.verify.outputs.publish_testmcpy == 'true'
+        env:
+          PROBE_VERSION: ${{ steps.verify.outputs.probe_version }}
+        run: |
+          REQUIRED="testmcpy-oauth-probe==${PROBE_VERSION}"
+          echo "testmcpy requires a probe satisfying: ${REQUIRED}"
+          for attempt in 1 2 3 4 5 6 7 8; do
+            if python3 -m pip download --no-deps --no-cache-dir --dest /tmp/probe-check "${REQUIRED}"; then
+              exit 0
+            fi
+            echo "Not on PyPI yet; retrying in 15s (attempt ${attempt}/8)"
+            sleep 15
+          done
+          echo "::error::${REQUIRED} is not installable from PyPI; refusing to publish testmcpy against it"
+          exit 1
+
+      - name: Publish testmcpy to PyPI
+        if: steps.verify.outputs.publish_testmcpy == 'true'
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          packages-dir: release/testmcpy/
+
+  homebrew:
+    name: Sync Homebrew formula
+    needs: [build, publish]
+    if: needs.build.outputs.release_testmcpy == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the formula update to main
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: main
+
+      # Derives url + sha256 from the artifact PyPI actually serves and fails on
+      # any bad download or digest mismatch. PyPI is already published at this
+      # point: if this job fails, fix and use "Re-run failed jobs"; the publish
+      # job is not repeated.
+      - name: Update Formula/testmcpy.rb from the released sdist
+        run: python3 scripts/update_homebrew_formula.py "${GITHUB_REF_NAME#v}"
+
+      - name: Commit and push the formula
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          if git diff --quiet -- Formula/testmcpy.rb; then
+            echo "Formula already current for ${VERSION}"
             exit 0
           fi
-          echo "Not on PyPI yet; retrying in 15s (attempt ${attempt}/5)"
-          sleep 15
-        done
-        echo "::error::${REQUIRED} is not installable from PyPI; refusing to publish testmcpy against it"
-        exit 1
-
-    - name: Publish testmcpy to PyPI
-      env:
-        TWINE_USERNAME: __token__
-        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-      # --skip-existing makes the upload idempotent. If the artifact is
-      # already on PyPI (e.g. a previous run uploaded it, or a manual
-      # twine push from a developer's laptop), we log "skipping" instead
-      # of crashing — important now that the workflow can fire on both
-      # tag pushes and GitHub Releases.
-      run: python -m twine upload --skip-existing dist/*
-    
-    - name: Wait for PyPI to process
-      run: sleep 10
-    
-    - name: Download from PyPI and calculate SHA256
-      run: |
-        VERSION=${GITHUB_REF#refs/tags/v}
-        echo "Waiting for PyPI to make package available..."
-        sleep 5
-        curl -sL -o "testmcpy-${VERSION}.tar.gz" "https://files.pythonhosted.org/packages/source/t/testmcpy/testmcpy-${VERSION}.tar.gz" || true
-
-        if [ -f "testmcpy-${VERSION}.tar.gz" ] && [ -s "testmcpy-${VERSION}.tar.gz" ]; then
-          SHA256=$(sha256sum "testmcpy-${VERSION}.tar.gz" | awk '{print $1}')
-          echo "SHA256=${SHA256}" >> $GITHUB_ENV
-          echo "VERSION=${VERSION}" >> $GITHUB_ENV
-          echo "FORMULA_UPDATE=true" >> $GITHUB_ENV
-        else
-          echo "FORMULA_UPDATE=false" >> $GITHUB_ENV
-          echo "⚠️ Could not download from PyPI yet. Homebrew formula update skipped."
-        fi
-
-    - name: Update Homebrew formula
-      if: env.FORMULA_UPDATE == 'true'
-      run: |
-        sed -i "s/sha256 \".*\"/sha256 \"${SHA256}\"/" Formula/testmcpy.rb
-
-    - name: Commit and push formula update
-      if: env.FORMULA_UPDATE == 'true'
-      run: |
-        git config --local user.email "github-actions[bot]@users.noreply.github.com"
-        git config --local user.name "github-actions[bot]"
-        git add Formula/testmcpy.rb
-        git commit -m "Update Homebrew formula SHA256 for v${VERSION}" || echo "No changes to commit"
-        git push origin HEAD:main || echo "No changes to push"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/testmcpy.rb
+          git commit -m "chore: update Homebrew formula for ${VERSION}"
+          # A failed push fails the job; main moving underneath us gets rebased and retried.
+          for attempt in 1 2 3; do
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            git pull --rebase origin main
+          done
+          echo "::error::could not push the formula update to main"
+          exit 1
