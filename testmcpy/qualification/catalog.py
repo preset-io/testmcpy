@@ -41,7 +41,8 @@ class Catalog:
         recorded = self.search_responses.get(query or "")
         if recorded is None or self.synthetic_count:
             return None
-        return json.loads(recorded["content"][0]["text"])
+        hits: list[dict[str, Any]] = json.loads(recorded["content"][0]["text"])
+        return hits
 
     def native_by_name(self) -> dict[str, dict[str, Any]]:
         return {t["name"]: t for t in self.native_tools}

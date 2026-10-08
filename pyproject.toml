@@ -160,6 +160,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "jsonschema>=4.20.0,<5.0.0",
+    # testmcpy.qualification counts tokens with o200k_base; it falls back to a
+    # bytes/4 estimate (and says so) when tiktoken or its vocabulary is missing.
+    "tiktoken>=0.7.0,<1.0.0",
     "ruff>=0.8.0",
     "mypy>=1.13.0",
     "pytest>=7.0.0",

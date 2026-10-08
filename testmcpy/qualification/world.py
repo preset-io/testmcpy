@@ -193,7 +193,9 @@ def _norm_sql(sql: str) -> str:
     return re.sub(r"\s+", " ", sql.strip().rstrip(";")).lower()
 
 
-def _page(items: list[dict[str, Any]], req: dict[str, Any]) -> tuple[list[dict[str, Any]], dict]:
+def _page(
+    items: list[dict[str, Any]], req: dict[str, Any]
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     page = int(req.get("page") or 1)
     size = int(req.get("page_size") or 10)
     start = (page - 1) * size
@@ -285,13 +287,16 @@ class World:
                     {"op": name, "workspace": ws.id, "by": principal.name, "stub": True}
                 )
             return {"fixture_stub": True, "tool": name}
-        return handler(principal, ws, req)
+        result: dict[str, Any] = handler(principal, ws, req)
+        return result
 
     # -- handlers (shapes follow the real tools, trimmed) ----------------
-    def _h_health_check(self, p: Principal, ws: Workspace, req: dict) -> dict:
+    def _h_health_check(self, p: Principal, ws: Workspace, req: dict[str, Any]) -> dict[str, Any]:
         return {"status": "healthy", "workspace": ws.id}
 
-    def _h_get_instance_info(self, p: Principal, ws: Workspace, req: dict) -> dict:
+    def _h_get_instance_info(
+        self, p: Principal, ws: Workspace, req: dict[str, Any]
+    ) -> dict[str, Any]:
         d = ws.data
         return {
             "instance_summary": {
@@ -304,48 +309,54 @@ class World:
             "feature_availability": {"knowledge": ws.knowledge_enabled},
         }
 
-    def _h_list_charts(self, p: Principal, ws: Workspace, req: dict) -> dict:
+    def _h_list_charts(self, p: Principal, ws: Workspace, req: dict[str, Any]) -> dict[str, Any]:
         items = _search(ws.data["charts"], req, "slice_name")
         sel, meta = _page(items, req)
         return {**meta, "charts": sel}
 
-    def _h_get_chart_info(self, p: Principal, ws: Workspace, req: dict) -> dict:
+    def _h_get_chart_info(self, p: Principal, ws: Workspace, req: dict[str, Any]) -> dict[str, Any]:
         ident = req.get("identifier")
         for c in ws.data["charts"]:
             if c["id"] == ident or str(c["id"]) == str(ident):
-                return c
+                return dict(c)
         return {"error_type": "not_found", "message": f"ChartInfo '{ident}' not found"}
 
-    def _h_list_datasets(self, p: Principal, ws: Workspace, req: dict) -> dict:
+    def _h_list_datasets(self, p: Principal, ws: Workspace, req: dict[str, Any]) -> dict[str, Any]:
         items = _search(ws.data["datasets"], req, "table_name")
         sel, meta = _page(items, req)
         return {**meta, "datasets": sel}
 
-    def _h_get_dataset_info(self, p: Principal, ws: Workspace, req: dict) -> dict:
+    def _h_get_dataset_info(
+        self, p: Principal, ws: Workspace, req: dict[str, Any]
+    ) -> dict[str, Any]:
         ident = req.get("identifier")
         for d in ws.data["datasets"]:
             if d["id"] == ident or str(d["id"]) == str(ident) or d["table_name"] == ident:
-                return d
+                return dict(d)
         return {"error_type": "not_found", "message": f"Dataset '{ident}' not found"}
 
-    def _h_list_dashboards(self, p: Principal, ws: Workspace, req: dict) -> dict:
+    def _h_list_dashboards(
+        self, p: Principal, ws: Workspace, req: dict[str, Any]
+    ) -> dict[str, Any]:
         items = _search(ws.data["dashboards"], req, "dashboard_title")
         sel, meta = _page(items, req)
         return {**meta, "dashboards": sel}
 
-    def _h_get_dashboard_info(self, p: Principal, ws: Workspace, req: dict) -> dict:
+    def _h_get_dashboard_info(
+        self, p: Principal, ws: Workspace, req: dict[str, Any]
+    ) -> dict[str, Any]:
         ident = req.get("identifier")
         for d in ws.data["dashboards"]:
             if d["id"] == ident or str(d["id"]) == str(ident):
-                return d
+                return dict(d)
         return {"error_type": "not_found", "message": f"Dashboard '{ident}' not found"}
 
-    def _h_list_databases(self, p: Principal, ws: Workspace, req: dict) -> dict:
+    def _h_list_databases(self, p: Principal, ws: Workspace, req: dict[str, Any]) -> dict[str, Any]:
         items = _search(ws.data["databases"], req, "database_name")
         sel, meta = _page(items, req)
         return {**meta, "databases": sel}
 
-    def _h_execute_sql(self, p: Principal, ws: Workspace, req: dict) -> dict:
+    def _h_execute_sql(self, p: Principal, ws: Workspace, req: dict[str, Any]) -> dict[str, Any]:
         db_ids = {d["id"] for d in ws.data["databases"]}
         if req.get("database_id") not in db_ids:
             return {
@@ -370,10 +381,12 @@ class World:
             "row_count": len(canned["rows"]),
         }
 
-    def _h_get_chart_type_schema(self, p: Principal, ws: Workspace, req: dict) -> dict:
+    def _h_get_chart_type_schema(
+        self, p: Principal, ws: Workspace, req: dict[str, Any]
+    ) -> dict[str, Any]:
         return {"chart_type": req.get("chart_type"), "fixture_stub": True}
 
-    def _h_generate_chart(self, p: Principal, ws: Workspace, req: dict) -> dict:
+    def _h_generate_chart(self, p: Principal, ws: Workspace, req: dict[str, Any]) -> dict[str, Any]:
         dataset = next(
             (
                 d
@@ -402,13 +415,17 @@ class World:
         )
         return {"chart": chart, "saved": True}
 
-    def _h_search_knowledge(self, p: Principal, ws: Workspace, req: dict) -> dict:
+    def _h_search_knowledge(
+        self, p: Principal, ws: Workspace, req: dict[str, Any]
+    ) -> dict[str, Any]:
         term = str(req.get("query", "")).lower()
         hits = [k for k in ws.data["knowledge"] if term in (k["title"] + k["text"]).lower()]
         return {"results": hits}
 
-    def _h_get_knowledge_document(self, p: Principal, ws: Workspace, req: dict) -> dict:
+    def _h_get_knowledge_document(
+        self, p: Principal, ws: Workspace, req: dict[str, Any]
+    ) -> dict[str, Any]:
         for k in ws.data["knowledge"]:
             if k["id"] == req.get("document_id"):
-                return k
+                return dict(k)
         return {"error_type": "not_found"}

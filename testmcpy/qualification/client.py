@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import time
+import warnings
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
-from mcp import ClientSession
+from mcp import ClientSession, types
 from mcp.client.streamable_http import streamablehttp_client
 
 from testmcpy.qualification.recorder import Recorder
@@ -89,7 +90,7 @@ class Session:
                 (time.perf_counter() - started) * 1000,
                 f"{type(exc).__name__}: {exc}"[:300],
             )
-        text = " ".join(c.text for c in res.content if getattr(c, "type", "") == "text")
+        text = " ".join(c.text for c in res.content if isinstance(c, types.TextContent))
         return CallOutcome(
             name,
             arguments,
@@ -110,6 +111,11 @@ async def connect(
     """Open an initialised session against ``server`` as ``principal``."""
     recorder = recorder or Recorder(f"{principal}")
     factory = recorder.httpx_client_factory(server)
+    # mcp>=1.28 deprecates streamablehttp_client in favour of an API that is absent
+    # from the mcp>=1.24 floor this project supports, so keep using it quietly.
+    warnings.filterwarnings(
+        "ignore", message=".*streamable_http_client.*", category=DeprecationWarning
+    )
     try:
         async with streamablehttp_client(
             "http://qualification.invalid/mcp",

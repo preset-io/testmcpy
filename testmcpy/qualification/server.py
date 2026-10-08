@@ -29,10 +29,14 @@ import base64
 import contextvars
 import copy
 import json
+import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any
+
+if sys.version_info < (3, 11):  # anyio depends on the backport; 3.11+ has the builtin
+    from exceptiongroup import BaseExceptionGroup
 
 import jsonschema
 from mcp import types
@@ -98,8 +102,8 @@ def _validate(schema: dict[str, Any], arguments: dict[str, Any]) -> str | None:
 
 class FixtureServer:
     def __init__(
-        self, world: World, catalog: Catalog, gateway_tools: list[dict], spec: SurfaceSpec
-    ):
+        self, world: World, catalog: Catalog, gateway_tools: list[dict[str, Any]], spec: SurfaceSpec
+    ) -> None:
         self.world = world
         self.catalog = catalog
         self.gateway_tools = gateway_tools
@@ -173,7 +177,9 @@ class FixtureServer:
             result = _error_result(err)
         return types.ServerResult(result)
 
-    def _surface_tool(self, principal: Principal, ws: Workspace | None, name: str) -> dict:
+    def _surface_tool(
+        self, principal: Principal, ws: Workspace | None, name: str
+    ) -> dict[str, Any]:
         for t in self.visible_tools(principal, ws):
             if t["name"] == name:
                 return t
@@ -223,7 +229,9 @@ class FixtureServer:
             return _text_result(bad, is_error=True)
         return _text_result(self.world.execute(principal, ws, tool, args))
 
-    def _search(self, principal: Principal, ws: Workspace | None, query: str | None) -> list:
+    def _search(
+        self, principal: Principal, ws: Workspace | None, query: str | None
+    ) -> list[dict[str, Any]]:
         visible = self._native_for(principal, ws)
         recorded = self.catalog.recorded_hits(query)
         if recorded is not None:
@@ -337,8 +345,15 @@ class FixtureServer:
 
     @asynccontextmanager
     async def running(self) -> AsyncIterator[FixtureServer]:
-        async with self.manager.run():
-            yield self
+        try:
+            async with self.manager.run():
+                yield self
+        except BaseExceptionGroup as group:
+            # The manager's task group wraps whatever the caller raised in the body;
+            # hand a single exception back unwrapped so callers can catch it by type.
+            if len(group.exceptions) == 1:
+                raise group.exceptions[0] from None
+            raise
 
 
 def _native_gateway_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -359,4 +374,5 @@ def _native_gateway_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def load_gateway_tools(path: str) -> list[dict[str, Any]]:
     with open(path) as fh:
-        return json.load(fh)["tools"]
+        tools: list[dict[str, Any]] = json.load(fh)["tools"]
+    return tools
