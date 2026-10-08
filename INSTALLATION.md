@@ -145,65 +145,19 @@ testmcpy setup --force
 
 ## Publishing to Homebrew
 
-This repository includes a Homebrew formula in the `Formula/` directory, making it both the source repo and the Homebrew tap.
+This repository is also the Homebrew tap (`Formula/testmcpy.rb`). The formula's
+`url` and `sha256` are updated automatically after each PyPI release by the
+publish workflow, derived from the sdist PyPI actually serves. See
+[RELEASING.md](RELEASING.md#homebrew-formula).
 
-### Steps to enable Homebrew installation:
-
-1. **Publish to PyPI first** (required):
-```bash
-python -m build
-python -m twine upload dist/*
-```
-
-2. **Update the formula with PyPI SHA256**:
-```bash
-# Download from PyPI
-wget https://files.pythonhosted.org/packages/source/t/testmcpy/testmcpy-0.1.0.tar.gz
-
-# Calculate SHA256
-shasum -a 256 testmcpy-0.1.0.tar.gz
-
-# Update Formula/testmcpy.rb with the SHA256 hash
-```
-
-3. **Commit and push the updated formula**:
-```bash
-git add Formula/testmcpy.rb
-git commit -m "Update Homebrew formula with PyPI SHA256"
-git push
-```
-
-4. **Users can now install with**:
-```bash
-brew tap preset-io/testmcpy
-brew install testmcpy
-```
-
-The formula uses `virtualenv_install_with_resources` which automatically installs testmcpy and all dependencies from PyPI into a Homebrew-managed virtual environment.
+The formula uses `virtualenv_install_with_resources` which installs testmcpy and
+all dependencies from PyPI into a Homebrew-managed virtual environment.
 
 ## Publishing to PyPI
 
-To publish to PyPI:
-
-1. Install build tools:
-```bash
-pip install build twine
-```
-
-2. Build the package:
-```bash
-python -m build
-```
-
-3. Upload to PyPI:
-```bash
-python -m twine upload dist/*
-```
-
-4. Users can now install with:
-```bash
-pip install testmcpy
-```
+Releases are published by GitHub Actions through PyPI Trusted Publishing, after
+approval in the `pypi` GitHub environment. Pushing a `vX.Y.Z` tag starts a
+release; do not upload with `twine` by hand. See [RELEASING.md](RELEASING.md).
 
 ## Development
 

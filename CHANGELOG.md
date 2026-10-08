@@ -63,12 +63,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   matrix + leaderboard and the `leaderboard` CLI (`--by-effort` / `--by-suite`).
 
 ### Changed
+- Releases are published to PyPI with GitHub OIDC Trusted Publishing instead of
+  an API token: a `vX.Y.Z` tag (releasing `testmcpy`, and `testmcpy-oauth-probe`
+  first when its in-tree version is not on PyPI) starts an unprivileged build/test job, then an
+  approval-gated `pypi` environment job uploads the verified artifacts. The tag
+  version must equal the package version. `scripts/publish.sh` now only prepares
+  and tags a release (it no longer uploads) and checks the `pypi` environment is
+  protected before pushing. A GitHub Release no longer triggers a publish. See
+  `RELEASING.md`.
 - `testmcpy-oauth discover` now sets `error_probe: false` in the manifest it
   generates, so it stays read-only. `error_probe` defaults to true and applies
   to all flows, which otherwise would have made `discover` POST an unsupported
   grant to the discovered token endpoint.
 
 ### Fixed
+- The Homebrew formula sync only rewrote `sha256`, leaving a stale `url`, and
+  reported success on a failed download or push. It now derives both from the
+  verified sdist and fails loudly.
 - The headless probe no longer drops `oauth.token.error_contract` under
   `flow: bearer`. Token acquisition returned before the error-probe block, so a
   manifest could set `error_probe: true` and receive a report with the check
