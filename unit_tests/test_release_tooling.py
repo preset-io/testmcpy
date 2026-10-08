@@ -1043,7 +1043,15 @@ def _run_publish_sh(
         (fakebin / name).write_text(body)
         (fakebin / name).chmod(0o755)
     log = tmp_path / "calls.log"
-    env = dict(os.environ, PATH=f"{fakebin}:{os.environ['PATH']}", CALL_LOG=str(log))
+    # publish.sh documents PYTHON and RELEASE_SKIP_ENV_CHECK as inputs. They must not leak
+    # in from the caller: `PYTHON=... scripts/publish.sh` runs this very suite, and the
+    # real interpreter would replace the stub these tests drive.
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if key not in {"PYTHON", "RELEASE_SKIP_ENV_CHECK"}
+    }
+    env.update(PATH=f"{fakebin}:{os.environ['PATH']}", CALL_LOG=str(log))
     env.update(env_overrides)
     result = subprocess.run(
         ["bash", str(repo / "scripts" / "publish.sh"), *args],
