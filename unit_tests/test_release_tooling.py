@@ -69,20 +69,42 @@ def _write_repo(
     )
 
 
+_UI_BUNDLE_FILES = ("testmcpy/ui/dist/index.html", "testmcpy/ui/dist/assets/index-abc123.js")
+
+
 def _fake_dist(
-    directory: Path, name: str, version: str, *, meta_version: str | None = None
+    directory: Path,
+    name: str,
+    version: str,
+    *,
+    meta_version: str | None = None,
+    ui_bundle: bool = True,
+    wheel_ui_bundle: bool | None = None,
+    sdist_ui_bundle: bool | None = None,
 ) -> None:
-    """A minimal wheel + sdist with real, parseable metadata."""
+    """A minimal wheel + sdist with real, parseable metadata.
+
+    ``testmcpy`` artifacts carry the built web UI unless ``ui_bundle`` is False (or the
+    wheel/sdist is overridden individually), like a real release build.
+    """
     directory.mkdir(parents=True, exist_ok=True)
     stem = name.replace("-", "_")
     metadata = f"Metadata-Version: 2.1\nName: {name}\nVersion: {meta_version or version}\n\nbody\n"
+    is_main = name == "testmcpy"
+    in_wheel = is_main and (ui_bundle if wheel_ui_bundle is None else wheel_ui_bundle)
+    in_sdist = is_main and (ui_bundle if sdist_ui_bundle is None else sdist_ui_bundle)
     with zipfile.ZipFile(directory / f"{stem}-{version}-py3-none-any.whl", "w") as wheel:
         wheel.writestr(f"{stem}-{version}.dist-info/METADATA", metadata)
+        for member in _UI_BUNDLE_FILES if in_wheel else ():
+            wheel.writestr(member, "x")
     with tarfile.open(directory / f"{stem}-{version}.tar.gz", "w:gz") as sdist:
-        data = metadata.encode()
-        info = tarfile.TarInfo(f"{stem}-{version}/PKG-INFO")
-        info.size = len(data)
-        sdist.addfile(info, io.BytesIO(data))
+        files = {f"{stem}-{version}/PKG-INFO": metadata.encode()}
+        for member in _UI_BUNDLE_FILES if in_sdist else ():
+            files[f"{stem}-{version}/{member}"] = b"x"
+        for member_name, data in files.items():
+            info = tarfile.TarInfo(member_name)
+            info.size = len(data)
+            sdist.addfile(info, io.BytesIO(data))
 
 
 def _write_release_dir(
@@ -302,6 +324,48 @@ def test_verify_dists_rejects_unplanned_or_missing_files(tmp_path: Path) -> None
         release_check.verify_dists(plan, tmp_path)
 
 
+@pytest.mark.parametrize(
+    ("wheel_has", "sdist_has", "broken"),
+    [(False, True, "whl"), (True, False, "tar.gz"), (False, False, "whl")],
+)
+def test_verify_dists_rejects_a_testmcpy_release_without_the_built_web_ui(
+    tmp_path: Path, wheel_has: bool, sdist_has: bool, broken: str
+) -> None:
+    """The UI is built by npm and git-ignored: a clean checkout builds a UI-less wheel."""
+    plan = _plan("v0.2.0", MAIN)
+    release = tmp_path / "release"
+    release.mkdir()
+    _fake_dist(
+        release / "testmcpy",
+        "testmcpy",
+        "0.2.0",
+        wheel_ui_bundle=wheel_has,
+        sdist_ui_bundle=sdist_has,
+    )
+    with pytest.raises(
+        release_check.ReleaseError, match=rf"{broken} does not contain the built web UI"
+    ):
+        release_check.verify_dists(plan, release)
+
+
+def test_verify_dists_requires_assets_not_just_index_html(tmp_path: Path) -> None:
+    plan = _plan("v0.2.0", MAIN)
+    release = tmp_path / "release"
+    _fake_dist(release / "testmcpy", "testmcpy", "0.2.0", ui_bundle=False)
+    wheel = next((release / "testmcpy").glob("*.whl"))
+    with zipfile.ZipFile(wheel, "a") as archive:
+        archive.writestr("testmcpy/ui/dist/index.html", "x")
+    with pytest.raises(release_check.ReleaseError, match="does not contain the built web UI"):
+        release_check.verify_dists(plan, release)
+
+
+def test_verify_dists_does_not_ask_the_probe_for_a_web_ui(tmp_path: Path) -> None:
+    plan = _plan("v0.2.0", PROBE)
+    release = tmp_path / "release"
+    _fake_dist(release / "probe", "testmcpy-oauth-probe", "0.1.0")
+    release_check.verify_dists(plan, release)
+
+
 @pytest.mark.skipif(
     not (shutil.which("python") and importlib.util.find_spec("build")),
     reason="`build` is not installed",
@@ -332,7 +396,10 @@ def test_real_builds_of_both_distributions_verify(tmp_path: Path) -> None:
             check=True,
             capture_output=True,
         )
-    release_check.verify_dists(plan, tmp_path)
+    # The UI bundle is git-ignored; only demand it when this tree has been built.
+    release_check.verify_dists(
+        plan, tmp_path, require_ui_bundle=(REPO_ROOT / "testmcpy/ui/dist/index.html").exists()
+    )
 
 
 # ------------------------------------------------------------------- Homebrew formula sync
@@ -614,6 +681,20 @@ def test_build_job_validates_tests_builds_and_hands_off_by_artifact() -> None:
     assert upload["with"]["name"] == download["with"]["name"]
     assert upload["with"]["if-no-files-found"] == "error"
     assert _workflow()["jobs"]["homebrew"]["needs"] == ["build", "publish"]
+
+
+def test_build_job_builds_the_web_ui_before_building_the_distributions() -> None:
+    """The wheel ships ui/dist, which is git-ignored: a clean checkout has to build it."""
+    steps = _steps("build")
+    node = next(
+        i for i, s in enumerate(steps) if s.get("uses", "").startswith("actions/setup-node@")
+    )
+    ui = next(i for i, s in enumerate(steps) if "npm run build" in s.get("run", ""))
+    dists = next(i for i, s in enumerate(steps) if "release_check.py build" in s.get("run", ""))
+    assert node < ui < dists
+    assert "npm ci" in steps[ui]["run"], "install from the lockfile, never `npm install`"
+    assert "testmcpy/ui" in steps[ui]["run"]
+    assert "cache" not in steps[node].get("with", {}), "no cache in the privileged release path"
 
 
 def test_homebrew_job_cannot_swallow_failures() -> None:
@@ -912,6 +993,11 @@ esac
 exit 0
 """
 
+_NPM_STUB = r"""#!/bin/bash
+echo "npm $*" >> "$CALL_LOG"
+exit "${NPM_EXIT:-0}"
+"""
+
 _GH_STUB = r"""#!/bin/bash
 set -f
 echo "gh $*" >> "$CALL_LOG"
@@ -945,9 +1031,15 @@ def _run_publish_sh(
     (repo / "scripts").mkdir(parents=True)
     shutil.copy(PUBLISH_SH, repo / "scripts" / "publish.sh")
     _write_repo(repo, main="0.2.0", probe="0.1.0")
+    (repo / "testmcpy" / "ui").mkdir(parents=True)
     fakebin = tmp_path / "fakebin"
     fakebin.mkdir()
-    for name, body in (("git", _GIT_STUB), ("python", _PYTHON_STUB), ("gh", _GH_STUB)):
+    for name, body in (
+        ("git", _GIT_STUB),
+        ("python", _PYTHON_STUB),
+        ("gh", _GH_STUB),
+        ("npm", _NPM_STUB),
+    ):
         (fakebin / name).write_text(body)
         (fakebin / name).chmod(0o755)
     log = tmp_path / "calls.log"
@@ -991,6 +1083,22 @@ def test_publish_sh_tags_locally_and_pushes_only_the_tag_after_confirmation(tmp_
     tag = calls.index("git tag -a v0.2.0 -m Release v0.2.0")
     assert build < verify < tag, "artifacts are built and verified before any tag exists"
     assert any("twine check" in c for c in calls)
+
+
+def test_publish_sh_builds_the_web_ui_before_building_the_distributions(tmp_path: Path) -> None:
+    result, calls = _run_publish_sh(tmp_path, "--dry-run")
+    assert result.returncode == 0, result.stdout + result.stderr
+    install = calls.index("npm ci --no-audit --no-fund")
+    ui_build = calls.index("npm run build")
+    build = next(i for i, c in enumerate(calls) if "release_check.py build" in c)
+    assert install < ui_build < build, "the wheel ships ui/dist; it must exist before building"
+
+
+def test_publish_sh_stops_when_the_web_ui_build_fails(tmp_path: Path) -> None:
+    result, calls = _run_publish_sh(tmp_path, "--dry-run", NPM_EXIT="1")
+    assert result.returncode != 0
+    assert not any("release_check.py build" in c for c in calls)
+    assert not _mutations(calls)
 
 
 @pytest.mark.parametrize("answer", ["n\n", "\n", ""])
