@@ -107,10 +107,9 @@ PROBE = {"name": "testmcpy-oauth-probe", "version": "0.1.0", "dir": "probe"}
 MAIN = {"name": "testmcpy", "version": "0.2.0", "dir": "testmcpy"}
 
 
-def _plan(tag: str, *dists: dict[str, str], kind: str = "testmcpy") -> dict[str, Any]:
+def _plan(tag: str, *dists: dict[str, str]) -> dict[str, Any]:
     return {
         "tag": tag,
-        "kind": kind,
         "probe_version": "0.1.0",
         "probe_requirement": ">=0.1.0,<0.2.0",
         "distributions": list(dists),
@@ -136,7 +135,6 @@ def test_main_tag_releases_probe_first_when_probe_is_unpublished(
     _write_repo(tmp_path)
     plan = release_check.build_plan(tmp_path, "v0.2.0")
     assert [d["name"] for d in plan["distributions"]] == ["testmcpy-oauth-probe", "testmcpy"]
-    assert plan["kind"] == "testmcpy"
     assert plan["probe_version"] == "0.1.0"
 
 
@@ -150,11 +148,22 @@ def test_independent_versions_skip_an_already_published_probe(
     assert [d["name"] for d in plan["distributions"]] == ["testmcpy"]
 
 
-def test_probe_tag_releases_only_the_probe(tmp_path: Path, pypi: set[tuple[str, str]]) -> None:
+def test_probe_only_tag_is_rejected(tmp_path: Path, pypi: set[tuple[str, str]]) -> None:
+    """The `pypi` environment admits `v*` tags only, so `oauth-probe-v*` is not a release tag."""
     _write_repo(tmp_path, probe="0.1.3")
-    plan = release_check.build_plan(tmp_path, "oauth-probe-v0.1.3")
-    assert plan["kind"] == "probe"
-    assert [d["name"] for d in plan["distributions"]] == ["testmcpy-oauth-probe"]
+    with pytest.raises(release_check.ReleaseError, match="does not match"):
+        release_check.build_plan(tmp_path, "oauth-probe-v0.1.3")
+
+
+def test_an_unpublished_probe_is_released_with_the_next_main_tag(
+    tmp_path: Path, pypi: set[tuple[str, str]]
+) -> None:
+    _write_repo(tmp_path, probe="0.1.3", pin=">=0.1.0,<0.2.0")
+    plan = release_check.build_plan(tmp_path, "v0.2.0")
+    assert [(d["name"], d["version"]) for d in plan["distributions"]] == [
+        ("testmcpy-oauth-probe", "0.1.3"),
+        ("testmcpy", "0.2.0"),
+    ]
 
 
 @pytest.mark.parametrize(
@@ -164,7 +173,6 @@ def test_probe_tag_releases_only_the_probe(tmp_path: Path, pypi: set[tuple[str, 
         "v0.1.9",  # older than the tree
         "v1.0.0",
         "v0.2.0.1",
-        "oauth-probe-v0.2.0",  # probe tag carrying testmcpy's version
     ],
 )
 def test_tag_that_disagrees_with_the_package_version_fails(
@@ -177,7 +185,18 @@ def test_tag_that_disagrees_with_the_package_version_fails(
 
 @pytest.mark.parametrize(
     "tag",
-    ["0.2.0", "v0.2", "v0.2.0-beta", "vX.Y.Z", "release-0.2.0", "oauth-probe-0.1.0", "v0.2.0 ", ""],
+    [
+        "0.2.0",
+        "v0.2",
+        "v0.2.0-beta",
+        "vX.Y.Z",
+        "release-0.2.0",
+        "oauth-probe-0.1.0",
+        "oauth-probe-v0.1.0",  # probe-only tags are not accepted
+        "oauth-probe-v0.2.0",
+        "v0.2.0 ",
+        "",
+    ],
 )
 def test_malformed_tags_are_rejected(tmp_path: Path, pypi: set[tuple[str, str]], tag: str) -> None:
     _write_repo(tmp_path)
@@ -199,12 +218,6 @@ def test_releasing_a_version_already_on_pypi_fails(
     with pytest.raises(release_check.ReleaseError, match="already on PyPI"):
         release_check.build_plan(tmp_path, "v0.2.0")
 
-    _write_repo(tmp_path)
-    pypi.clear()
-    pypi.add(("testmcpy-oauth-probe", "0.1.0"))
-    with pytest.raises(release_check.ReleaseError, match="already on PyPI"):
-        release_check.build_plan(tmp_path, "oauth-probe-v0.1.0")
-
 
 def test_pin_that_excludes_the_in_tree_probe_fails(
     tmp_path: Path, pypi: set[tuple[str, str]]
@@ -220,7 +233,8 @@ def test_the_real_tree_plans_cleanly(pypi: set[tuple[str, str]]) -> None:
     main = release_check.read_project(REPO_ROOT)["version"]
     probe = release_check.read_project(REPO_ROOT, "oauth-probe")["version"]
     assert release_check.build_plan(REPO_ROOT, f"v{main}")["distributions"][-1]["version"] == main
-    assert release_check.build_plan(REPO_ROOT, f"oauth-probe-v{probe}")["kind"] == "probe"
+    plan = release_check.build_plan(REPO_ROOT, f"v{main}")
+    assert plan["probe_version"] == probe
 
 
 def test_pypi_lookup_distinguishes_missing_from_broken() -> None:
@@ -275,14 +289,14 @@ def test_verify_dists_rejects_a_stale_artifact_version(tmp_path: Path) -> None:
 
 
 def test_verify_dists_rejects_unplanned_or_missing_files(tmp_path: Path) -> None:
-    plan = _plan("oauth-probe-v0.1.0", PROBE, kind="probe")
+    plan = _plan("v0.2.0", MAIN)
     _write_release_dir(tmp_path, plan)
-    _fake_dist(tmp_path / "testmcpy", "testmcpy", "0.2.0")  # rides along uninvited
+    _fake_dist(tmp_path / "probe", "testmcpy-oauth-probe", "0.1.0")  # rides along uninvited
     with pytest.raises(release_check.ReleaseError, match="do not match plan"):
         release_check.verify_dists(plan, tmp_path)
 
-    shutil.rmtree(tmp_path / "testmcpy")
-    next((tmp_path / "probe").glob("*.tar.gz")).unlink()
+    shutil.rmtree(tmp_path / "probe")
+    next((tmp_path / "testmcpy").glob("*.tar.gz")).unlink()
     with pytest.raises(release_check.ReleaseError, match="exactly one wheel and one sdist"):
         release_check.verify_dists(plan, tmp_path)
 
@@ -512,7 +526,9 @@ def _steps(job: str) -> list[dict[str, Any]]:
 def test_workflow_is_triggered_only_by_release_tags() -> None:
     triggers = _workflow()[True]  # PyYAML parses the bare key `on` as boolean True
     assert set(triggers) == {"push"}, "no release/workflow_dispatch/PR triggers"
-    assert sorted(triggers["push"]["tags"]) == ["oauth-probe-v*", "v*"]
+    # The `pypi` environment's deployment policy admits only `v*` tags; any other tag
+    # trigger would start a run that is rejected at the environment gate.
+    assert triggers["push"]["tags"] == ["v*"]
     assert "branches" not in triggers["push"]
 
 
@@ -633,7 +649,7 @@ def test_publish_verify_step_accepts_a_consistent_release(tmp_path: Path) -> Non
     _write_release_dir(tmp_path / "release", _plan("v0.2.0", PROBE, MAIN))
     result, outputs = _run_verify_step(tmp_path, "v0.2.0")
     assert result.returncode == 0, result.stderr
-    assert "publish_probe=true" in outputs and "publish_testmcpy=true" in outputs
+    assert "publish_probe=true" in outputs
     assert "probe_version=0.1.0" in outputs
 
 
@@ -641,13 +657,16 @@ def test_publish_verify_step_supports_independent_versions(tmp_path: Path) -> No
     _write_release_dir(tmp_path / "release", _plan("v0.2.0", MAIN))
     result, outputs = _run_verify_step(tmp_path, "v0.2.0")
     assert result.returncode == 0, result.stderr
-    assert "publish_probe=false" in outputs and "publish_testmcpy=true" in outputs
+    assert "publish_probe=false" in outputs
 
-    probe_tag = tmp_path / "probe-only"
-    _write_release_dir(probe_tag / "release", _plan("oauth-probe-v0.1.0", PROBE, kind="probe"))
-    result, outputs = _run_verify_step(probe_tag, "oauth-probe-v0.1.0")
-    assert result.returncode == 0, result.stderr
-    assert "publish_probe=true" in outputs and "publish_testmcpy=false" in outputs
+
+def test_publish_verify_step_rejects_a_probe_only_tag(tmp_path: Path) -> None:
+    plan = _plan("oauth-probe-v0.1.0", PROBE)
+    _write_release_dir(tmp_path / "release", plan)
+    result, outputs = _run_verify_step(tmp_path, "oauth-probe-v0.1.0")
+    assert result.returncode != 0
+    assert "not a release tag" in result.stderr + result.stdout
+    assert "publish_probe" not in outputs
 
 
 @pytest.mark.parametrize(
@@ -702,7 +721,7 @@ def test_publish_verify_step_fails_on_any_mismatch(tmp_path: Path, scenario: str
         )
     result, outputs = _run_verify_step(tmp_path, tag)
     assert result.returncode != 0, f"{scenario}: verify step passed\n{result.stdout}"
-    assert "publish_testmcpy" not in outputs
+    assert "publish_probe" not in outputs
 
 
 def _run_dependency_gate(
@@ -776,15 +795,26 @@ exit 0
 """
 
 _GH_STUB = r"""#!/bin/bash
+set -f
 echo "gh $*" >> "$CALL_LOG"
 case "$1" in
   repo) echo "example/testmcpy" ;;
   api)
-    case "${GH_MODE:-protected}" in
-      protected) echo 1 ;;
-      unprotected) echo 0 ;;
-      missing) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
-      *) echo "gh: network down" >&2; exit 1 ;;
+    case "$2" in
+      */deployment-branch-policies)
+        # The script's --jq already filters to tag policies; emit those names.
+        case "${GH_POLICIES:-v*}" in
+          none) ;;
+          broken) echo "gh: server error (HTTP 500)" >&2; exit 1 ;;
+          *) printf '%s\n' ${GH_POLICIES:-v*} ;;
+        esac ;;
+      *)
+        case "${GH_MODE:-protected}" in
+          protected) echo 1 ;;
+          unprotected) echo 0 ;;
+          missing) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
+          *) echo "gh: network down" >&2; exit 1 ;;
+        esac ;;
     esac ;;
 esac
 """
@@ -864,11 +894,20 @@ def test_publish_sh_dry_run_creates_and_pushes_nothing(tmp_path: Path) -> None:
     assert any("release_check.py build" in c for c in calls)
 
 
-def test_publish_sh_probe_only_uses_the_probe_tag(tmp_path: Path) -> None:
+def test_publish_sh_probe_only_is_gone(tmp_path: Path) -> None:
+    """No probe-only release: the `pypi` environment admits `v*` tags only."""
     result, calls = _run_publish_sh(tmp_path, "--probe-only")
+    assert result.returncode != 0
+    assert "v* is the only release tag" in result.stdout + result.stderr
+    assert not _mutations(calls)
+    assert not any("oauth-probe-v" in c for c in calls)
+
+
+def test_publish_sh_only_ever_tags_with_v_star(tmp_path: Path) -> None:
+    result, calls = _run_publish_sh(tmp_path)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "git push origin refs/tags/oauth-probe-v0.1.0" in calls
-    assert any("--tag oauth-probe-v0.1.0" in c for c in calls)
+    assert not any("oauth-probe-v" in c for c in calls)
+    assert any("--tag v0.2.0" in c for c in calls)
 
 
 @pytest.mark.parametrize(
@@ -885,6 +924,9 @@ def test_publish_sh_probe_only_uses_the_probe_tag(tmp_path: Path) -> None:
         ({"GH_MODE": "missing"}, "does not exist"),
         ({"GH_MODE": "unprotected"}, "no required reviewers"),
         ({"GH_MODE": "broken"}, "Could not read"),
+        ({"GH_POLICIES": "none"}, "no tag deployment policy covering v0.2.0"),
+        ({"GH_POLICIES": "release-* oauth-probe-v*"}, "no tag deployment policy covering v0.2.0"),
+        ({"GH_POLICIES": "broken"}, "deployment policies"),
     ],
 )
 def test_publish_sh_refuses_and_creates_no_tag(
@@ -894,6 +936,13 @@ def test_publish_sh_refuses_and_creates_no_tag(
     assert result.returncode != 0, result.stdout
     assert message in result.stdout + result.stderr
     assert not _mutations(calls)
+
+
+@pytest.mark.parametrize("policies", ["v*", "v0.2.0", "release-* v*"])
+def test_publish_sh_accepts_a_tag_policy_that_covers_the_tag(tmp_path: Path, policies: str) -> None:
+    result, calls = _run_publish_sh(tmp_path, GH_POLICIES=policies)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "git push origin refs/tags/v0.2.0" in calls
 
 
 def test_publish_sh_env_check_can_be_bypassed_only_explicitly(tmp_path: Path) -> None:
