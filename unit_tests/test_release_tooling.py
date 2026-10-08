@@ -20,6 +20,7 @@ import io
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -762,6 +763,50 @@ def test_dependency_gate_passes_once_the_probe_resolves(tmp_path: Path) -> None:
     result, calls = _run_dependency_gate(tmp_path, pip_exit=0)
     assert result.returncode == 0, result.stdout + result.stderr
     assert len(calls) == 1
+
+
+def test_dependency_gate_downloads_only_wheels_without_dependencies(tmp_path: Path) -> None:
+    result, calls = _run_dependency_gate(tmp_path, pip_exit=0)
+    assert result.returncode == 0, result.stdout + result.stderr
+    args = shlex.split(calls[0])
+    assert args[:3] == ["-m", "pip", "download"]
+    assert "--no-deps" in args
+    assert "--only-binary=:all:" in args, "sdist build backends must not run in the OIDC job"
+
+
+def test_dependency_gate_rejects_a_source_only_probe_without_running_its_backend(
+    tmp_path: Path,
+) -> None:
+    marker = tmp_path / "backend-executed"
+    files = {
+        "pyproject.toml": (
+            '[build-system]\nrequires = []\nbuild-backend = "backend"\nbackend-path = ["."]\n'
+        ),
+        "backend.py": (
+            f"from pathlib import Path\nPath({str(marker)!r}).write_text('ran')\n"
+            "raise RuntimeError('sdist backend must not execute')\n"
+        ),
+    }
+    with tarfile.open(tmp_path / "testmcpy_oauth_probe-0.1.0.tar.gz", "w:gz") as sdist:
+        for name, content in files.items():
+            payload = content.encode()
+            info = tarfile.TarInfo(f"testmcpy_oauth_probe-0.1.0/{name}")
+            info.size = len(payload)
+            sdist.addfile(info, io.BytesIO(payload))
+
+    # Execute the actual workflow's pip command against an offline, source-only
+    # index. The other gate tests exercise its surrounding retry shell.
+    gate = _step_run("publish", "Verify the probe dependency is installable from PyPI")
+    command = next(line.strip() for line in gate.splitlines() if "-m pip download" in line)
+    args = shlex.split(command.removeprefix("if ").removesuffix("; then"))
+    args[0] = sys.executable
+    args[args.index("--dest") + 1] = str(tmp_path / "downloads")
+    args[-1] = "testmcpy-oauth-probe==0.1.0"
+    args.extend(["--no-index", "--find-links", str(tmp_path)])
+    result = subprocess.run(args, capture_output=True, text=True, timeout=60)
+    assert result.returncode != 0, "a source-only probe must fail closed"
+    assert not marker.exists(), result.stdout + result.stderr
+    assert "No matching distribution found" in result.stderr
 
 
 # ---------------------------------------------------------------------- scripts/publish.sh

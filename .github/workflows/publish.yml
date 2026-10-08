@@ -196,6 +196,8 @@ jobs:
       # Refuse to publish testmcpy against a probe version consumers cannot
       # install. Checks the exact in-tree probe version (not merely "something in
       # the allowed range"), whether it was just uploaded above or earlier.
+      # Wheels only: downloading an sdist can execute its build backend, which
+      # must never happen in this OIDC-enabled job.
       - name: Verify the probe dependency is installable from PyPI
         env:
           PROBE_VERSION: ${{ steps.verify.outputs.probe_version }}
@@ -203,7 +205,7 @@ jobs:
           REQUIRED="testmcpy-oauth-probe==${PROBE_VERSION}"
           echo "testmcpy requires a probe satisfying: ${REQUIRED}"
           for attempt in 1 2 3 4 5 6 7 8; do
-            if python3 -m pip download --no-deps --no-cache-dir --dest /tmp/probe-check "${REQUIRED}"; then
+            if python3 -m pip download --no-deps --only-binary=:all: --no-cache-dir --dest /tmp/probe-check "${REQUIRED}"; then
               exit 0
             fi
             echo "Not on PyPI yet; retrying in 15s (attempt ${attempt}/8)"
