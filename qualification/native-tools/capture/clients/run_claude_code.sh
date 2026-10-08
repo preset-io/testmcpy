@@ -17,7 +17,8 @@ cd "$work/work"
 export CLAUDE_CONFIG_DIR="$work/cc-home"
 export ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-https://openrouter.ai/api}
 export ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN:-${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY or ANTHROPIC_AUTH_TOKEN}}
-export ANTHROPIC_API_KEY="" DISABLE_TELEMETRY=1 DISABLE_AUTOUPDATER=1
+unset ANTHROPIC_API_KEY
+export DISABLE_TELEMETRY=1 DISABLE_AUTOUPDATER=1
 export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 timeout 300 claude -p "$prompt" --mcp-config "$cfg" --strict-mcp-config --setting-sources project \
   --disable-slash-commands --no-session-persistence --model "${CC_MODEL:-anthropic/claude-haiku-4.5}" \
