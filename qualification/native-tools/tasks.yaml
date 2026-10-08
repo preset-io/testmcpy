@@ -1,0 +1,214 @@
+# Task suite v1 for SC-125472. Every task runs identically on every surface:
+# same principal, same workspace grants, same fixture data. Arguments are the
+# native operation's arguments; the surface adapter wraps them (call_tool,
+# workspace_id) as that surface requires. `discovery` is the natural-language
+# query a scripted agent uses to find the operation on a discovery surface.
+#
+# Writes only touch the in-memory fixture world; the write ledger is asserted.
+version: 1
+tasks:
+  - id: chart-find
+    title: Find an existing chart by name
+    topology: single
+    principal: alice
+    workspace: ws-a
+    steps:
+      - tool: list_charts
+        args: {request: {search: revenue}}
+        discovery: list charts
+    oracle:
+      answer_contains: ["Revenue by Region"]
+      ledger: []
+
+  - id: chart-create
+    title: Create (save) a chart on the sales dataset
+    topology: single
+    principal: dave
+    workspace: ws-a
+    steps:
+      - tool: list_datasets
+        args: {request: {search: sales}}
+        discovery: list datasets
+      - tool: generate_chart
+        args:
+          request:
+            dataset_id: 10
+            chart_name: Revenue Table
+            save_chart: true
+            config: {chart_type: table, columns: [{name: region}, {name: revenue}]}
+        discovery: generate chart
+    oracle:
+      answer_contains: ["Revenue Table"]
+      ledger: [create_chart]
+
+  - id: sql-query
+    title: Find the database and run a read-only SQL query
+    topology: single
+    principal: dave
+    workspace: ws-a
+    steps:
+      - tool: list_databases
+        args: {request: {}}
+        discovery: list databases
+      - tool: execute_sql
+        args:
+          request:
+            database_id: 1
+            sql: SELECT region, SUM(revenue) AS revenue FROM sales GROUP BY region
+        discovery: execute sql query
+    oracle:
+      answer_contains: ["AMER", "3400"]
+      ledger: []
+
+  - id: dataset-lookup
+    title: Look up a dataset and its columns
+    topology: single
+    principal: alice
+    workspace: ws-a
+    steps:
+      - tool: list_datasets
+        args: {request: {search: sales}}
+        discovery: list datasets
+      - tool: get_dataset_info
+        args: {request: {identifier: 10}}
+        discovery: get dataset info
+    oracle:
+      answer_contains: ["order_date"]
+      ledger: []
+
+  - id: dashboard-lookup
+    title: Look up a dashboard and its charts
+    topology: single
+    principal: alice
+    workspace: ws-a
+    steps:
+      - tool: list_dashboards
+        args: {request: {search: sales}}
+        discovery: list dashboards
+      - tool: get_dashboard_info
+        args: {request: {identifier: 200}}
+        discovery: get dashboard info
+    oracle:
+      answer_contains: ["Sales Overview"]
+      ledger: []
+
+  - id: workspace-switch
+    title: List workspaces, then read charts in two workspaces on one connection
+    topology: gateway
+    principal: alice
+    steps:
+      - tool: list_workspaces
+        args: {}
+      - tool: list_charts
+        workspace: ws-a
+        args: {request: {}}
+        discovery: list charts
+      - tool: list_charts
+        workspace: ws-b
+        args: {request: {}}
+        discovery: list charts
+        answer_excludes: ["Revenue by Region"]
+    oracle:
+      answer_contains: ["Store Footfall", "Revenue by Region"]
+      ledger: []
+
+  - id: old-producer-unsupported
+    title: Read charts from a workspace whose producer has no named tools
+    topology: gateway
+    principal: alice
+    steps:
+      - tool: list_charts
+        workspace: ws-old
+        args: {request: {}}
+        discovery: list charts
+    # Native surfaces must fail with an explicit typed error and a pointer to
+    # compatibility mode; the generic compatibility surface keeps working.
+    surface_expect:
+      generic: {ok: true}
+      native_eager: {error: UNSUPPORTED_PRODUCER}
+      native_deferred: {error: UNSUPPORTED_PRODUCER}
+    oracle:
+      ledger: []
+
+  - id: revoked-access
+    title: A workspace grant is revoked; reads elsewhere keep working
+    topology: gateway
+    principal: carol
+    steps:
+      - tool: list_charts
+        workspace: ws-a
+        args: {request: {}}
+        discovery: list charts
+      - tool: list_charts
+        workspace: ws-b
+        args: {request: {}}
+        discovery: list charts
+        expect_error: ACCESS_REVOKED
+    oracle:
+      answer_excludes: ["Store Footfall"]
+      ledger: []
+
+  - id: restricted-role
+    title: A read-only role may read but must not reach SQL execution
+    topology: single
+    principal: bob
+    workspace: ws-a
+    steps:
+      - tool: list_charts
+        args: {request: {}}
+        discovery: list charts
+      - tool: execute_sql
+        args: {request: {database_id: 1, sql: SELECT 1}}
+        discovery: execute sql query
+        expect_denied: true
+    oracle:
+      answer_excludes: ["3400"]
+      ledger: []
+
+  - id: knowledge-disabled
+    title: Knowledge is disabled for the workspace
+    topology: single
+    principal: alice
+    workspace: ws-b
+    steps:
+      - tool: search_knowledge
+        args: {request: {query: revenue}}
+        discovery: search knowledge documents
+        expect_denied: true
+    oracle:
+      answer_excludes: ["recognised on shipment"]
+      ledger: []
+
+  - id: write-approval-readonly
+    title: Read-only operations (approval behaviour)
+    topology: single
+    principal: dave
+    workspace: ws-a
+    steps:
+      - tool: list_charts
+        args: {request: {}}
+        discovery: list charts
+      - tool: get_chart_info
+        args: {request: {identifier: 100}}
+        discovery: get chart info
+    oracle:
+      answer_contains: ["Revenue by Region"]
+      ledger: []
+
+  - id: write-approval-write
+    title: One write operation (approval behaviour)
+    topology: single
+    principal: dave
+    workspace: ws-a
+    steps:
+      - tool: generate_chart
+        args:
+          request:
+            dataset_id: 10
+            chart_name: Orders Table
+            save_chart: true
+            config: {chart_type: table, columns: [{name: region}]}
+        discovery: generate chart
+    oracle:
+      answer_contains: ["Orders Table"]
+      ledger: [create_chart]

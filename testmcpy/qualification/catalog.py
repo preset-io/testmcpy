@@ -36,23 +36,42 @@ class Catalog:
     output_schemas: dict[str, Any] = field(default_factory=dict)
     synthetic_count: int = 0
 
+    def recorded_hits(self, query: str | None) -> list[dict[str, Any]] | None:
+        """Real ``search_tools`` hits recorded for ``query`` (actual catalog only)."""
+        recorded = self.search_responses.get(query or "")
+        if recorded is None or self.synthetic_count:
+            return None
+        return json.loads(recorded["content"][0]["text"])
+
     def native_by_name(self) -> dict[str, dict[str, Any]]:
         return {t["name"]: t for t in self.native_tools}
 
 
-def load_catalog(path: str | Path, output_schemas_path: str | Path | None = None) -> Catalog:
-    """Load a catalog captured by ``capture/capture_superset_catalog.py``."""
+def load_catalog(
+    path: str | Path,
+    output_schemas_path: str | Path | None = None,
+    search_responses_path: str | Path | None = None,
+) -> Catalog:
+    """Load a catalog captured by ``capture/capture_superset_catalog.py``.
+
+    The capture is split into three files so each stays reviewable: the tool
+    definitions, the (large, rarely forwarded) output schemas, and the real
+    ``search_tools`` responses recorded for the task suite's queries.
+    """
     data = json.loads(Path(path).read_text())
     pages = data["native"]["pages"]
     tools = [t for page in pages for t in page]
     outputs: dict[str, Any] = {}
     if output_schemas_path and Path(output_schemas_path).exists():
         outputs = json.loads(Path(output_schemas_path).read_text())["output_schemas"]
+    searches: dict[str, Any] = {}
+    if search_responses_path and Path(search_responses_path).exists():
+        searches = json.loads(Path(search_responses_path).read_text())["search_responses"]
     return Catalog(
         name="actual",
         native_tools=tools,
         generic_tools=data["generic"]["tools"],
-        search_responses=data["generic"].get("search_responses", {}),
+        search_responses=searches,
         initialize=data.get("initialize", {}),
         provenance=data.get("provenance", {}),
         output_schemas=outputs,

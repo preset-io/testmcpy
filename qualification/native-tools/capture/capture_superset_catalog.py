@@ -109,11 +109,27 @@ def main() -> None:
         "most clients never put them in the model prompt)",
     )
     ap.add_argument("--queries", nargs="*", default=DEFAULT_QUERIES)
+    ap.add_argument("--out-search-responses", required=True)
+    ap.add_argument(
+        "--tasks",
+        help="tasks.yaml: also record the search for every step's discovery phrase and "
+        "exact tool name (the miss-retry query)",
+    )
     args = ap.parse_args()
     import fastmcp
     import mcp as mcp_pkg
 
-    data = asyncio.run(_capture(args.queries))
+    queries = list(args.queries)
+    if args.tasks:
+        import yaml
+
+        with open(args.tasks) as fh:
+            for task in yaml.safe_load(fh)["tasks"]:
+                for step in task["steps"]:
+                    for q in (step.get("discovery"), step["tool"]):
+                        if q and q != "list_workspaces" and q not in queries:
+                            queries.append(q)
+    data = asyncio.run(_capture(queries))
     data["provenance"] = {
         "source": "apache/superset superset.mcp_service (in-memory FastMCP app, no network)",
         "superset_sha": args.superset_sha,
@@ -129,13 +145,16 @@ def main() -> None:
         for tool in tool_list:
             if "outputSchema" in tool:
                 output_schemas[tool["name"]] = tool.pop("outputSchema")
+    search_responses = data["generic"].pop("search_responses")
+    with open(args.out_search_responses, "w") as fh:
+        fh.write(emit({"search_responses": search_responses}) + "\n")
     with open(args.out, "w") as fh:
         fh.write(emit(data) + "\n")
     with open(args.out_output_schemas, "w") as fh:
         fh.write(emit({"output_schemas": output_schemas}) + "\n")
     print(
         f"native={sum(len(p) for p in data['native']['pages'])} generic={len(data['generic']['tools'])} "
-        f"searches={len(data['generic']['search_responses'])}",
+        f"searches={len(search_responses)}",
         file=sys.stderr,
     )
 
