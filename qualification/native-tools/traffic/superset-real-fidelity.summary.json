@@ -1,0 +1,285 @@
+[
+ {
+  "has_structuredContent": true,
+  "isError": false,
+  "probe": "P01-list-empty",
+  "structured_keys": [
+   "charts",
+   "columns_available",
+   "columns_loaded",
+   "columns_requested",
+   "count",
+   "filters_applied",
+   "has_next",
+   "has_previous",
+   "page",
+   "page_size",
+   "pagination",
+   "sortable_columns"
+  ],
+  "surface": "native",
+  "text_head": "{\"count\":0,\"total_count\":0,\"page\":1,\"page_size\":10,\"total_pages\":0,\"has_previous\":false,\"has_next\":false,\"columns_requested\":[\"id\",\"slice_name\",\"viz_type\",\"description\",\"certified_by\",\"certification_details\",\"url\",\"changed_on\",\"changed_on_h",
+  "text_len": 1102
+ },
+ {
+  "has_structuredContent": true,
+  "isError": false,
+  "probe": "P02-get-missing",
+  "structured_keys": [
+   "details",
+   "error",
+   "error_code",
+   "error_type",
+   "message",
+   "suggestions",
+   "timestamp"
+  ],
+  "surface": "native",
+  "text_head": "{\"error_type\":\"not_found\",\"message\":\"ChartInfo with identifier '999999' not found\",\"timestamp\":\"2026-10-08T08:02:54.406787Z\",\"details\":null,\"suggestions\":[],\"error_code\":null,\"error\":\"ChartInfo with identifier '999999' not found\"}",
+  "text_len": 230
+ },
+ {
+  "has_structuredContent": true,
+  "isError": false,
+  "probe": "P03-sql-bad-db",
+  "structured_keys": [
+   "affected_rows",
+   "columns",
+   "error",
+   "error_type",
+   "execution_time",
+   "multi_statement_warning",
+   "row_count",
+   "rows",
+   "statements",
+   "success",
+   "template_warning"
+  ],
+  "surface": "native",
+  "text_head": "{\"success\":false,\"rows\":null,\"columns\":null,\"row_count\":null,\"affected_rows\":null,\"execution_time\":null,\"error\":\"Database with ID 999999 not found. Use list_databases to get valid database IDs.\",\"error_type\":\"DATABASE_NOT_FOUND_ERROR\",\"stat",
+  "text_len": 308
+ },
+ {
+  "has_structuredContent": true,
+  "isError": false,
+  "probe": "P04-instance-info",
+  "structured_keys": [
+   "current_user",
+   "dashboard_breakdown",
+   "data_model_metadata_redacted",
+   "database_breakdown",
+   "feature_availability",
+   "instance_summary",
+   "popular_content",
+   "recent_activity",
+   "timestamp"
+  ],
+  "surface": "native",
+  "text_head": "{\"instance_summary\":{\"total_dashboards\":0,\"total_charts\":0,\"total_datasets\":0,\"total_databases\":0,\"total_users\":1,\"total_roles\":5,\"total_tags\":0,\"avg_charts_per_dashboard\":0.0},\"recent_activity\":{\"dashboards_created_last_30_days\":0,\"charts_",
+  "text_len": 1198
+ },
+ {
+  "has_structuredContent": false,
+  "isError": true,
+  "probe": "P05-arg-wrong-type",
+  "structured_keys": [],
+  "surface": "native",
+  "text_head": "1 validation error for call[list_charts]\nrequest.page\n  Input should be a valid integer, unable to parse string as an integer [type=int_parsing, input_value='not-a-number', input_type=str]\n    For further information visit https://errors.py",
+  "text_len": 269
+ },
+ {
+  "has_structuredContent": false,
+  "isError": true,
+  "probe": "P06-arg-unknown-key",
+  "structured_keys": [],
+  "surface": "native",
+  "text_head": "1 validation error for call[list_charts]\nunexpected\n  Unexpected keyword argument [type=unexpected_keyword_argument, input_value=1, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/unexpected_keyword_argu",
+  "text_len": 244
+ },
+ {
+  "has_structuredContent": false,
+  "isError": true,
+  "probe": "P07-unknown-tool",
+  "structured_keys": [],
+  "surface": "native",
+  "text_head": "Unknown tool: 'no_such_tool'",
+  "text_len": 28
+ },
+ {
+  "has_structuredContent": false,
+  "isError": true,
+  "probe": "P08-arg-missing-required",
+  "structured_keys": [],
+  "surface": "native",
+  "text_head": "2 validation errors for call[generate_chart]\nrequest.dataset_id\n  Field required [type=missing, input_value={'sanitization_warnings': []}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nrequest",
+  "text_len": 416
+ },
+ {
+  "has_structuredContent": true,
+  "isError": false,
+  "probe": "P09-write-missing-dataset",
+  "structured_keys": [
+   "accessibility",
+   "api_endpoints",
+   "api_version",
+   "capabilities",
+   "chart",
+   "chart_type_label",
+   "embed_code",
+   "error",
+   "explore_url",
+   "form_data",
+   "form_data_key",
+   "performance"
+  ],
+  "surface": "native",
+  "text_head": "{\"chart\":null,\"previews\":{},\"capabilities\":null,\"semantics\":null,\"explore_url\":null,\"chart_type_label\":null,\"embed_code\":null,\"api_endpoints\":{},\"form_data\":{},\"form_data_key\":null,\"performance\":{\"query_duration_ms\":20,\"estimated_cost\":null",
+  "text_len": 922
+ },
+ {
+  "has_structuredContent": true,
+  "isError": false,
+  "probe": "P01-list-empty",
+  "structured_keys": [
+   "charts",
+   "columns_available",
+   "columns_loaded",
+   "columns_requested",
+   "count",
+   "filters_applied",
+   "has_next",
+   "has_previous",
+   "page",
+   "page_size",
+   "pagination",
+   "sortable_columns"
+  ],
+  "surface": "generic",
+  "text_head": "{\"count\":0,\"total_count\":0,\"page\":1,\"page_size\":10,\"total_pages\":0,\"has_previous\":false,\"has_next\":false,\"columns_requested\":[\"id\",\"slice_name\",\"viz_type\",\"description\",\"certified_by\",\"certification_details\",\"url\",\"changed_on\",\"changed_on_h",
+  "text_len": 1102
+ },
+ {
+  "has_structuredContent": true,
+  "isError": false,
+  "probe": "P02-get-missing",
+  "structured_keys": [
+   "details",
+   "error",
+   "error_code",
+   "error_type",
+   "message",
+   "suggestions",
+   "timestamp"
+  ],
+  "surface": "generic",
+  "text_head": "{\"error_type\":\"not_found\",\"message\":\"ChartInfo with identifier '999999' not found\",\"timestamp\":\"2026-10-08T08:02:55.209284Z\",\"details\":null,\"suggestions\":[],\"error_code\":null,\"error\":\"ChartInfo with identifier '999999' not found\"}",
+  "text_len": 230
+ },
+ {
+  "has_structuredContent": true,
+  "isError": false,
+  "probe": "P03-sql-bad-db",
+  "structured_keys": [
+   "affected_rows",
+   "columns",
+   "error",
+   "error_type",
+   "execution_time",
+   "multi_statement_warning",
+   "row_count",
+   "rows",
+   "statements",
+   "success",
+   "template_warning"
+  ],
+  "surface": "generic",
+  "text_head": "{\"success\":false,\"rows\":null,\"columns\":null,\"row_count\":null,\"affected_rows\":null,\"execution_time\":null,\"error\":\"Database with ID 999999 not found. Use list_databases to get valid database IDs.\",\"error_type\":\"DATABASE_NOT_FOUND_ERROR\",\"stat",
+  "text_len": 308
+ },
+ {
+  "has_structuredContent": true,
+  "isError": false,
+  "probe": "P04-instance-info",
+  "structured_keys": [
+   "current_user",
+   "dashboard_breakdown",
+   "data_model_metadata_redacted",
+   "database_breakdown",
+   "feature_availability",
+   "instance_summary",
+   "popular_content",
+   "recent_activity",
+   "timestamp"
+  ],
+  "surface": "generic",
+  "text_head": "{\"instance_summary\":{\"total_dashboards\":0,\"total_charts\":0,\"total_datasets\":0,\"total_databases\":0,\"total_users\":1,\"total_roles\":5,\"total_tags\":0,\"avg_charts_per_dashboard\":0.0},\"recent_activity\":{\"dashboards_created_last_30_days\":0,\"charts_",
+  "text_len": 1198
+ },
+ {
+  "has_structuredContent": false,
+  "isError": true,
+  "probe": "P05-arg-wrong-type",
+  "structured_keys": [],
+  "surface": "generic",
+  "text_head": "1 validation error for call[list_charts]\nrequest.page\n  Input should be a valid integer, unable to parse string as an integer [type=int_parsing, input_value='not-a-number', input_type=str]\n    For further information visit https://errors.py",
+  "text_len": 269
+ },
+ {
+  "has_structuredContent": false,
+  "isError": true,
+  "probe": "P06-arg-unknown-key",
+  "structured_keys": [],
+  "surface": "generic",
+  "text_head": "1 validation error for call[list_charts]\nunexpected\n  Unexpected keyword argument [type=unexpected_keyword_argument, input_value=1, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/unexpected_keyword_argu",
+  "text_len": 244
+ },
+ {
+  "has_structuredContent": false,
+  "isError": true,
+  "probe": "P07-unknown-tool",
+  "structured_keys": [],
+  "surface": "generic",
+  "text_head": "Error calling tool 'call_tool': Unknown tool: 'no_such_tool'",
+  "text_len": 60
+ },
+ {
+  "has_structuredContent": false,
+  "isError": true,
+  "probe": "P08-arg-missing-required",
+  "structured_keys": [],
+  "surface": "generic",
+  "text_head": "2 validation errors for call[generate_chart]\nrequest.dataset_id\n  Field required [type=missing, input_value={'sanitization_warnings': []}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nrequest",
+  "text_len": 416
+ },
+ {
+  "has_structuredContent": true,
+  "isError": false,
+  "probe": "P09-write-missing-dataset",
+  "structured_keys": [
+   "accessibility",
+   "api_endpoints",
+   "api_version",
+   "capabilities",
+   "chart",
+   "chart_type_label",
+   "embed_code",
+   "error",
+   "explore_url",
+   "form_data",
+   "form_data_key",
+   "performance"
+  ],
+  "surface": "generic",
+  "text_head": "{\"chart\":null,\"previews\":{},\"capabilities\":null,\"semantics\":null,\"explore_url\":null,\"chart_type_label\":null,\"embed_code\":null,\"api_endpoints\":{},\"form_data\":{},\"form_data_key\":null,\"performance\":{\"query_duration_ms\":20,\"estimated_cost\":null",
+  "text_len": 922
+ },
+ {
+  "has_structuredContent": false,
+  "isError": true,
+  "probe": "P10-call-tool-recursion",
+  "structured_keys": [],
+  "surface": "generic",
+  "text_head": "'call_tool' is a synthetic search tool and cannot be called via the call_tool proxy",
+  "text_len": 83
+ }
+]
