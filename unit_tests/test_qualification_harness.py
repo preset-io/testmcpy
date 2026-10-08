@@ -223,6 +223,33 @@ class TestServerSurfaces:
         off = self._names(actual, gateway_tools, "native_eager", "alice", "ws-b")
         assert "search_knowledge" in on and "search_knowledge" not in off
 
+    def test_disabled_knowledge_is_a_typed_error_when_called_through_the_dispatcher(
+        self, actual, gateway_tools
+    ):
+        srv = server.FixtureServer(
+            world.World(), actual, gateway_tools, server.SurfaceSpec("generic")
+        )
+
+        async def go():
+            outs = []
+            async with srv.running():
+                for ws in ("ws-b", "ws-a"):
+                    async with connect(srv, "alice", ws) as s:
+                        outs.append(
+                            await s.call(
+                                "call_tool",
+                                {
+                                    "name": "search_knowledge",
+                                    "arguments": {"request": {"query": "revenue"}},
+                                },
+                            )
+                        )
+            return outs
+
+        off, on = run(go())
+        assert off.is_error and off.error_code == "FEATURE_DISABLED"
+        assert not on.is_error and "recognised on shipment" in on.text
+
     @pytest.mark.parametrize("page", [1, 7, 50, None])
     def test_pagination_is_complete_with_no_duplicates(self, actual, gateway_tools, page):
         paged = self._names(actual, gateway_tools, "native_eager", "alice", page=page)

@@ -286,6 +286,81 @@ def render(results: dict[str, Any]) -> str:
             )
         )
         w("")
+    w("## Approval policy comparison (SIMULATED policies; mean prompts)")
+    w("")
+    for cname in results["metrics"]:
+        w(f"Catalog `{cname}`:")
+        w("")
+        rows = []
+        for surface in ("generic", "native_eager", "native_deferred"):
+            ap = results["metrics"][cname][surface]["approvals"]
+            for pol, vals in ap.items():
+                rows.append(
+                    [
+                        SURFACE_LABEL[surface],
+                        pol,
+                        vals["read_only_task_mean"],
+                        vals["write_task_per_write_op"],
+                    ]
+                )
+        w(_table(["surface", "policy", "prompts per read-only task", "prompts per write op"], rows))
+        w("")
+    w(
+        "`sql-query` counts as a read-only task, but the producer annotates `execute_sql` "
+        "readOnlyHint=false, so it prompts under an annotation-honouring policy even on native tools."
+    )
+    w("")
+    cr = results.get("client_runs")
+    if cr:
+        w("## Real-client spot runs (OBSERVED; local fixtures; OpenRouter route)")
+        w("")
+        w(
+            f"Claude Code {cr['claude_code_version']}, {cr['codex_version']}. Prompt tokens are the client-reported "
+            "input totals summed over all turns of the run (cache reads included), so single-turn "
+            "`trivial` runs give first-turn context and task runs give cumulative cost. "
+            "Raw sanitised traces: `traffic/clients/`."
+        )
+        w("")
+        rows = []
+        for r in cr["runs"]:
+            rows.append(
+                [
+                    r["run"],
+                    r["client"],
+                    r["surface"],
+                    r["catalog"],
+                    r["task"],
+                    r.get("tool_search_env") or ("approved" if r.get("approved") else ""),
+                    r.get("mcp_tools_registered", ""),
+                    r.get("turns", ""),
+                    r["prompt_tokens_total"],
+                    ", ".join(
+                        c.replace("mcp__fixture__", "").replace("fixture.", "") for c in r["calls"]
+                    )[:70],
+                    ", ".join(d.replace("mcp__fixture__", "") for d in (r.get("denials") or [])),
+                    {True: "yes", False: "NO", None: "n/a"}[r.get("answer_correct")],
+                ]
+            )
+        w(
+            _table(
+                [
+                    "run",
+                    "client",
+                    "surface",
+                    "catalog",
+                    "task",
+                    "tool-search env / approve",
+                    "mcp tools",
+                    "turns",
+                    "prompt tokens",
+                    "tool calls",
+                    "denied",
+                    "answer correct",
+                ],
+                rows,
+            )
+        )
+        w("")
     w("## BLOCKED / not measured")
     w("")
     for item in results["blocked"]:

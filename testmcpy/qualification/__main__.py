@@ -29,15 +29,15 @@ def blocked_items() -> list[dict[str, str]]:
     return [
         {
             "what": "LLM-driven task accuracy, argument-failure and tool-selection rates (B06 llm, B08 model part)",
-            "reason": "no LLM driver ran in this baseline; the scripted reference agent only proves the surface can express each task",
+            "reason": "the harness has no LLM driver; the scripted reference agent only proves each surface can express the task. Real-client spot runs (n=1 to 5 per cell, one inexpensive model per client, OpenRouter route) are listed in the real-client section as observations and are not B06 values",
         },
         {
-            "what": "Observed (not simulated) approval prompts in Codex, Claude Code, Claude.ai, ChatGPT",
-            "reason": "approvals are a client policy model here; observed behaviour is recorded per client in client_matrix.yaml and is BLOCKED for clients that cannot be driven non-interactively",
+            "what": "Interactive approval UIs (Codex TUI, Claude Code interactive, Claude.ai, ChatGPT)",
+            "reason": "only headless behaviour was observed (Claude Code -p permission denials, codex exec elicitation outcome); the B09 numbers remain a policy model and the interactive flows are BLOCKED",
         },
         {
-            "what": "Provider deferred loading (OpenAI Responses tool search, Anthropic tool search tool)",
-            "reason": "no OPENAI_API_KEY / ANTHROPIC_API_KEY in this environment; native_deferred numbers are a client-side cost model, not provider behaviour",
+            "what": "Provider deferred loading (OpenAI Responses tool search, Anthropic tool search tool), Claude.ai, ChatGPT plugin review",
+            "reason": "no OPENAI_API_KEY / ANTHROPIC_API_KEY and no UI access in this environment; native_deferred numbers are a client-side cost model. Claude Code's own client-side deferral was observed over an OpenRouter route (client_matrix.yaml) and is not provider conformance",
         },
         {
             "what": "Producer (SC-125470) named-tool contract and gateway (SC-125471) multi-workspace shape",
@@ -109,11 +109,14 @@ def cmd_run(args: argparse.Namespace) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     run_id = args.run_id or time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     results = asyncio.run(run_all(root, out_dir, run_id))
+    reports = root / "reports"
+    reports.mkdir(parents=True, exist_ok=True)
+    clients_summary = root / "traffic/clients/summary.json"
+    if clients_summary.exists():
+        results["client_runs"] = json.loads(clients_summary.read_text())
     (out_dir / "results.json").write_text(
         json.dumps(results, indent=1, sort_keys=True, default=str) + "\n"
     )
-    reports = root / "reports"
-    reports.mkdir(parents=True, exist_ok=True)
     (reports / "baseline-results.md").write_text(report.render(results) + "\n")
     failing = [v for v in results["verdicts"] if v["status"] == "FAIL"]
     print(

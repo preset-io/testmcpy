@@ -57,7 +57,7 @@ class Session:
         self.recorder = recorder
         self.initialize_result: Any = None
 
-    async def list_all_tools(self, max_pages: int = 100) -> ListOutcome:
+    async def list_all_tools(self, max_pages: int = 1000) -> ListOutcome:
         tools: list[dict[str, Any]] = []
         cursor: str | None = None
         pages = 0
