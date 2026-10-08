@@ -13,7 +13,6 @@ convention, and the one-time GitHub/PyPI setup.
 ```bash
 scripts/publish.sh --dry-run     # checks + builds; no tag, no push
 scripts/publish.sh               # also creates the tag and asks before pushing it
-scripts/publish.sh --probe-only  # release testmcpy-oauth-probe alone
 ```
 
 Pushing a tag only starts the workflow. The upload happens after a required

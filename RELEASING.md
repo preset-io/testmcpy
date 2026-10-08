@@ -22,10 +22,14 @@ The tag is the release request. Its version must equal the version in the
 tagged tree's `pyproject.toml`; any mismatch fails the release (there is no
 fallback that publishes "whatever was built").
 
-| Tag                  | Releases                                                                                         |
-| -------------------- | ------------------------------------------------------------------------------------------------ |
-| `vX.Y.Z`             | `testmcpy` X.Y.Z. The in-tree probe version is released first if it is not on PyPI yet.          |
-| `oauth-probe-vX.Y.Z` | `testmcpy-oauth-probe` X.Y.Z only. `testmcpy` is untouched.                                      |
+| Tag      | Releases                                                                                |
+| -------- | --------------------------------------------------------------------------------------- |
+| `vX.Y.Z` | `testmcpy` X.Y.Z. The in-tree probe version is released first if it is not on PyPI yet. |
+
+`vX.Y.Z` is the **only** release tag. The `pypi` environment's deployment policy
+admits `v*` tags only, so a tag such as `oauth-probe-vX.Y.Z` would be rejected at
+the environment gate; the workflow does not trigger on it and `scripts/publish.sh`
+has no probe-only mode.
 
 Pre-releases use `aN`, `bN` or `rcN` suffixes (`v0.12.0rc1`). Anything else
 (`v1.2`, `1.2.3`, `v1.2.3-beta`, `release-1.2.3`) is rejected. The tagged commit
@@ -34,24 +38,25 @@ must be on `main`.
 Pushing a tag is the only trigger. Creating a GitHub Release, running the
 workflow by hand, or pushing a branch does nothing.
 
-## One-time setup (a dependency on IT)
+## Account and repository setup
 
-These are account/repository settings, not code. The workflow cannot publish
-until they exist.
+These are account/repository settings, not code. All of them are in place; the
+workflow depends on them staying that way.
 
 1. **PyPI trusted publishers** (done) on both `testmcpy` and
    `testmcpy-oauth-probe`: owner `preset-io`, repository `testmcpy`, workflow
    `publish.yml`, environment `pypi`. Renaming `publish.yml` or the environment
    breaks publishing until both PyPI projects are updated.
-2. **GitHub environment `pypi` with required reviewers** (pending IT): Settings →
-   Environments → `pypi` → *Required reviewers*. Consider also restricting
-   deployment branches/tags to `v*` and `oauth-probe-v*`.
+2. **GitHub environment `pypi`** (done): it exists with required reviewers
+   (self-review permitted) and a deployment policy limited to tags matching
+   `v*`. Settings → Environments → `pypi`.
 
-> **Create the environment and its reviewers before pushing any release tag.**
-> GitHub silently creates a missing environment the first time a job references
-> it, with no protection, which would let the first run publish with no approval.
-> `scripts/publish.sh` checks this through `gh` and refuses to push the tag if the
-> environment is absent or has no required reviewers.
+> **Never push a release tag if the `pypi` environment is missing or has no
+> required reviewers.** GitHub silently creates a missing environment the first
+> time a job references it, with no protection, which would let that run publish
+> with no approval. `scripts/publish.sh` checks through `gh` that the environment
+> has required reviewers and a tag deployment policy covering the tag, and refuses
+> to push the tag otherwise.
 
 The old `PYPI_API_TOKEN` repository secret is no longer read by anything.
 Deleting it and revoking the PyPI token is a separate step to do only after the
@@ -65,14 +70,14 @@ verification release below has succeeded.
    Merge to `main`.
 2. **Dry run** from an up-to-date `main`:
    ```bash
-   scripts/publish.sh --dry-run            # or: --probe-only
+   scripts/publish.sh --dry-run
    ```
    Validates the tag against both versions and PyPI, runs lint and unit tests,
    builds the wheel and sdist of each planned distribution, runs `twine check`,
    and checks the `pypi` environment. It never creates a tag or touches PyPI.
 3. **Tag and push:**
    ```bash
-   scripts/publish.sh                      # or: --probe-only
+   scripts/publish.sh
    ```
    Runs the same checks, creates the annotated tag locally, then asks before
    pushing it. Answering `n` leaves the local tag in place (it prints the push
@@ -119,12 +124,13 @@ You can also run the script yourself and commit the result.
 
 ## First approved verification release (operational step, not yet performed)
 
-Once IT has created the `pypi` environment with required reviewers, the first real
-release doubles as the end-to-end verification. It is a manual operational step
-and is not part of the change that introduced this workflow:
+The `pypi` environment exists with required reviewers, so the first real release
+doubles as the end-to-end verification. It is a manual operational step and is
+not part of the change that introduced this workflow:
 
-1. Confirm the environment exists with required reviewers
-   (`gh api repos/preset-io/testmcpy/environments/pypi`).
+1. Confirm the environment still has required reviewers and a `v*` tag policy
+   (`gh api repos/preset-io/testmcpy/environments/pypi` and
+   `.../environments/pypi/deployment-branch-policies`).
 2. Merge a version-bump PR and run `scripts/publish.sh --dry-run`, then
    `scripts/publish.sh`.
 3. Confirm the run **pauses** at *Review deployments* and that the upload does not
@@ -139,8 +145,16 @@ and is not part of the change that introduced this workflow:
 
 ## Known gaps
 
+- **No probe-only release (deferred decision).** Because the environment admits
+  `v*` tags only, a change to `oauth-probe/` can only ship together with a new
+  `vX.Y.Z` of `testmcpy` (bump the probe version and cut a `testmcpy` release).
+  Releasing the probe on its own would need an `oauth-probe-v*` tag policy on the
+  `pypi` environment plus restoring that tag path in the workflow,
+  `scripts/release_check.py` and `scripts/publish.sh`. Not done here; for the
+  repository owner to decide.
 - If the probe's code changes but its version is not bumped, the release does not
   notice: the probe's version is already on PyPI, so it is skipped, and `testmcpy`
   ships against the older probe. Bump the probe whenever `oauth-probe/` changes.
 - The workflow cannot itself prove the `pypi` environment is protected; only
-  `scripts/publish.sh` checks it (best effort, through `gh`).
+  `scripts/publish.sh` checks it (reviewers and tag policy, best effort, through
+  `gh`).

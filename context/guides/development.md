@@ -507,9 +507,10 @@ Publishing; see `RELEASING.md` at the repo root for the full flow.
   probe changed) through a normal PR; merge to `main`.
 - `scripts/publish.sh --dry-run` validates and builds locally; `scripts/publish.sh`
   creates the tag and asks before pushing it. It never uploads.
-- Tags: `vX.Y.Z` releases `testmcpy` (and the probe first, if its in-tree version
-  is unpublished); `oauth-probe-vX.Y.Z` releases only `testmcpy-oauth-probe`. The
-  tag version must equal the package version or the release fails.
+- Tags: `vX.Y.Z` is the only release tag. It releases `testmcpy` (and the probe
+  first, if its in-tree version is unpublished). The `pypi` environment admits
+  `v*` tags only, so there is no probe-only release. The tag version must equal
+  the package version or the release fails.
 - A required reviewer approves the `pypi` GitHub environment before anything is
   uploaded. Do not run `twine upload` by hand.
 

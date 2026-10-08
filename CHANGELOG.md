@@ -40,8 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Releases are published to PyPI with GitHub OIDC Trusted Publishing instead of
-  an API token: a tag (`vX.Y.Z` for `testmcpy`, `oauth-probe-vX.Y.Z` for
-  `testmcpy-oauth-probe`) starts an unprivileged build/test job, then an
+  an API token: a `vX.Y.Z` tag (releasing `testmcpy`, and `testmcpy-oauth-probe`
+  first when its in-tree version is not on PyPI) starts an unprivileged build/test job, then an
   approval-gated `pypi` environment job uploads the verified artifacts. The tag
   version must equal the package version. `scripts/publish.sh` now only prepares
   and tags a release (it no longer uploads) and checks the `pypi` environment is
