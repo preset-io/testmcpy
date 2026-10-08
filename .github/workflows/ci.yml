@@ -49,10 +49,12 @@ jobs:
         run: python -m pytest integration_tests/ -v --tb=short -m "not e2e"
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         if: matrix.python-version == '3.11'
+        # Coverage is best-effort, including action setup/download failures.
+        continue-on-error: true
         with:
-          file: ./coverage.xml
+          files: ./coverage.xml
           fail_ci_if_error: false
 
   oauth-probe-package:
