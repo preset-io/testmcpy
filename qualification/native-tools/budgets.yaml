@@ -249,4 +249,12 @@ decision_rules:
   - "Latency (B04) is informational until measured against a staging endpoint."
   - "This phase produces baselines and the harness. A final go/no-go requires the producer (SC-125470) and gateway (SC-125471) code and is out of scope here."
 
-amendments: []
+amendments:
+  - id: A1
+    date: "2026-10-08"
+    budget: B08-argument-failure-rate
+    kind: clarification
+    old: "aggregation: over first-attempt calls from schema-conforming and deliberately malformed argument probes"
+    new: "no threshold change: the gate is the rejection rate of schema-conforming first-attempt calls made by the scripted agent; malformed-argument probes are reported separately, with where each is rejected"
+    reason: "Mixing conforming calls with deliberately malformed probes yields a rate that depends only on how many malformed probes were chosen."
+    measurement_seen: true
