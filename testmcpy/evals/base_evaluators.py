@@ -73,19 +73,27 @@ def _call_match(call: NormalizedToolCall, expected_name: str, strict: bool = Fal
     never on the ``call_tool`` wrapper's own name, and a discovery call
     (``search_tools``) only matches an expectation naming that discovery tool.
 
-    ``strict`` compares canonical (prefix-stripped) names for equality. The
-    default keeps the historical loose matching of ``_match_tool_name`` used by
-    ``was_mcp_tool_called`` and the parameter evaluators; counting, range and
+    ``strict`` compares canonical (prefix-stripped) names for equality unless
+    the expectation includes a namespace prefix, which requires the raw name.
+    The default keeps the historical loose matching of ``_match_tool_name``
+    used by ``was_mcp_tool_called`` and the parameter evaluators; counting, range and
     sequence evaluators have always compared exactly, so they pass ``strict``.
     """
     if not expected_name:
         return None
     if call.gateway and real_tool_name({"name": expected_name}) == GATEWAY_TOOL:
+        if strict and expected_name != GATEWAY_TOOL and call.gateway != expected_name:
+            return None
         return "gateway_tool"
     if call.kind == "malformed_gateway":
         return None
     if strict:
-        matched = call.name == real_tool_name({"name": expected_name})
+        canonical_expected = real_tool_name({"name": expected_name})
+        matched = (
+            call.raw_name == expected_name
+            if expected_name != canonical_expected
+            else call.name == canonical_expected
+        )
     else:
         matched = _match_tool_name(call.raw_name, expected_name)
     if not matched:
@@ -802,11 +810,8 @@ class ToolCalledWithParameter(BaseEvaluator):
             return EvalResult(passed=False, score=0.0, reason="No tool calls found in response")
 
         # Calls that ran the tool (direct, prefixed, or via the call_tool gateway)
-        selected = [
-            (call, _call_arguments(call, match))
-            for call, match in _select_calls(tool_calls, self.tool_name)
-            if call.arguments_valid
-        ]
+        selected = _select_calls(tool_calls, self.tool_name)
+        readable = [(call, match) for call, match in selected if call.arguments_valid]
         matching_calls = [call.raw for call, _ in selected]
 
         if not matching_calls:
@@ -817,9 +822,18 @@ class ToolCalledWithParameter(BaseEvaluator):
                 details={"tools_called": [c.get("name") for c in tool_calls]},
             )
 
+        if not readable:
+            return EvalResult(
+                passed=False,
+                score=0.0,
+                reason=f"Tool '{self.tool_name}' was called but its arguments were malformed",
+                details={"tool_calls": matching_calls},
+            )
+
         # Check if parameter exists in any matching call
-        for norm, arguments in selected:
+        for norm, match in readable:
             call = norm.raw
+            arguments = _call_arguments(norm, match)
             found, actual_value = _lookup_parameter(arguments, self.parameter_name)
 
             if found:
@@ -2498,22 +2512,27 @@ class MCPToolResultMatches(BaseEvaluator):
                 else getattr(result, key, default)
             )
 
-        positional_results = len(results) == len(calls) and not any(
-            result_field(result, "tool_call_id") for result in results
-        )
+        call_ids = [call.raw.get("id") for call in calls if call.raw.get("id") != "unknown"]
 
-        # IDs take precedence: SDK results need not be in call order. For older
-        # ID-less traces, use position only when there is one result per call.
+        def associated_id(result: Any) -> Any:
+            result_id = result_field(result, "tool_call_id")
+            # TestRunner replays calls without IDs, so MCPClient emits "unknown".
+            # Stale/unrecognized IDs likewise provide no usable association.
+            return result_id if result_id and result_id in call_ids else None
+
+        positional_results = len(results) == len(calls)
+
+        # IDs take precedence: SDK results need not be in call order. Use
+        # position for ID-less results only when there is one result per call;
+        # never borrow a result that belongs to a different recorded call.
         for index, call in enumerate(calls):
             if not call.is_execution or _call_match(call, self.tool_name) is None:
                 continue
             call_id = call.raw.get("id")
             associated = [
-                result
-                for result in results
-                if call_id and result_field(result, "tool_call_id") == call_id
+                result for result in results if call_id and associated_id(result) == call_id
             ]
-            if not associated and positional_results:
+            if not associated and positional_results and not associated_id(results[index]):
                 associated = [results[index]]
             for result in associated:
                 content = result_field(result, "content", result_field(result, "result", ""))

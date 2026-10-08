@@ -24,7 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   untargeted `was_mcp_tool_called` assertions. `mcp_tool_result_matches`
   associates separate results with normalized executions by call ID (or trace
   order for complete ID-less result lists), so discovery content cannot replace
-  the executed tool's result.
+  the executed tool's result. Missing, `"unknown"`, and unrecognized result IDs
+  use trace order only for complete result lists; recognized IDs still take
+  precedence over order. Strict name matching (count, range, sequence) strips
+  MCP prefixes for plain expectations, but an explicitly prefixed expectation
+  requires the exact raw name, including its namespace. The single-parameter
+  evaluator reports unreadable arguments as malformed, not as a missing call.
 
 ### Added
 - A typed, vendor-neutral headless OAuth/MCP interoperability probe with

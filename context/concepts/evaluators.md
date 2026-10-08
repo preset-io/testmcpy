@@ -184,6 +184,14 @@ Verifies the number of times a tool (or all tools) was called.
 - `min_count` (optional): Minimum number of calls
 - `max_count` (optional): Maximum number of calls
 
+Names without a namespace prefix are compared exactly after stripping MCP
+prefixes: `list_charts` counts direct `list_charts`, `mcp__a__list_charts`,
+and gateway dispatches of that tool, but not `list_charts_v2`. An explicitly
+prefixed expectation such as `mcp__a__list_charts` requires that exact raw
+name (the inner tool name for gateway calls); it does not count
+`mcp__b__list_charts` or plain `list_charts`. Range and sequence evaluators
+use the same strict name-matching rule.
+
 **Examples:**
 
 ```yaml

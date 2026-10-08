@@ -524,10 +524,12 @@ class TestReviewRegressions:
         )
 
     def test_result_lookup_does_not_use_unassociated_result(self):
+        # Without a complete result list, an unrecognized ID cannot be
+        # associated by position. Complete lists now treat such IDs as ID-less.
         assert (
             MCPToolResultMatches("list_dashboards")._find_llm_result(
                 {
-                    "tool_calls": [{**REAL, "id": "execute"}],
+                    "tool_calls": [search("list_dashboards"), {**REAL, "id": "execute"}],
                     "tool_results": [{"tool_call_id": "other", "content": "unrelated"}],
                 }
             )
@@ -555,3 +557,165 @@ class TestReviewRegressions:
         assert result.passed is execute
         if execute:
             assert result.score == 1.0
+
+
+class TestReReviewRegressions:
+    @pytest.mark.asyncio
+    async def test_result_lookup_real_runner_replays_without_id(self, monkeypatch):
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+
+        from testmcpy.src.llm_integration import LLMResult
+        from testmcpy.src.mcp_client import MCPClient, MCPToolCall, MCPToolResult
+        from testmcpy.src.test_runner import TestCase, TestRunner
+
+        payload = '{"charts": [7]}'
+        client = MCPClient("https://example.test/mcp")
+        client.client = SimpleNamespace(
+            call_tool=AsyncMock(return_value=SimpleNamespace(content=payload, isError=False))
+        )
+        monkeypatch.setattr(client, "list_tools", AsyncMock(return_value=[]))
+        replay = AsyncMock(wraps=client.call_tool)
+        monkeypatch.setattr(client, "call_tool", replay)
+        runner = TestRunner(model="test-model", mcp_client=client)
+        monkeypatch.setattr(runner, "initialize", AsyncMock())
+        monkeypatch.setattr(
+            runner,
+            "_call_llm_with_rate_limiting",
+            AsyncMock(
+                return_value=LLMResult(
+                    response="ok",
+                    tool_calls=[{"id": "toolu_1", "name": "list_charts", "arguments": {}}],
+                )
+            ),
+        )
+        evaluator = MCPToolResultMatches("list_charts")
+        evaluate = AsyncMock(wraps=evaluator.aevaluate)
+        monkeypatch.setattr(evaluator, "aevaluate", evaluate)
+        monkeypatch.setattr(runner, "_create_evaluator", lambda config: evaluator)
+
+        result = await runner.run_test(
+            TestCase(name="replay", prompt="List charts", evaluators=[{"name": evaluator.name}])
+        )
+        replayed_call = replay.await_args_list[0].args[0]
+        assert isinstance(replayed_call, MCPToolCall)
+        assert replayed_call.id is None
+        context = evaluate.await_args.args[0]
+        assert context["tool_calls"][0]["id"] == "toolu_1"
+        tool_result = context["tool_results"][0]
+        assert isinstance(tool_result, MCPToolResult)
+        assert tool_result.tool_call_id == "unknown"
+        assert evaluator._find_llm_result(context) == payload
+        assert result.passed
+        assert result.evaluations[0]["score"] == 1.0
+
+    @pytest.mark.parametrize("shape", ["direct", "current", "legacy"])
+    @pytest.mark.parametrize(
+        "actual", ["mcp__a__list_charts", "mcp__b__list_charts", "list_charts"]
+    )
+    def test_count_explicit_namespace_is_exact(self, shape, actual):
+        call = (
+            {"name": actual, "arguments": {}}
+            if shape == "direct"
+            else gateway(actual, {})
+            if shape == "current"
+            else legacy_gateway(actual, {})
+        )
+        expected = int(actual == "mcp__a__list_charts")
+        assert (
+            ToolCallCount("mcp__a__list_charts", expected_count=expected).evaluate(ctx(call)).passed
+        )
+
+    def test_count_plain_name_accepts_prefixed_calls(self):
+        assert (
+            ToolCallCount("list_charts", expected_count=1)
+            .evaluate(ctx({"name": "mcp__b__list_charts", "arguments": {}}))
+            .passed
+        )
+
+    @pytest.mark.parametrize("bad", ["bad json", [1, 2], 42])
+    def test_single_parameter_reports_malformed_arguments(self, bad):
+        call = gateway("list_charts", bad)
+        result = ToolCalledWithParameter("list_charts", "page").evaluate(ctx(call))
+        assert not result.passed
+        assert result.score == 0.0
+        assert result.reason == "Tool 'list_charts' was called but its arguments were malformed"
+        assert result.details == {"tool_calls": [call]}
+
+    def test_single_parameter_uses_readable_retry(self):
+        assert (
+            ToolCalledWithParameter("list_charts", "page", 1)
+            .evaluate(ctx(gateway("list_charts", "bad json"), gateway("list_charts", {"page": 1})))
+            .passed
+        )
+
+    @pytest.mark.parametrize("result_id", [None, "unknown", "stale_id"])
+    @pytest.mark.parametrize("objects", [False, True])
+    def test_result_lookup_falls_back_for_unusable_ids(self, result_id, objects):
+        from testmcpy.src.mcp_client import MCPToolResult
+
+        results = [
+            {"tool_call_id": result_id, "content": "discovery"},
+            {"tool_call_id": result_id, "content": "execution"},
+        ]
+        if objects:
+            results = [MCPToolResult(**result) for result in results]
+        found = MCPToolResultMatches("list_dashboards")._find_llm_result(
+            {
+                "tool_calls": [
+                    {**search("list_dashboards"), "id": "search"},
+                    {**REAL, "id": "execute"},
+                ],
+                "tool_results": results,
+            }
+        )
+        assert found == "execution"
+
+    def test_result_lookup_mixed_ids_keep_known_associations(self):
+        found = MCPToolResultMatches("list_dashboards")._find_llm_result(
+            {
+                "tool_calls": [
+                    {**search("list_dashboards"), "id": "search"},
+                    {**REAL, "id": "execute"},
+                ],
+                "tool_results": [
+                    {"tool_call_id": "execute", "content": "execution"},
+                    {"tool_call_id": "unknown", "content": "discovery"},
+                ],
+            }
+        )
+        assert found == "execution"
+
+    def test_result_lookup_does_not_borrow_known_id(self):
+        found = MCPToolResultMatches("list_dashboards")._find_llm_result(
+            {
+                "tool_calls": [
+                    {**search("list_dashboards"), "id": "search"},
+                    {**REAL, "id": "execute"},
+                ],
+                "tool_results": [
+                    {"tool_call_id": "unknown", "content": "unassociated"},
+                    {"tool_call_id": "search", "content": "discovery"},
+                ],
+            }
+        )
+        assert found == ""
+
+    @pytest.mark.parametrize("result_id", [None, "unknown", "stale_id"])
+    def test_result_lookup_incomplete_results_do_not_use_position(self, result_id):
+        found = MCPToolResultMatches("list_dashboards")._find_llm_result(
+            {
+                "tool_calls": [search("list_dashboards"), REAL],
+                "tool_results": [{"tool_call_id": result_id, "content": "unassociated"}],
+            }
+        )
+        assert found == ""
+
+    @pytest.mark.parametrize("namespace", ["a", "b"])
+    def test_count_explicit_gateway_namespace_is_exact(self, namespace):
+        call = gateway("list_charts", {}, name=f"mcp__{namespace}__call_tool")
+        assert (
+            ToolCallCount("mcp__a__call_tool", expected_count=int(namespace == "a"))
+            .evaluate(ctx(call))
+            .passed
+        )
