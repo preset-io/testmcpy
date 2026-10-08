@@ -10,6 +10,14 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
 
+from testmcpy.evals.tool_trace import (
+    GATEWAY_TOOL,
+    NormalizedToolCall,
+    flatten_request,
+    normalize_tool_calls,
+)
+from testmcpy.scoring import real_tool_name
+
 
 @dataclass
 class EvalResult:
@@ -56,6 +64,78 @@ def _match_tool_name(actual_name: str, expected_name: str) -> bool:
     return False
 
 
+def _call_match(call: NormalizedToolCall, expected_name: str, strict: bool = False) -> str | None:
+    """How a normalized trace entry matches ``expected_name``, or None.
+
+    Returns ``"exact"``, ``"direct_prefixed"``, ``"gateway"`` (the tool ran
+    through ``call_tool``) or ``"gateway_tool"`` (the expectation names the
+    gateway tool itself). A gateway call is matched on the tool it dispatched,
+    never on the ``call_tool`` wrapper's own name, and a discovery call
+    (``search_tools``) only matches an expectation naming that discovery tool.
+
+    ``strict`` compares canonical (prefix-stripped) names for equality unless
+    the expectation includes a namespace prefix, which requires the raw name.
+    The default keeps the historical loose matching of ``_match_tool_name``
+    used by ``was_mcp_tool_called`` and the parameter evaluators; counting, range and
+    sequence evaluators have always compared exactly, so they pass ``strict``.
+    """
+    if not expected_name:
+        return None
+    if call.gateway and real_tool_name({"name": expected_name}) == GATEWAY_TOOL:
+        if strict and expected_name != GATEWAY_TOOL and call.gateway != expected_name:
+            return None
+        return "gateway_tool"
+    if call.kind == "malformed_gateway":
+        return None
+    if strict:
+        canonical_expected = real_tool_name({"name": expected_name})
+        matched = (
+            call.raw_name == expected_name
+            if expected_name != canonical_expected
+            else call.name == canonical_expected
+        )
+    else:
+        matched = _match_tool_name(call.raw_name, expected_name)
+    if not matched:
+        return None
+    if call.gateway:
+        return "gateway"
+    return "exact" if call.raw_name == expected_name else "direct_prefixed"
+
+
+def _call_arguments(call: NormalizedToolCall, match: str) -> dict[str, Any]:
+    """The arguments an assertion on this call should inspect."""
+    return call.envelope_arguments if match == "gateway_tool" else call.arguments
+
+
+def _select_calls(
+    tool_calls: list[dict[str, Any]],
+    tool_name: str,
+    strict: bool = False,
+    workspace_id: str | None = None,
+) -> list[tuple[NormalizedToolCall, str]]:
+    """Trace entries that ran ``tool_name`` (optionally in one workspace), in order."""
+    selected = []
+    for call in normalize_tool_calls(tool_calls):
+        match = _call_match(call, tool_name, strict)
+        if match is None:
+            continue
+        if workspace_id is not None and call.workspace_id != str(workspace_id):
+            continue
+        selected.append((call, match))
+    return selected
+
+
+def _lookup_parameter(arguments: dict[str, Any], name: str) -> tuple[bool, Any]:
+    """Find a parameter at the top level, else inside a ``request`` wrapper."""
+    if name in arguments:
+        return True, arguments[name]
+    flat = flatten_request(arguments)
+    if name in flat:
+        return True, flat[name]
+    return False, None
+
+
 class BaseEvaluator(ABC):
     """Base class for all evaluators."""
 
@@ -100,10 +180,25 @@ class BaseEvaluator(ABC):
 
 
 class WasMCPToolCalled(BaseEvaluator):
-    """Check if an MCP tool was called."""
+    """Check if an MCP tool was executed.
 
-    def __init__(self, tool_name: str | None = None):
+    Trace entries are read through ``testmcpy.evals.tool_trace``: direct,
+    ``mcp__ns__tool`` and gateway ``call_tool`` calls count as executions of
+    the tool they ran. Discovery calls (``search_tools``) never do -- finding
+    a tool is not calling it -- so a trace that only searched for the tool
+    fails, with the discovery calls listed in ``details``.
+    """
+
+    def __init__(self, tool_name: str | None = None, workspace_id: str | None = None):
+        """
+        Args:
+            tool_name: Tool that must have been executed. If None, any
+                executed (non-discovery) tool satisfies the check.
+            workspace_id: Optionally require the gateway call to target this
+                workspace. A call without a workspace never matches.
+        """
         self.tool_name = tool_name
+        self.workspace_id = workspace_id
 
     @property
     def name(self) -> str:
@@ -123,78 +218,75 @@ class WasMCPToolCalled(BaseEvaluator):
         if not tool_calls:
             return EvalResult(passed=False, score=0.0, reason="No tool calls found in response")
 
+        calls = normalize_tool_calls(tool_calls)
+        discovery = [c.as_dict() for c in calls if c.is_discovery]
+
         if self.tool_name:
-            # Check for specific tool (with support for MCP prefixed names)
-            for call in tool_calls:
-                actual_name = call.get("name", "")
-                if _match_tool_name(actual_name, self.tool_name):
+            for call, match in _select_calls(
+                tool_calls, self.tool_name, workspace_id=self.workspace_id
+            ):
+                if match == "gateway_tool":
+                    # The expectation names the gateway tool itself.
+                    actual_name = call.gateway
                     match_type = "exact" if actual_name == self.tool_name else "direct_prefixed"
-                    return EvalResult(
-                        passed=True,
-                        score=1.0,
-                        reason=f"Tool '{self.tool_name}' was called (actual: '{actual_name}')",
-                        details={
-                            "tool_call": call,
-                            "expected_name": self.tool_name,
-                            "actual_name": actual_name,
-                            "match_type": match_type,
-                        },
-                    )
+                else:
+                    actual_name = call.raw_name
+                    match_type = match
+                details: dict[str, Any] = {
+                    "tool_call": call.raw,
+                    "expected_name": self.tool_name,
+                    "actual_name": actual_name,
+                    "match_type": match_type,
+                }
+                if match == "gateway":
+                    details["gateway"] = call.gateway
+                    details["workspace_id"] = call.workspace_id
+                    reason = f"Tool '{self.tool_name}' called via gateway '{call.gateway}'"
+                else:
+                    reason = f"Tool '{self.tool_name}' was called (actual: '{actual_name}')"
+                return EvalResult(passed=True, score=1.0, reason=reason, details=details)
 
-                # Check if call_tool/search_tools gateway pattern was used
-                # e.g., call_tool(name="health_check", arguments={})
-                if _match_tool_name(actual_name, "call_tool") or _match_tool_name(
-                    actual_name, "search_tools"
-                ):
-                    args = call.get("arguments", {})
-                    # call_tool passes tool name as 'name' or 'tool_name' arg
-                    inner_name = args.get("name", args.get("tool_name", ""))
-                    if isinstance(inner_name, str) and _match_tool_name(inner_name, self.tool_name):
-                        return EvalResult(
-                            passed=True,
-                            score=1.0,
-                            reason=f"Tool '{self.tool_name}' called via gateway '{actual_name}'",
-                            details={
-                                "tool_call": call,
-                                "gateway": actual_name,
-                                "expected_name": self.tool_name,
-                                "actual_name": inner_name,
-                                "match_type": "gateway",
-                            },
-                        )
-                    # search_tools passes query that may contain tool name
-                    query = args.get("query", "")
-                    if isinstance(query, str) and self.tool_name in query:
-                        return EvalResult(
-                            passed=True,
-                            score=0.8,
-                            reason=f"Tool '{self.tool_name}' searched via '{actual_name}'",
-                            details={
-                                "tool_call": call,
-                                "gateway": actual_name,
-                                "expected_name": self.tool_name,
-                                "actual_name": actual_name,
-                                "match_type": "search",
-                            },
-                        )
+            # Not executed. Say so when the model only looked the tool up.
+            searched = [
+                c
+                for c in discovery
+                if self.tool_name in json.dumps(c.get("arguments", {}), default=str)
+            ]
+            failure_details: dict[str, Any] = {
+                "tools_called": [c.get("name") for c in tool_calls],
+                "expected_name": self.tool_name,
+                "actual_name": None,
+                "match_type": "discovery_only" if searched else "none",
+            }
+            if discovery:
+                failure_details["discovery_calls"] = discovery
+            if self.workspace_id is not None:
+                failure_details["workspace_id"] = self.workspace_id
+            reason = f"Tool '{self.tool_name}' was not called"
+            if searched:
+                reason += " (it was only searched for via discovery, never executed)"
+            return EvalResult(passed=False, score=0.0, reason=reason, details=failure_details)
 
+        # Any executed tool is acceptable (discovery alone is not execution)
+        executed = [
+            c
+            for c in calls
+            if c.is_execution
+            and (self.workspace_id is None or c.workspace_id == str(self.workspace_id))
+        ]
+        if not executed:
             return EvalResult(
                 passed=False,
                 score=0.0,
-                reason=f"Tool '{self.tool_name}' was not called",
-                details={
-                    "tools_called": [c.get("name") for c in tool_calls],
-                    "expected_name": self.tool_name,
-                    "actual_name": None,
-                    "match_type": "none",
-                },
+                reason="No tool execution matched the requested workspace"
+                if self.workspace_id is not None
+                else "No tool was executed",
+                details={"discovery_calls": discovery},
             )
-
-        # Any tool call is acceptable
         return EvalResult(
             passed=True,
             score=1.0,
-            reason=f"{len(tool_calls)} tool(s) called",
+            reason=f"{len(executed)} tool(s) called",
             details={"tool_calls": tool_calls},
         )
 
@@ -717,10 +809,10 @@ class ToolCalledWithParameter(BaseEvaluator):
         if not tool_calls:
             return EvalResult(passed=False, score=0.0, reason="No tool calls found in response")
 
-        # Find tool call matching the tool name (with support for MCP prefixed names)
-        matching_calls = [
-            call for call in tool_calls if _match_tool_name(call.get("name", ""), self.tool_name)
-        ]
+        # Calls that ran the tool (direct, prefixed, or via the call_tool gateway)
+        selected = _select_calls(tool_calls, self.tool_name)
+        readable = [(call, match) for call, match in selected if call.arguments_valid]
+        matching_calls = [call.raw for call, _ in selected]
 
         if not matching_calls:
             return EvalResult(
@@ -730,13 +822,21 @@ class ToolCalledWithParameter(BaseEvaluator):
                 details={"tools_called": [c.get("name") for c in tool_calls]},
             )
 
+        if not readable:
+            return EvalResult(
+                passed=False,
+                score=0.0,
+                reason=f"Tool '{self.tool_name}' was called but its arguments were malformed",
+                details={"tool_calls": matching_calls},
+            )
+
         # Check if parameter exists in any matching call
-        for call in matching_calls:
-            arguments = call.get("arguments", {})
+        for norm, match in readable:
+            call = norm.raw
+            arguments = _call_arguments(norm, match)
+            found, actual_value = _lookup_parameter(arguments, self.parameter_name)
 
-            if self.parameter_name in arguments:
-                actual_value = arguments[self.parameter_name]
-
+            if found:
                 # If we're checking for a specific value
                 if self.parameter_value is not None:
                     if actual_value == self.parameter_value:
@@ -775,18 +875,31 @@ class ToolCalledWithParameter(BaseEvaluator):
 class ToolCalledWithParameters(BaseEvaluator):
     """Check if a tool was called with multiple specific parameters."""
 
-    def __init__(self, tool_name: str, parameters: dict[str, Any], partial_match: bool = False):
+    def __init__(
+        self,
+        tool_name: str,
+        parameters: dict[str, Any],
+        partial_match: bool = False,
+        workspace_id: str | None = None,
+    ):
         """
         Check if tool was called with specific parameters.
+
+        Calls are read through ``testmcpy.evals.tool_trace``, so the tool's own
+        arguments are compared whether it was called directly or through the
+        ``call_tool`` gateway (``args`` or legacy ``arguments``), and a
+        ``{"request": {...}}`` wrapper is flattened.
 
         Args:
             tool_name: Name of the tool to check
             parameters: Dictionary of parameter_name -> expected_value
             partial_match: If True, additional parameters are allowed. If False, must match exactly
+            workspace_id: Optionally require the gateway call to target this workspace
         """
         self.tool_name = tool_name
         self.parameters = parameters
         self.partial_match = partial_match
+        self.workspace_id = workspace_id
 
     @property
     def name(self) -> str:
@@ -805,29 +918,11 @@ class ToolCalledWithParameters(BaseEvaluator):
         if not tool_calls:
             return EvalResult(passed=False, score=0.0, reason="No tool calls found in response")
 
-        # Find tool call matching the tool name (with support for MCP prefixed names)
-        matching_calls = [
-            call for call in tool_calls if _match_tool_name(call.get("name", ""), self.tool_name)
-        ]
-
-        # Also check gateway pattern: call_tool(name="tool_name", arguments={...})
-        if not matching_calls:
-            for call in tool_calls:
-                actual_name = call.get("name", "")
-                if _match_tool_name(actual_name, "call_tool"):
-                    args = call.get("arguments", {})
-                    inner_name = args.get("name", args.get("tool_name", ""))
-                    if isinstance(inner_name, str) and _match_tool_name(inner_name, self.tool_name):
-                        # Reconstruct as if the inner tool was called directly
-                        inner_args = args.get("arguments", {})
-                        if isinstance(inner_args, str):
-                            import json as _json
-
-                            try:
-                                inner_args = _json.loads(inner_args)
-                            except (ValueError, TypeError):
-                                inner_args = {}
-                        matching_calls.append({"name": inner_name, "arguments": inner_args})
+        selected = _select_calls(tool_calls, self.tool_name, workspace_id=self.workspace_id)
+        # A call whose gateway arguments could not be read cannot satisfy an
+        # assertion about its parameters.
+        readable = [(call, match) for call, match in selected if call.arguments_valid]
+        matching_calls = [call.raw for call, _ in selected]
 
         if not matching_calls:
             return EvalResult(
@@ -837,23 +932,22 @@ class ToolCalledWithParameters(BaseEvaluator):
                 details={"tools_called": [c.get("name") for c in tool_calls]},
             )
 
-        # Check each matching call for parameter match
-        for call in matching_calls:
-            arguments = call.get("arguments", {})
+        if not readable:
+            return EvalResult(
+                passed=False,
+                score=0.0,
+                reason=f"Tool '{self.tool_name}' was called but its arguments were malformed",
+                details={"tool_calls": matching_calls},
+            )
 
-            # Unwrap common LLM patterns:
-            # 1. {"request": {"param": "value"}} → {"param": "value"}
-            if (
-                "request" in arguments
-                and isinstance(arguments["request"], dict)
-                and len(arguments) == 1
-            ):
-                arguments = arguments["request"]
-            # 2. Flatten nested request alongside other params
-            elif "request" in arguments and isinstance(arguments["request"], dict):
-                flat = dict(arguments)
-                flat.update(flat.pop("request"))
-                arguments = flat
+        matches: list[str] = []
+        mismatches: list[dict[str, Any]] = []
+
+        # Check each matching call for parameter match
+        for norm, match_kind in readable:
+            call = norm.raw
+            # Unwrap the {"request": {...}} envelope some tool schemas use
+            arguments = flatten_request(_call_arguments(norm, match_kind))
 
             # Check if all required parameters match
             matches = []
@@ -912,7 +1006,11 @@ class ToolCalledWithParameters(BaseEvaluator):
                     passed=True,
                     score=1.0,
                     reason=f"Tool '{self.tool_name}' called with matching parameters",
-                    details={"tool_call": call, "matched_parameters": matches},
+                    details={
+                        "tool_call": call,
+                        "matched_parameters": matches,
+                        "workspace_id": norm.workspace_id,
+                    },
                 )
 
         # No matching call found
@@ -962,20 +1060,22 @@ class ParameterValueInRange(BaseEvaluator):
     def evaluate(self, context: dict[str, Any]) -> EvalResult:
         tool_calls = context.get("tool_calls", [])
 
-        matching_calls = [call for call in tool_calls if call.get("name") == self.tool_name]
+        selected = [
+            (call, _call_arguments(call, match))
+            for call, match in _select_calls(tool_calls, self.tool_name, strict=True)
+            if call.arguments_valid
+        ]
+        matching_calls = [call.raw for call, _ in selected]
 
         if not matching_calls:
             return EvalResult(
                 passed=False, score=0.0, reason=f"Tool '{self.tool_name}' was not called"
             )
 
-        for call in matching_calls:
-            arguments = call.get("arguments", {})
-
-            if self.parameter_name not in arguments:
+        for _call, arguments in selected:
+            found, value = _lookup_parameter(arguments, self.parameter_name)
+            if not found:
                 continue
-
-            value = arguments[self.parameter_name]
 
             try:
                 numeric_value = float(value)
@@ -1069,7 +1169,7 @@ class ToolCallCount(BaseEvaluator):
         tool_calls = context.get("tool_calls", [])
 
         if self.tool_name:
-            count = sum(1 for call in tool_calls if call.get("name") == self.tool_name)
+            count = len(_select_calls(tool_calls, self.tool_name, strict=True))
             tool_desc = f"'{self.tool_name}'"
         else:
             count = len(tool_calls)
@@ -1173,11 +1273,23 @@ class ToolCallSequence(BaseEvaluator):
                 reason="No tool calls found in response",
             )
 
-        actual_sequence = [call.get("name") for call in tool_calls]
+        normalized = normalize_tool_calls(tool_calls)
+        # A gateway call is named for the tool it dispatched; a step naming the
+        # gateway tool itself ("call_tool") still matches it.
+        actual_sequence = [call.name for call in normalized]
+
+        def step_matches(call: NormalizedToolCall, step: str) -> bool:
+            return _call_match(call, step, strict=True) is not None
+
+        def in_sequence(call: NormalizedToolCall) -> bool:
+            return any(step_matches(call, step) for step in self.sequence)
 
         if self.strict:
             # Exact match required
-            if actual_sequence == self.sequence:
+            if len(normalized) == len(self.sequence) and all(
+                step_matches(call, step)
+                for call, step in zip(normalized, self.sequence, strict=True)
+            ):
                 return EvalResult(
                     passed=True,
                     score=1.0,
@@ -1202,11 +1314,14 @@ class ToolCallSequence(BaseEvaluator):
         sequence_idx = 0
         found_positions = []
 
-        for i, tool_name in enumerate(actual_sequence):
-            if sequence_idx < len(self.sequence) and tool_name == self.sequence[sequence_idx]:
+        for i, call in enumerate(normalized):
+            tool_name = actual_sequence[i]
+            if sequence_idx < len(self.sequence) and step_matches(
+                call, self.sequence[sequence_idx]
+            ):
                 found_positions.append(i)
                 sequence_idx += 1
-            elif not self.allow_intermediate and tool_name not in self.sequence:
+            elif not self.allow_intermediate and not in_sequence(call):
                 # Found a tool not in our sequence and intermediates not allowed
                 return EvalResult(
                     passed=False,
@@ -1270,8 +1385,10 @@ class WasChartCreated(BaseEvaluator):
         chart_created = False
         chart_id = None
 
-        for i, call in enumerate(tool_calls):
-            if any(tool in call.get("name", "") for tool in chart_tools):
+        for i, call in enumerate(normalize_tool_calls(tool_calls)):
+            # Discovery (search_tools) never creates a chart; a gateway call is
+            # judged by the tool it dispatched.
+            if not call.is_discovery and any(tool in call.name for tool in chart_tools):
                 if i < len(tool_results):
                     result = tool_results[i]
                     if not result.is_error:
@@ -2385,32 +2502,52 @@ class MCPToolResultMatches(BaseEvaluator):
 
     def _find_llm_result(self, context: dict[str, Any]) -> str:
         """Find the LLM's result for this tool from context."""
-        # Check tool_results
-        for tr in context.get("tool_results", []):
-            if isinstance(tr, dict):
-                tr_content = tr.get("content", tr.get("result", ""))
-            elif hasattr(tr, "content"):
-                tr_content = tr.content
-            else:
+        calls = normalize_tool_calls(context.get("tool_calls", []))
+        results = context.get("tool_results", [])
+
+        def result_field(result: Any, key: str, default: Any = None) -> Any:
+            return (
+                result.get(key, default)
+                if isinstance(result, dict)
+                else getattr(result, key, default)
+            )
+
+        call_ids = [call.raw.get("id") for call in calls if call.raw.get("id") != "unknown"]
+
+        def associated_id(result: Any) -> Any:
+            result_id = result_field(result, "tool_call_id")
+            # TestRunner replays calls without IDs, so MCPClient emits "unknown".
+            # Stale/unrecognized IDs likewise provide no usable association.
+            return result_id if result_id and result_id in call_ids else None
+
+        positional_results = len(results) == len(calls)
+
+        # IDs take precedence: SDK results need not be in call order. Use
+        # position for ID-less results only when there is one result per call;
+        # never borrow a result that belongs to a different recorded call.
+        for index, call in enumerate(calls):
+            if not call.is_execution or _call_match(call, self.tool_name) is None:
                 continue
+            call_id = call.raw.get("id")
+            associated = [
+                result for result in results if call_id and associated_id(result) == call_id
+            ]
+            if not associated and positional_results and not associated_id(results[index]):
+                associated = [results[index]]
+            for result in associated:
+                content = result_field(result, "content", result_field(result, "result", ""))
+                text = self._extract_text(content)
+                if text:
+                    return text
 
-            tr_text = self._extract_text(tr_content)
-            if tr_text and self.tool_name in str(context.get("tool_calls", [])):
-                return tr_text
-
-        # Try to find in tool_calls results
-        for tc in context.get("tool_calls", []):
-            tc_name = tc.get("name", "")
-            if _match_tool_name(tc_name, self.tool_name) or (
-                _match_tool_name(tc_name, "call_tool")
-                and tc.get("arguments", {}).get(
-                    "name", tc.get("arguments", {}).get("tool_name", "")
-                )
-                == self.tool_name
-            ):
-                tc_result = tc.get("result", {})
+        # Embedded results are already associated with their trace entry.
+        for call in calls:
+            if call.is_execution and _call_match(call, self.tool_name) is not None:
+                tc_result = call.raw.get("result", {})
                 if isinstance(tc_result, dict):
-                    return self._extract_text(tc_result.get("content", ""))
+                    text = self._extract_text(tc_result.get("content", ""))
+                    if text:
+                        return text
 
         return ""
 

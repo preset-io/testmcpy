@@ -19,6 +19,23 @@ Checks if a specific MCP tool was called, or if any tool was called.
 
 **Parameters:**
 - `tool_name` (optional): Name of the specific tool to check for
+- `workspace_id` (optional): Require the gateway call to target this workspace,
+  even when `tool_name` is omitted; direct calls cannot satisfy this filter
+
+Only *executions* count. A tool run directly, with an `mcp__ns__` prefix, or
+through the `call_tool` gateway (`workspace_id`/`tool_name`/`args`, or the
+legacy `name`/`arguments`) is called. Discovery calls such as `search_tools`
+never satisfy this check, even if the query names the tool; they are listed
+under `details.discovery_calls`. This includes `search_tools` and
+`search_workspace_tools` dispatched through current or legacy gateways.
+With no `tool_name`, a valid execution is required; malformed gateways do not
+count. Naming a discovery tool explicitly still checks that discovery call.
+The parameter, count, range and sequence evaluators read the trace the same way.
+
+`mcp_tool_result_matches` compares only a matching execution's result, never
+search results mentioning the target. Separate `tool_results` are associated
+by `tool_call_id` with the call's `id`; ID-less results use trace order only
+when there is one result per call. Embedded call results remain supported.
 
 **Examples:**
 
@@ -94,6 +111,11 @@ Checks if a tool was called with multiple specific parameters.
 - `tool_name` (required): Name of the tool
 - `parameters` (required): Dictionary of parameter_name → expected_value
 - `partial_match` (optional, default: false): If true, allows additional parameters beyond those specified
+- `workspace_id` (optional): Only consider gateway calls that target this workspace
+
+Parameters are compared against the tool's own arguments, so a gateway call
+such as `call_tool(workspace_id, tool_name, args={"request": {...}})` matches
+the same `parameters` as a direct call; a `request` wrapper is flattened.
 
 **Examples:**
 
@@ -162,6 +184,14 @@ Verifies the number of times a tool (or all tools) was called.
 - `expected_count` (optional): Exact number of calls expected
 - `min_count` (optional): Minimum number of calls
 - `max_count` (optional): Maximum number of calls
+
+Names without a namespace prefix are compared exactly after stripping MCP
+prefixes: `list_charts` counts direct `list_charts`, `mcp__a__list_charts`,
+and gateway dispatches of that tool, but not `list_charts_v2`. An explicitly
+prefixed expectation such as `mcp__a__list_charts` requires that exact raw
+name (the inner tool name for gateway calls); it does not count
+`mcp__b__list_charts` or plain `list_charts`. Range and sequence evaluators
+use the same strict name-matching rule.
 
 **Examples:**
 
