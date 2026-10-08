@@ -417,6 +417,7 @@ class TestToolCallSequence:
 class _Result:
     content: Any = ""
     is_error: bool = False
+    tool_call_id: str | None = None
 
 
 class TestChartAndResultEvaluators:
@@ -440,3 +441,117 @@ class TestChartAndResultEvaluators:
             {"tool_calls": [{**search("list_dashboards"), "result": {"content": "x"}}]}
         )
         assert none == ""
+
+
+class TestReviewRegressions:
+    @pytest.mark.parametrize(
+        "call",
+        [
+            {"name": "call_tool", "arguments": {"args": {}}},
+            {"name": "call_tool"},
+            {"name": "call_tool", "arguments": "{bad json"},
+        ],
+    )
+    def test_untargeted_malformed_gateway_only(self, call):
+        result = WasMCPToolCalled().evaluate(ctx(call))
+        assert not result.passed
+        assert result.score == 0.0
+
+    @pytest.mark.parametrize(
+        "call", [gateway("t", {}, workspace="A"), {"name": "t", "arguments": {}}]
+    )
+    def test_untargeted_workspace_rejects_other_and_direct_calls(self, call):
+        result = WasMCPToolCalled(workspace_id="B").evaluate(ctx(call))
+        assert not result.passed
+        assert result.score == 0.0
+
+    def test_untargeted_workspace_accepts_matching_execution(self):
+        assert (
+            WasMCPToolCalled(workspace_id="B")
+            .evaluate(ctx(gateway("t", {}, workspace="A"), gateway("t", {}, workspace="B")))
+            .passed
+        )
+
+    @pytest.mark.parametrize("tool", ["search_tools", "search_workspace_tools"])
+    @pytest.mark.parametrize("shape", ["current", "legacy_name", "legacy_tool_name"])
+    @pytest.mark.parametrize("prefixed", [False, True])
+    def test_gateway_discovery_is_not_execution(self, tool, shape, prefixed):
+        inner = f"mcp__ns__{tool}" if prefixed else tool
+        outer = "mcp__ns__call_tool" if prefixed else "call_tool"
+        call = (
+            gateway(inner, {"query": "list_dashboards"}, name=outer)
+            if shape == "current"
+            else legacy_gateway(
+                inner, {"query": "list_dashboards"}, key=shape.removeprefix("legacy_"), name=outer
+            )
+        )
+        result = WasMCPToolCalled().evaluate(ctx(call))
+        assert not result.passed
+        assert result.score == 0.0
+        normalized = normalize_tool_call(call)
+        assert normalized.is_discovery
+        assert normalized.name == tool
+        assert WasMCPToolCalled(tool).evaluate(ctx(call)).passed
+
+    @pytest.mark.parametrize("objects", [False, True])
+    @pytest.mark.parametrize("execute", [False, True])
+    def test_result_lookup_uses_execution_not_discovery(self, objects, execute):
+        calls = [search("list_dashboards")]
+        contents = ["discovery payload"]
+        if execute:
+            calls.append(REAL)
+            contents.append("execution payload")
+        results = [_Result(c) if objects else {"content": c} for c in contents]
+        found = MCPToolResultMatches("list_dashboards")._find_llm_result(
+            {"tool_calls": calls, "tool_results": results}
+        )
+        assert found == ("execution payload" if execute else "")
+
+    @pytest.mark.parametrize("objects", [False, True])
+    def test_result_lookup_correlates_ids_not_result_order(self, objects):
+        calls = [{**search("list_dashboards"), "id": "search"}, {**REAL, "id": "execute"}]
+        results = [
+            {"tool_call_id": "execute", "content": "execution payload"},
+            {"tool_call_id": "search", "content": "discovery payload"},
+        ]
+        if objects:
+            results = [_Result(r["content"], tool_call_id=r["tool_call_id"]) for r in results]
+        assert (
+            MCPToolResultMatches("list_dashboards")._find_llm_result(
+                {"tool_calls": calls, "tool_results": results}
+            )
+            == "execution payload"
+        )
+
+    def test_result_lookup_does_not_use_unassociated_result(self):
+        assert (
+            MCPToolResultMatches("list_dashboards")._find_llm_result(
+                {
+                    "tool_calls": [{**REAL, "id": "execute"}],
+                    "tool_results": [{"tool_call_id": "other", "content": "unrelated"}],
+                }
+            )
+            == ""
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("execute", [False, True])
+    async def test_mcp_tool_result_matches_tool_results_path(self, execute):
+        from unittest.mock import AsyncMock
+
+        discovery = '{"tools": ["list_dashboards"]}'
+        execution = '{"dashboards": [7]}'
+        client = AsyncMock()
+        # Search-only must fail even if discovery content matches ground truth.
+        client.call_tool.return_value = _Result(execution if execute else discovery)
+        calls = [search("list_dashboards")]
+        results = [{"content": discovery}]
+        if execute:
+            calls.append(REAL)
+            results.append({"content": execution})
+        result = await MCPToolResultMatches("list_dashboards").aevaluate(
+            {"mcp_client": client, "tool_calls": calls, "tool_results": results}
+        )
+        assert result.passed is execute
+        if execute:
+            assert result.score == 1.0

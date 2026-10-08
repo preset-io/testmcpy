@@ -260,18 +260,25 @@ class WasMCPToolCalled(BaseEvaluator):
             return EvalResult(passed=False, score=0.0, reason=reason, details=failure_details)
 
         # Any executed tool is acceptable (discovery alone is not execution)
-        executed = [c for c in calls if not c.is_discovery]
+        executed = [
+            c
+            for c in calls
+            if c.is_execution
+            and (self.workspace_id is None or c.workspace_id == str(self.workspace_id))
+        ]
         if not executed:
             return EvalResult(
                 passed=False,
                 score=0.0,
-                reason="Only discovery calls were made; no tool was executed",
+                reason="No tool execution matched the requested workspace"
+                if self.workspace_id is not None
+                else "No tool was executed",
                 details={"discovery_calls": discovery},
             )
         return EvalResult(
             passed=True,
             score=1.0,
-            reason=f"{len(tool_calls)} tool(s) called",
+            reason=f"{len(executed)} tool(s) called",
             details={"tool_calls": tool_calls},
         )
 
@@ -2481,25 +2488,47 @@ class MCPToolResultMatches(BaseEvaluator):
 
     def _find_llm_result(self, context: dict[str, Any]) -> str:
         """Find the LLM's result for this tool from context."""
-        # Check tool_results
-        for tr in context.get("tool_results", []):
-            if isinstance(tr, dict):
-                tr_content = tr.get("content", tr.get("result", ""))
-            elif hasattr(tr, "content"):
-                tr_content = tr.content
-            else:
+        calls = normalize_tool_calls(context.get("tool_calls", []))
+        results = context.get("tool_results", [])
+
+        def result_field(result: Any, key: str, default: Any = None) -> Any:
+            return (
+                result.get(key, default)
+                if isinstance(result, dict)
+                else getattr(result, key, default)
+            )
+
+        positional_results = len(results) == len(calls) and not any(
+            result_field(result, "tool_call_id") for result in results
+        )
+
+        # IDs take precedence: SDK results need not be in call order. For older
+        # ID-less traces, use position only when there is one result per call.
+        for index, call in enumerate(calls):
+            if not call.is_execution or _call_match(call, self.tool_name) is None:
                 continue
+            call_id = call.raw.get("id")
+            associated = [
+                result
+                for result in results
+                if call_id and result_field(result, "tool_call_id") == call_id
+            ]
+            if not associated and positional_results:
+                associated = [results[index]]
+            for result in associated:
+                content = result_field(result, "content", result_field(result, "result", ""))
+                text = self._extract_text(content)
+                if text:
+                    return text
 
-            tr_text = self._extract_text(tr_content)
-            if tr_text and self.tool_name in str(context.get("tool_calls", [])):
-                return tr_text
-
-        # Try to find in tool_calls results
-        for tc in context.get("tool_calls", []):
-            if _select_calls([tc], self.tool_name):
-                tc_result = tc.get("result", {})
+        # Embedded results are already associated with their trace entry.
+        for call in calls:
+            if call.is_execution and _call_match(call, self.tool_name) is not None:
+                tc_result = call.raw.get("result", {})
                 if isinstance(tc_result, dict):
-                    return self._extract_text(tc_result.get("content", ""))
+                    text = self._extract_text(tc_result.get("content", ""))
+                    if text:
+                        return text
 
         return ""
 

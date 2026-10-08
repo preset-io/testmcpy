@@ -199,9 +199,10 @@ def normalize_tool_call(call: dict[str, Any]) -> NormalizedToolCall:
     # Current shape uses ``args``; the legacy shape uses ``arguments``.
     inner_key = "args" if "args" in arguments else "arguments"
     inner_args, inner_ok = _as_arguments(arguments.get(inner_key))
+    inner_name = real_tool_name({"name": inner})
     return NormalizedToolCall(
-        KIND_EXECUTION,
-        real_tool_name({"name": inner}),
+        KIND_DISCOVERY if inner_name in DISCOVERY_TOOLS else KIND_EXECUTION,
+        inner_name,
         inner,
         inner_args,
         gateway=raw_name,
