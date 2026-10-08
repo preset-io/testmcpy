@@ -2,10 +2,12 @@ name: Publish to PyPI
 
 # Releases are requested by pushing a tag (see RELEASING.md):
 #
-#   vX.Y.Z               -> testmcpy X.Y.Z (and testmcpy-oauth-probe first, if its
-#                           in-tree version is not on PyPI yet)
-#   oauth-probe-vX.Y.Z   -> testmcpy-oauth-probe X.Y.Z only
+#   vX.Y.Z   -> testmcpy X.Y.Z (and testmcpy-oauth-probe first, if its in-tree
+#               version is not on PyPI yet)
 #
+# `v*` is the only release tag. The GitHub `pypi` environment's deployment policy
+# admits only `v*` tags, so any other tag form would be rejected at the
+# environment gate; do not add one here without extending that policy first.
 # The tag version must equal the version in the tagged tree's pyproject.toml.
 #
 # Publishing uses PyPI Trusted Publishing (GitHub OIDC); there is no PyPI API
@@ -28,7 +30,6 @@ on:
   push:
     tags:
       - 'v*'
-      - 'oauth-probe-v*'
 
 # One release per tag at a time; never cancel a release that is mid-flight.
 concurrency:
@@ -43,8 +44,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    outputs:
-      release_testmcpy: ${{ steps.plan.outputs.release_testmcpy }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -72,15 +71,9 @@ jobs:
       # the package version, or the version is already on PyPI. Decides which
       # distributions this tag publishes.
       - name: Validate tag against package versions
-        id: plan
         run: |
           mkdir -p release
           python scripts/release_check.py plan --tag "$GITHUB_REF_NAME" --output release/plan.json
-          if [ "$(python -c "import json; print(json.load(open('release/plan.json'))['kind'])")" = "testmcpy" ]; then
-            echo "release_testmcpy=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "release_testmcpy=false" >> "$GITHUB_OUTPUT"
-          fi
 
       - name: Run release and packaging tests
         run: python -m pytest unit_tests/test_oauth_probe_packaging.py unit_tests/test_release_tooling.py -q
@@ -128,9 +121,11 @@ jobs:
     name: Publish to PyPI (approval required)
     needs: build
     runs-on: ubuntu-latest
-    # The GitHub environment `pypi` must have required reviewers configured BEFORE
-    # the first tag is pushed: GitHub creates a missing environment on first use,
-    # unprotected, which would publish without approval. See RELEASING.md.
+    # The GitHub environment `pypi` exists with required reviewers and a `v*` tag
+    # deployment policy. It must stay that way: GitHub creates a missing
+    # environment on first use, unprotected, which would publish without approval,
+    # so never push a release tag if the environment is missing or unprotected.
+    # See RELEASING.md.
     environment:
       name: pypi
       url: https://pypi.org/project/testmcpy/
@@ -157,21 +152,17 @@ jobs:
           plan = json.loads((release / "plan.json").read_text())
 
           main = re.fullmatch(r"v(\d+\.\d+\.\d+(?:(?:a|b|rc)\d+)?)", tag)
-          probe = re.fullmatch(r"oauth-probe-v(\d+\.\d+\.\d+(?:(?:a|b|rc)\d+)?)", tag)
-          if not (main or probe):
+          if not main:
               sys.exit(f"tag {tag!r} is not a release tag")
           if plan["tag"] != tag:
               sys.exit(f"plan is for {plan['tag']!r}, run is for {tag!r}")
 
           # The tag's version must be exactly the version of the dist it releases.
-          wanted = "testmcpy" if main else "testmcpy-oauth-probe"
-          version = (main or probe).group(1)
+          version = main.group(1)
           planned = {d["name"]: d for d in plan["distributions"]}
-          if wanted not in planned or planned[wanted]["version"] != version:
-              sys.exit(f"tag {tag!r} does not release {wanted} {version}: plan {plan['distributions']}")
-          if probe and set(planned) != {"testmcpy-oauth-probe"}:
-              sys.exit("a probe tag may only release the probe")
-          if main and not set(planned) <= {"testmcpy", "testmcpy-oauth-probe"}:
+          if "testmcpy" not in planned or planned["testmcpy"]["version"] != version:
+              sys.exit(f"tag {tag!r} does not release testmcpy {version}: plan {plan['distributions']}")
+          if not set(planned) <= {"testmcpy", "testmcpy-oauth-probe"}:
               sys.exit("unexpected distribution in plan")
 
           # Every uploaded file must be exactly <dist>-<version> and nothing else.
@@ -190,7 +181,6 @@ jobs:
 
           out = pathlib.Path(os.environ["GITHUB_OUTPUT"]).open("a")
           out.write(f"publish_probe={'true' if 'testmcpy-oauth-probe' in planned else 'false'}\n")
-          out.write(f"publish_testmcpy={'true' if 'testmcpy' in planned else 'false'}\n")
           out.write(f"probe_version={plan['probe_version']}\n")
           PY
 
@@ -207,7 +197,6 @@ jobs:
       # install. Checks the exact in-tree probe version (not merely "something in
       # the allowed range"), whether it was just uploaded above or earlier.
       - name: Verify the probe dependency is installable from PyPI
-        if: steps.verify.outputs.publish_testmcpy == 'true'
         env:
           PROBE_VERSION: ${{ steps.verify.outputs.probe_version }}
         run: |
@@ -224,7 +213,6 @@ jobs:
           exit 1
 
       - name: Publish testmcpy to PyPI
-        if: steps.verify.outputs.publish_testmcpy == 'true'
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           packages-dir: release/testmcpy/
@@ -232,7 +220,6 @@ jobs:
   homebrew:
     name: Sync Homebrew formula
     needs: [build, publish]
-    if: needs.build.outputs.release_testmcpy == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write # push the formula update to main

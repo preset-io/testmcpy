@@ -14,8 +14,10 @@ Tag convention (the tag IS the release request):
 * ``vX.Y.Z``               releases ``testmcpy`` X.Y.Z. X.Y.Z must equal the
                            version in ``pyproject.toml``. The in-tree probe
                            version is released first when it is not on PyPI yet.
-* ``oauth-probe-vX.Y.Z``   releases only ``testmcpy-oauth-probe`` X.Y.Z. X.Y.Z
-                           must equal the version in ``oauth-probe/pyproject.toml``.
+
+``v*`` is the only release tag: the GitHub ``pypi`` environment's deployment
+policy admits only ``v*`` tags, so there is no probe-only tag. The probe is
+released as part of the ``vX.Y.Z`` release of ``testmcpy``.
 
 Pre-releases use ``aN`` / ``bN`` / ``rcN`` suffixes (``v0.12.0rc1``). Any other
 shape, and any mismatch between tag and package version, fails -- there is no
@@ -56,7 +58,6 @@ PROBE_DIST = "testmcpy-oauth-probe"
 
 _VERSION = r"\d+\.\d+\.\d+(?:(?:a|b|rc)\d+)?"
 MAIN_TAG_RE = re.compile(rf"^v({_VERSION})$")
-PROBE_TAG_RE = re.compile(rf"^oauth-probe-v({_VERSION})$")
 
 PYPI_URL = "https://pypi.org"
 
@@ -130,49 +131,26 @@ def build_plan(root: Path, tag: str, *, index: str = PYPI_URL) -> dict[str, Any]
             f"probe version {probe_version}; the release would be uninstallable"
         )
 
-    main_match, probe_match = MAIN_TAG_RE.match(tag), PROBE_TAG_RE.match(tag)
-    if main_match:
-        kind, tag_version, package_version, package = (
-            "testmcpy",
-            main_match[1],
-            main_version,
-            MAIN_DIST,
-        )
-    elif probe_match:
-        kind, tag_version, package_version, package = (
-            "probe",
-            probe_match[1],
-            probe_version,
-            PROBE_DIST,
-        )
-    else:
+    main_match = MAIN_TAG_RE.match(tag)
+    if not main_match:
+        raise ReleaseError(f"tag {tag!r} does not match 'vX.Y.Z' (the only release tag form)")
+    if main_match[1] != main_version:
         raise ReleaseError(
-            f"tag {tag!r} does not match 'vX.Y.Z' (testmcpy) or 'oauth-probe-vX.Y.Z' (probe)"
-        )
-    if tag_version != package_version:
-        raise ReleaseError(
-            f"tag {tag!r} says {package} {tag_version}, but the tagged tree declares "
-            f"{package} {package_version}. Refusing to release a mismatched artifact."
+            f"tag {tag!r} says {MAIN_DIST} {main_match[1]}, but the tagged tree declares "
+            f"{MAIN_DIST} {main_version}. Refusing to release a mismatched artifact."
         )
 
-    probe_on_pypi = pypi_has_version(PROBE_DIST, probe_version, index=index)
-    if kind == "probe":
-        if probe_on_pypi:
-            raise ReleaseError(f"{PROBE_DIST} {probe_version} is already on PyPI; bump its version")
-        distributions = [{"name": PROBE_DIST, "version": probe_version, "dir": "probe"}]
-    else:
-        if pypi_has_version(MAIN_DIST, main_version, index=index):
-            raise ReleaseError(
-                f"{MAIN_DIST} {main_version} is already on PyPI; versions are immutable, bump it"
-            )
-        distributions = []
-        if not probe_on_pypi:
-            distributions.append({"name": PROBE_DIST, "version": probe_version, "dir": "probe"})
-        distributions.append({"name": MAIN_DIST, "version": main_version, "dir": "testmcpy"})
+    if pypi_has_version(MAIN_DIST, main_version, index=index):
+        raise ReleaseError(
+            f"{MAIN_DIST} {main_version} is already on PyPI; versions are immutable, bump it"
+        )
+    distributions = []
+    if not pypi_has_version(PROBE_DIST, probe_version, index=index):
+        distributions.append({"name": PROBE_DIST, "version": probe_version, "dir": "probe"})
+    distributions.append({"name": MAIN_DIST, "version": main_version, "dir": "testmcpy"})
 
     return {
         "tag": tag,
-        "kind": kind,
         "probe_version": probe_version,
         "probe_requirement": requirement,
         "distributions": distributions,
@@ -233,8 +211,8 @@ def build_dists(plan: dict[str, Any], release_dir: Path, root: Path = REPO_ROOT)
 def verify_dists(plan: dict[str, Any], release_dir: Path) -> None:
     """Every planned distribution has exactly one wheel + sdist at the planned version.
 
-    Also fails on anything *unplanned* (stale ``testmcpy`` files in a probe-only
-    release, a second version of a dist, stray files) so nothing rides along.
+    Also fails on anything *unplanned* (stale files of a distribution that is not
+    part of this release, a second version of a dist, stray files) so nothing rides along.
     """
     if not plan["distributions"]:
         raise ReleaseError("release plan contains no distributions")
