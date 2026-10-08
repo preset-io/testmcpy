@@ -8,17 +8,20 @@
 # publishes via PyPI Trusted Publishing after a reviewer approves the `pypi`
 # environment. See RELEASING.md.
 #
-# Usage: scripts/publish.sh [--dry-run] [--probe-only] [--skip-tests]
+# Usage: scripts/publish.sh [--dry-run] [--skip-tests]
 #
 #   --dry-run      run every check and build, but do not create or push a tag
-#   --probe-only   release testmcpy-oauth-probe alone (tag: oauth-probe-vX.Y.Z)
 #   --skip-tests   skip ruff + the unit suite (CI already ran them on main)
+#
+# The only release tag is vX.Y.Z (the GitHub `pypi` environment admits `v*` tags
+# only). The probe is released first, in the same run, when its in-tree version
+# is not on PyPI yet; there is no probe-only release.
 #
 # Environment:
 #   PYTHON                    interpreter to use (default: python)
-#   RELEASE_SKIP_ENV_CHECK=1  push even if the `pypi` environment's reviewer
-#                             protection cannot be verified via `gh` (use only
-#                             when you have confirmed it in the GitHub UI)
+#   RELEASE_SKIP_ENV_CHECK=1  push even if the `pypi` environment's reviewer or
+#                             tag-policy protection cannot be verified via `gh`
+#                             (use only when you have confirmed it in the GitHub UI)
 set -euo pipefail
 
 RED='\033[0;31m'
@@ -28,15 +31,14 @@ NC='\033[0m'
 
 PYTHON="${PYTHON:-python}"
 DRY_RUN=false
-PROBE_ONLY=false
 SKIP_TESTS=false
 
 for arg in "$@"; do
     case "$arg" in
         --dry-run) DRY_RUN=true ;;
-        --probe-only) PROBE_ONLY=true ;;
         --skip-tests) SKIP_TESTS=true ;;
-        -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,24p' "$0"; exit 0 ;;
+        --probe-only) echo -e "${RED}--probe-only was removed: v* is the only release tag the 'pypi' environment accepts. See RELEASING.md.${NC}" >&2; exit 2 ;;
         *) echo -e "${RED}Unknown argument: ${arg}${NC}" >&2; exit 2 ;;
     esac
 done
@@ -60,11 +62,7 @@ git fetch --quiet origin main
 # Versions are bumped through a normal reviewed PR before this script runs.
 VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
 PROBE_VERSION=$(grep '^version = ' oauth-probe/pyproject.toml | sed 's/version = "\(.*\)"/\1/')
-if [ "$PROBE_ONLY" = "true" ]; then
-    TAG="oauth-probe-v${PROBE_VERSION}"
-else
-    TAG="v${VERSION}"
-fi
+TAG="v${VERSION}"
 echo -e "testmcpy:             ${VERSION}"
 echo -e "testmcpy-oauth-probe: ${PROBE_VERSION}"
 echo -e "${YELLOW}Release tag:          ${TAG}${NC}"
@@ -98,14 +96,28 @@ echo -e "\n${GREEN}🔨 Building and checking the planned distributions...${NC}"
 "$PYTHON" scripts/release_check.py verify-dists --plan "$WORK/release/plan.json" --release-dir "$WORK/release"
 
 # GitHub creates a missing environment on first use, unprotected, which would
-# publish without any approval. Check the gate exists before offering the push.
+# publish without any approval. Check the gate exists (required reviewers, and a
+# tag deployment policy covering this tag) before offering the push.
 ENV_OK=false
 ENV_MSG=""
 if command -v gh >/dev/null 2>&1 && SLUG=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null); then
     if REVIEWERS=$(gh api "repos/${SLUG}/environments/pypi" \
         --jq '[.protection_rules[]? | select(.type == "required_reviewers")] | length' 2>&1); then
         if [ "$REVIEWERS" -gt 0 ] 2>/dev/null; then
-            ENV_OK=true
+            if TAG_POLICIES=$(gh api "repos/${SLUG}/environments/pypi/deployment-branch-policies" \
+                --jq '.branch_policies[]? | select(.type == "tag") | .name' 2>&1); then
+                while IFS= read -r PATTERN; do
+                    # shellcheck disable=SC2053  # the policy name is a glob on purpose
+                    if [ -n "$PATTERN" ] && [[ "$TAG" == $PATTERN ]]; then
+                        ENV_OK=true
+                    fi
+                done <<< "$TAG_POLICIES"
+                if [ "$ENV_OK" != "true" ]; then
+                    ENV_MSG="GitHub environment 'pypi' has no tag deployment policy covering ${TAG}."
+                fi
+            else
+                ENV_MSG="Could not read the 'pypi' deployment policies via gh (${TAG_POLICIES})."
+            fi
         else
             ENV_MSG="GitHub environment 'pypi' has no required reviewers."
         fi
