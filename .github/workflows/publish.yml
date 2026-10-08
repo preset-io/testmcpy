@@ -81,7 +81,8 @@ jobs:
       # The `testmcpy` wheel ships the web UI that `testmcpy serve` serves. It is
       # built by npm and git-ignored, so a clean checkout has none; build it first.
       # `release_check.py verify-dists` fails the release if it is missing from the
-      # wheel or the sdist. No npm cache: this is the privileged release path.
+      # wheel or the sdist. No npm cache and no install scripts: the bundle is uploaded as
+      # the release artifact, so nothing from node_modules should run beyond the build.
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '20'
@@ -89,7 +90,7 @@ jobs:
       - name: Build the web UI bundle
         run: |
           cd testmcpy/ui
-          npm ci --no-audit --no-fund
+          npm ci --ignore-scripts --no-audit --no-fund
           npm run build
 
       # Two distributions come out of this repo:

@@ -1096,7 +1096,7 @@ def test_publish_sh_tags_locally_and_pushes_only_the_tag_after_confirmation(tmp_
 def test_publish_sh_builds_the_web_ui_before_building_the_distributions(tmp_path: Path) -> None:
     result, calls = _run_publish_sh(tmp_path, "--dry-run")
     assert result.returncode == 0, result.stdout + result.stderr
-    install = calls.index("npm ci --no-audit --no-fund")
+    install = calls.index("npm ci --ignore-scripts --no-audit --no-fund")
     ui_build = calls.index("npm run build")
     build = next(i for i, c in enumerate(calls) if "release_check.py build" in c)
     assert install < ui_build < build, "the wheel ships ui/dist; it must exist before building"
