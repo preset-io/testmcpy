@@ -143,12 +143,44 @@ jobs:
       - name: Verify artifacts match the tag
         id: verify
         run: |
-          (cd release && sha256sum --check --strict SHA256SUMS)
           python3 - <<'PY'
-          import json, os, pathlib, re, sys
+          import hashlib, json, os, pathlib, re, sys
 
           tag = os.environ["GITHUB_REF_NAME"]
           release = pathlib.Path("release")
+
+          # Validate the complete manifest before reading any paths from it.
+          # sha256sum --check alone silently ignores files omitted from the list.
+          entries = list(release.rglob("*"))
+          if any(p.is_symlink() or not (p.is_file() or p.is_dir()) for p in entries):
+              sys.exit("artifact contains a symlink or non-regular file")
+          artifact_files = {
+              p.relative_to(release).as_posix()
+              for p in entries if p.is_file() and p != release / "SHA256SUMS"
+          }
+          checksums = {}
+          for line in (release / "SHA256SUMS").read_text().splitlines():
+              match = re.fullmatch(r"([0-9a-f]{64}) [ *](.+)", line)
+              if not match:
+                  sys.exit(f"malformed checksum entry: {line!r}")
+              digest, filename = match.groups()
+              path = pathlib.PurePosixPath(filename)
+              if path.is_absolute() or ".." in path.parts or not path.parts or "\\" in filename:
+                  sys.exit(f"unsafe checksum path: {filename!r}")
+              filename = path.as_posix()
+              if filename in checksums:
+                  sys.exit(f"duplicate checksum path: {filename!r}")
+              checksums[filename] = digest
+          if set(checksums) != artifact_files:
+              sys.exit(f"checksum manifest paths {sorted(checksums)} != artifact files {sorted(artifact_files)}")
+          for filename, expected_digest in checksums.items():
+              digest = hashlib.sha256()
+              with (release / filename).open("rb") as artifact:
+                  for chunk in iter(lambda: artifact.read(1024 * 1024), b""):
+                      digest.update(chunk)
+              if digest.hexdigest() != expected_digest:
+                  sys.exit(f"checksum mismatch: {filename!r}")
+
           plan = json.loads((release / "plan.json").read_text())
 
           main = re.fullmatch(r"v(\d+\.\d+\.\d+(?:(?:a|b|rc)\d+)?)", tag)

@@ -13,8 +13,10 @@ Two distributions ship from this repository and are versioned independently:
 | `testmcpy-oauth-probe` | `oauth-probe/`   | `oauth-probe/pyproject.toml` |
 
 `testmcpy` hard-depends on the probe (`testmcpy-oauth-probe>=X,<Y` in
-`pyproject.toml`), so the probe must be installable from PyPI before `testmcpy`
-is uploaded. The workflow enforces that ordering.
+`pyproject.toml`), so the exact in-tree probe version must be available as a
+wheel from PyPI before `testmcpy` is uploaded. The workflow enforces that
+ordering and refuses a source-only probe: downloading an sdist could execute
+its build backend in the OIDC-enabled job.
 
 ## Tag convention
 
@@ -95,6 +97,11 @@ verification release below has succeeded.
 
 All actions are pinned by full commit SHA, with the version in a comment. Bump
 them deliberately.
+
+Before publishing, `SHA256SUMS` must cover every artifact file, including
+`plan.json`, exactly once (excluding the manifest itself). Omissions, extra
+entries, duplicate paths, absolute paths, `..` components and symlinks are
+rejected before any listed file is read; then every digest is verified.
 
 ### Homebrew formula
 

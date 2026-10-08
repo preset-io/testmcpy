@@ -661,6 +661,79 @@ def test_publish_verify_step_supports_independent_versions(tmp_path: Path) -> No
     assert "publish_probe=false" in outputs
 
 
+@pytest.mark.parametrize("omitted", ["wheel", "plan"])
+def test_publish_verify_step_rejects_an_omitted_and_tampered_file(
+    tmp_path: Path, omitted: str
+) -> None:
+    release = tmp_path / "release"
+    _write_release_dir(release, _plan("v0.2.0", PROBE, MAIN))
+    target = (
+        next((release / "testmcpy").glob("*.whl")) if omitted == "wheel" else release / "plan.json"
+    )
+    manifest = release / "SHA256SUMS"
+    manifest.write_text(
+        "".join(
+            line
+            for line in manifest.read_text().splitlines(keepends=True)
+            if target.name not in line
+        )
+    )
+    if omitted == "wheel":
+        target.write_bytes(b"tampered wheel")
+    else:
+        plan = json.loads(target.read_text())
+        plan["probe_version"] = "0.1.9"
+        target.write_text(json.dumps(plan))
+    result, outputs = _run_verify_step(tmp_path, "v0.2.0")
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "checksum manifest paths" in result.stderr
+    assert outputs == ""
+
+
+@pytest.mark.parametrize("scenario", ["extra_file", "extra_entry", "duplicate", "duplicate_alias"])
+def test_publish_verify_step_requires_exact_manifest_coverage(
+    tmp_path: Path, scenario: str
+) -> None:
+    release = tmp_path / "release"
+    _write_release_dir(release, _plan("v0.2.0", MAIN))
+    manifest = release / "SHA256SUMS"
+    original = manifest.read_text()
+    if scenario == "extra_file":
+        (release / "unlisted.txt").write_text("unexpected artifact file")
+    elif scenario == "extra_entry":
+        manifest.write_text(original + "0" * 64 + "  ./missing.whl\n")
+    elif scenario == "duplicate":
+        manifest.write_text(original + original.splitlines(keepends=True)[0])
+    elif scenario == "duplicate_alias":
+        manifest.write_text(original + original.splitlines(keepends=True)[0].replace("./", ""))
+    result, outputs = _run_verify_step(tmp_path, "v0.2.0")
+    assert result.returncode != 0, result.stdout + result.stderr
+    expected = (
+        "duplicate checksum path" if scenario.startswith("duplicate") else "checksum manifest paths"
+    )
+    assert expected in result.stderr
+    assert outputs == ""
+
+
+@pytest.mark.parametrize("unsafe", ["absolute", "parent", "nested_parent"])
+def test_publish_verify_step_rejects_unsafe_manifest_paths(tmp_path: Path, unsafe: str) -> None:
+    release = tmp_path / "release"
+    _write_release_dir(release, _plan("v0.2.0", MAIN))
+    # Each unsafe spelling still resolves to the same intact file, so a bare
+    # sha256sum --check would accept it. Paths must be validated before reads.
+    paths = {
+        "absolute": str(release / "plan.json"),
+        "parent": "../release/plan.json",
+        "nested_parent": "testmcpy/../plan.json",
+    }
+    manifest = release / "SHA256SUMS"
+    manifest.write_text(manifest.read_text().replace("./plan.json", paths[unsafe]))
+    result, outputs = _run_verify_step(tmp_path, "v0.2.0")
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "unsafe checksum path" in result.stderr
+    assert outputs == ""
+
+
 def test_publish_verify_step_rejects_a_probe_only_tag(tmp_path: Path) -> None:
     plan = _plan("oauth-probe-v0.1.0", PROBE)
     _write_release_dir(tmp_path / "release", plan)
