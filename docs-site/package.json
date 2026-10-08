@@ -21,5 +21,13 @@
     "@types/react": "^18.3.0",
     "next-sitemap": "^4.2.3",
     "typescript": "^5.9.3"
+  },
+  "overrides": {
+    "next": {
+      "postcss": "^8.5.23"
+    },
+    "speech-rule-engine": {
+      "@xmldom/xmldom": "^0.9.12"
+    }
   }
 }
