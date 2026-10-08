@@ -69,7 +69,13 @@ verification release below has succeeded.
 1. **Bump versions in a normal PR.** Change `version` in `pyproject.toml`; change
    `oauth-probe/pyproject.toml` only if the probe changed, and keep
    `testmcpy`'s `testmcpy-oauth-probe` pin range containing the probe version.
-   Merge to `main`.
+   Merge to `main`. Pick a version that is not on PyPI yet: check
+   `https://pypi.org/pypi/testmcpy/json` and
+   `https://pypi.org/pypi/testmcpy-oauth-probe/json` first, because a version can
+   exist on PyPI without a matching commit or tag in this repository (testmcpy
+   0.11.21 was uploaded from a local, uncommitted bump before Trusted Publishing).
+   `scripts/publish.sh --dry-run` also refuses a version that is already published.
+   Add the `CHANGELOG.md` entry in the same PR.
 2. **Dry run** from an up-to-date `main`:
    ```bash
    scripts/publish.sh --dry-run
