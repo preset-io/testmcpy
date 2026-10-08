@@ -1,0 +1,10 @@
+{"thread_id":"01a11a9a-d256-7dc3-b246-d85ae6bf3b72","type":"thread.started"}
+{"item":{"id":"item_0","message":"Model metadata for `openai/gpt-5-mini` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.","type":"error"},"type":"item.completed"}
+{"type":"turn.started"}
+{"item":{"id":"item_1","text":"I'll list available MCP resources and search them for names containing \"revenue\".","type":"agent_message"},"type":"item.completed"}
+{"item":{"arguments":{},"error":null,"id":"item_2","result":null,"server":"codex","status":"in_progress","tool":"list_mcp_resources","type":"mcp_tool_call"},"type":"item.started"}
+{"item":{"arguments":{},"error":null,"id":"item_2","result":{"content":[{"text":"{\"resources\":[]}","type":"text"}],"structured_content":null},"server":"codex","status":"completed","tool":"list_mcp_resources","type":"mcp_tool_call"},"type":"item.completed"}
+{"item":{"arguments":{},"error":null,"id":"item_3","result":null,"server":"codex","status":"in_progress","tool":"list_mcp_resource_templates","type":"mcp_tool_call"},"type":"item.started"}
+{"item":{"arguments":{},"error":null,"id":"item_3","result":{"content":[{"text":"{\"resourceTemplates\":[]}","type":"text"}],"structured_content":null},"server":"codex","status":"completed","tool":"list_mcp_resource_templates","type":"mcp_tool_call"},"type":"item.completed"}
+{"item":{"id":"item_4","text":"No MCP resources/templates found \u2014 no chart with \"revenue\" present.","type":"agent_message"},"type":"item.completed"}
+{"type":"turn.completed","usage":{"cache_write_input_tokens":0,"cached_input_tokens":25728,"input_tokens":39025,"output_tokens":381,"reasoning_output_tokens":192}}

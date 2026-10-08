@@ -1,0 +1,5 @@
+{"thread_id":"01a11a99-a2be-7ca2-bfd2-4b0591b452d1","type":"thread.started"}
+{"item":{"id":"item_0","message":"Model metadata for `openai/gpt-5-mini` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.","type":"error"},"type":"item.completed"}
+{"type":"turn.started"}
+{"item":{"id":"item_1","text":"OK","type":"agent_message"},"type":"item.completed"}
+{"type":"turn.completed","usage":{"cache_write_input_tokens":0,"cached_input_tokens":0,"input_tokens":46941,"output_tokens":105,"reasoning_output_tokens":64}}

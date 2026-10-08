@@ -1,0 +1,112 @@
+# Versioned client matrix for SC-125472 (captured 2026-10-08).
+#
+# Rules: only observed behaviour is recorded as such. A client or provider that
+# could not be driven here is BLOCKED with the reason; nothing is inferred from
+# vendor documentation. Numbers cite runs in traffic/clients/summary.json; raw
+# (sanitised) traces sit next to it. All runs target LOCAL fixtures only.
+#
+# Route caveat: no first-party Anthropic or OpenAI API key, and no logged-in Claude
+# Code session, exists in this environment. The only usable key was OPENROUTER_API_KEY, so
+# model traffic for the runs below went through OpenRouter (Anthropic-compatible
+# endpoint for Claude Code, Responses endpoint for Codex). Results describe that
+# route and must be re-run on each client's first-party route before any go/no-go.
+version: 1
+captured: "2026-10-08"
+fixture_server: "python -m testmcpy.qualification serve (stateless streamable HTTP, bearer fixture:<principal>[:<workspace>])"
+entries:
+  - id: codex-cli
+    client: "Codex CLI"
+    build: "codex-cli 0.147.0"
+    model: "openai/gpt-5-mini (OpenRouter route; Codex reports 'Model metadata not found' and uses fallback metadata)"
+    auth_mode: "env API key (OPENROUTER_API_KEY) via custom model_provider, wire_api=responses; stored ChatGPT login deliberately not used (empty CODEX_HOME)"
+    mcp_transport: "streamable HTTP, bearer token from env"
+    status: PARTIAL
+    surfaces_tested: [generic, native_eager]
+    catalogs_tested: [actual, scale]
+    named_tools_visible:
+      evidence: observed
+      detail: "Native surface: model called fixture.list_charts directly (item type mcp_tool_call, server=fixture, tool=list_charts). Generic surface: only search_tools/call_tool exist."
+    deferred_discovery:
+      enabled: false
+      evidence: observed
+      detail: "No tool-search event in any run; all 81 (actual) and 152 (scale) definitions were in the prompt: first-request input tokens generic 12,873, native 46,941, scale 79,050. The model id has no Codex metadata on this route, so this does NOT show what a ChatGPT-login session with a catalogued model does. Codex lists feature flags tool_search and tool_search_always_defer_mcp_tools as 'removed'; their replacement behaviour was not observed."
+    approvals:
+      evidence: observed
+      detail: "codex exec auto-ran the annotated read-only tool list_charts (readOnlyHint=true) and failed the unannotated search_tools with 'user cancelled MCP tool call' until default_tools_approval_mode=approve was set. In this client, annotations are consulted. Interactive TUI prompts were not observable (non-interactive environment)."
+    task_evidence:
+      chart-find: "native (actual catalog) 4/4 correct; native (scale catalog) 4/4 correct; generic 0/5 correct with gpt-5-mini (the first run was cancelled at the unannotated search_tools approval; in the others the model skipped discovery, sent call_tool without 'name', guessed a non-existent tool, or chose a fixture stub tool). n is tiny and model-specific; it is not an accuracy estimate."
+    runs: [cx-t1-generic, cx-t1-native, cx-t1-scale, cx-t2-generic, cx-t2-native, cx-t2-scale, cx-t3-generic-approve, cx-n-generic-1, cx-n-generic-2, cx-n-generic-3, cx-n-native-1, cx-n-native-2, cx-n-native-3, cx-n-scale-1, cx-n-scale-2, cx-n-scale-3]
+    blocked: "ChatGPT-login Codex sessions (the user's stored interactive login was not used without approval); interactive approval UI; tool_search with a catalogued model."
+
+  - id: claude-code
+    client: "Claude Code CLI"
+    build: "2.1.280 (Claude Code)"
+    model: "anthropic/claude-haiku-4.5 via OpenRouter Anthropic-compatible endpoint (Claude Code logs unrecognized_model)"
+    auth_mode: "ANTHROPIC_AUTH_TOKEN from env (OpenRouter key); first-party login absent ('Not logged in')"
+    mcp_transport: "streamable HTTP, static Authorization header from --mcp-config; isolated CLAUDE_CONFIG_DIR, --strict-mcp-config"
+    status: PARTIAL
+    surfaces_tested: [generic, native_eager, native_deferred_client_side]
+    catalogs_tested: [actual, scale]
+    named_tools_visible:
+      evidence: observed
+      detail: "Registered as mcp__fixture__<tool>. Tool counts at init: generic 4 MCP tools, native 81 (alice), 50 (read-only role bob), 79 (Knowledge-disabled workspace), 152 (scale)."
+    deferred_discovery:
+      enabled: conditional
+      evidence: observed
+      detail: "Default environment on this route: NOT deferred (all definitions in the prompt; first-turn prompt tokens generic 29,755, native 88,463, scale 143,282). With ENABLE_TOOL_SEARCH=auto or true the same client deferred MCP definitions and the model used its ToolSearch tool before list_charts: first-turn prompt tokens native 23,922, scale 24,812; chart-find cumulative 76,439 vs 177,258 eager. Whether the first-party default would be auto was not observed. Provider-side conformance of the underlying tool-search tool is not shown by this."
+    approvals:
+      evidence: observed
+      detail: "Headless default permission mode denied mcp__fixture__list_charts despite readOnlyHint=true, and denied the unannotated search_tools and the read-only pinned get_instance_info/health_check. Annotations did not bypass this client's policy; allow-listing mcp__fixture ran everything."
+    provider_tokenizer_check:
+      detail: "Provider-reported prompt tokens versus the harness estimate: native-minus-generic is 58,708 measured vs 47,362 estimated (1.24x) on the actual catalog and 113,527 vs 91,847 (1.24x) on scale. The offline o200k_base estimate under-counts Anthropic tokens by about 24% here; no budget verdict changes."
+    task_evidence:
+      chart-find: "generic allow-listed: 2 MCP calls, 3 turns, correct. native eager: 1 call, 2 turns, correct. native with client-side deferral: ToolSearch + 1 call, 3 turns, correct."
+      workspace-switch: "generic gateway: list_workspaces then get_workspace_catalog x3 (model chose the catalog meta-tool), correct; native gateway: list_workspaces then list_charts x3, correct."
+      restricted-role: "native: tool list had 50 tools without execute_sql; the model declined. generic: 4 search_tools calls found no SQL tool; the model declined."
+      knowledge-disabled: "both surfaces: model reported Knowledge unavailable; native list had no knowledge tools."
+    runs: [cc-t1-generic, cc-t1-native, cc-t1-scale, cc-t2-generic-allow, cc-t2-generic-noallow, cc-t2-native-allow, cc-t2-native-noallow, cc-t3-scale-ts-auto, cc-t3-scale-ts-true, cc-t4-generic-auto-trivial, cc-t4-native-auto-task, cc-t4-native-auto-trivial, cc-t4-scale-auto-trivial, cc-t5-ws-generic, cc-t5-ws-native, cc-t6-bob-generic, cc-t6-bob-native, cc-t7-kd-generic, cc-t7-kd-native]
+    blocked: "first-party Anthropic route (no login or key here); interactive approval UI; Claude Code with the user's real plugins/memory."
+
+  - id: claude-ai
+    client: "Claude.ai (web/desktop custom connector)"
+    build: "not accessible"
+    model: "n/a"
+    auth_mode: "n/a"
+    status: BLOCKED
+    blocked_reason: "No access to a Claude.ai account or UI from this environment, and a custom connector must reach a public HTTPS endpoint from Anthropic's cloud, which a localhost fixture cannot. Behaviour (named tools, deferral, approvals) is not inferred from documentation."
+    deferred_discovery: {enabled: null, evidence: blocked, detail: "not tested"}
+    approvals: {evidence: blocked, detail: "not tested"}
+    needs_to_unblock: "Amin-approved test account and a reachable staging endpoint, per the rollout plan."
+
+  - id: chatgpt-plugin-review
+    client: "ChatGPT / OpenAI plugin (app) review flow"
+    build: "not accessible"
+    model: "n/a"
+    auth_mode: "n/a"
+    status: BLOCKED
+    blocked_reason: "Review and developer-mode flows require ChatGPT UI access and a reachable HTTPS endpoint; the story forbids marketplace submissions without Amin's approval. The tool-independence rule (each callable operation individually exposed) is recorded as a requirement, not as observed compliance."
+    deferred_discovery: {enabled: null, evidence: blocked, detail: "not tested"}
+    approvals: {evidence: blocked, detail: "not tested"}
+    needs_to_unblock: "Amin approval for a non-submitting developer-mode test and a staging endpoint."
+
+  - id: openai-responses-tool-search
+    client: "OpenAI Responses API tool search (provider API)"
+    build: "not accessible"
+    model: "n/a"
+    auth_mode: "needs OPENAI_API_KEY (absent)"
+    status: BLOCKED
+    blocked_reason: "No OPENAI_API_KEY in the environment. OpenRouter's Responses endpoint is not OpenAI's hosted tool_search and was not assumed to be equivalent."
+    deferred_discovery: {enabled: null, evidence: blocked, detail: "not tested; the vendor's percentage claims are not acceptance results"}
+    approvals: {evidence: not_applicable, detail: "API has no client approval UI"}
+    needs_to_unblock: "An OpenAI API key scoped to local-fixture runs only."
+
+  - id: anthropic-tool-search-tool
+    client: "Anthropic tool search tool (provider API)"
+    build: "not accessible"
+    model: "n/a"
+    auth_mode: "needs ANTHROPIC_API_KEY (absent)"
+    status: BLOCKED
+    blocked_reason: "No ANTHROPIC_API_KEY in the environment. Claude Code's ToolSearch worked over the OpenRouter route, but that does not show conformance of the provider's tool_search_tool API and is not counted as such."
+    deferred_discovery: {enabled: null, evidence: blocked, detail: "not tested"}
+    approvals: {evidence: not_applicable, detail: "API has no client approval UI"}
+    needs_to_unblock: "An Anthropic API key scoped to local-fixture runs only."
