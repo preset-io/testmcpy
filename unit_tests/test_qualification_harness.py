@@ -414,7 +414,7 @@ class TestMeasurements:
         rows = [
             {
                 "surface": "native",
-                "probe": "p1",
+                "probe": "P01-list-empty",
                 "isError": False,
                 "has_structuredContent": True,
                 "structured_keys": ["a"],
@@ -423,7 +423,7 @@ class TestMeasurements:
             },
             {
                 "surface": "generic",
-                "probe": "p1",
+                "probe": "P01-list-empty",
                 "isError": False,
                 "has_structuredContent": True,
                 "structured_keys": ["a"],
@@ -460,6 +460,75 @@ class TestMeasurements:
         path.write_text(json.dumps(rows))
         res = measure.measure_fidelity(path)
         assert res["identical"] == 1 and res["total"] == 2
+
+    @pytest.mark.parametrize(
+        "probe",
+        [
+            "P01-list-empty",
+            "P02-get-missing",
+            "P04-instance-info",
+            "P09-write-missing-dataset",
+            "unknown-probe",
+        ],
+    )
+    @pytest.mark.parametrize("representation", ["structuredContent", "text"])
+    @pytest.mark.parametrize("location", ["metadata", "row", "nested", "annotation", "extra_text"])
+    def test_fidelity_timestamp_paths(self, tmp_path, probe, representation, location):
+        import copy
+
+        payload = {
+            "timestamp": "first",
+            "error": {"timestamp": "first"},
+            "rows": [{"timestamp": "first"}],
+            "metadata": {"timestamp": "first"},
+        }
+        changed = copy.deepcopy(payload)
+        if location == "metadata":
+            parent = changed["error"] if probe == "P09-write-missing-dataset" else changed
+        elif location == "row":
+            parent = changed["rows"][0]
+        else:
+            parent = changed["metadata"]
+        parent["timestamp"] = "second"
+        rows = []
+        for surface, value in [("native", payload), ("generic", changed)]:
+            result = {"content": [{"type": "text", "text": "unchanged"}]}
+            if location == "extra_text":
+                result["content"].append({"type": "text", "text": json.dumps(value["metadata"])})
+            elif location == "annotation":
+                result["content"][0]["annotations"] = value["metadata"]
+            elif representation == "text":
+                result["content"][0]["text"] = json.dumps(value, indent=2)
+            else:
+                result["structuredContent"] = value
+            rows.append({"surface": surface, "probe": probe, "text_head": "", "result": result})
+        path = tmp_path / "summary.json"
+        path.write_text(json.dumps(rows))
+        assert measure.measure_fidelity(path)["identical"] == int(
+            location == "metadata" and probe != "unknown-probe"
+        )
+
+    def test_committed_full_results_match_raw_capture(self):
+        traffic = [
+            json.loads(line)
+            for line in (ROOT / "traffic" / "superset-real-fidelity.jsonl").read_text().splitlines()
+        ]
+        rows = json.loads((ROOT / "traffic" / "superset-real-fidelity.summary.json").read_text())
+        assert len(rows) == 19
+        for row in rows:
+            matches = [
+                entry["response"]["result"]
+                for entry in traffic
+                if entry.get("surface") == row["surface"]
+                and entry.get("probe") == row["probe"]
+                and entry.get("request", {}).get("method") == "tools/call"
+            ]
+            assert matches == [row["result"]]
+            text = " ".join(
+                c.get("text", "") for c in row["result"]["content"] if c["type"] == "text"
+            )
+            assert row["text_head"] == text[:240]
+            assert row["text_len"] == len(text)
 
     @pytest.mark.parametrize("difference", ["text_tail", "structured_value", "content_metadata"])
     def test_fidelity_compares_full_payload(self, tmp_path, difference):

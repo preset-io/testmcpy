@@ -6,8 +6,8 @@ isolation, argument-rejection behaviour, and result fidelity.
 
 from __future__ import annotations
 
+import copy
 import json
-import re
 from pathlib import Path
 from typing import Any
 
@@ -323,18 +323,74 @@ async def measure_argument_probes(
 # --- fidelity (real Superset app probes) --------------------------------------------
 
 
-_TIMESTAMP = re.compile(r'"timestamp"\s*:\s*"[^"]*"')
+# Only these response-model metadata paths vary in the committed captures.
+# Paths are relative to structuredContent or the JSON envelope in content[0].
+_VOLATILE_PATHS = {
+    "P01-list-empty": ("timestamp",),
+    "P02-get-missing": ("timestamp",),
+    "P04-instance-info": ("timestamp",),
+    "P09-write-missing-dataset": ("error", "timestamp"),
+}
 
 
-def _stable(value: Any) -> Any:
-    """Normalize per-call timestamps, retaining all other payload values."""
-    if isinstance(value, dict):
-        return {k: "<t>" if k == "timestamp" else _stable(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_stable(v) for v in value]
-    if isinstance(value, str):
-        return _TIMESTAMP.sub('"timestamp":"<t>"', value)
-    return value
+def _stable(result: dict[str, Any], probe: str) -> dict[str, Any]:
+    """Mask known metadata only; leave data rows and other timestamps untouched."""
+    out = copy.deepcopy(result)
+    path = _VOLATILE_PATHS.get(probe)
+    if path is None:
+        return out
+    parent = out.get("structuredContent")
+    for key in path[:-1]:
+        parent = parent.get(key) if isinstance(parent, dict) else None
+    if isinstance(parent, dict) and isinstance(parent.get(path[-1]), str):
+        parent[path[-1]] = "<t>"
+
+    # Walk JSON text by offsets so only the metadata value is replaced, not
+    # whitespace, key order, embedded strings, or any other content bytes.
+    decoder = json.JSONDecoder()
+
+    def timestamp_span(text: str, start: int, keys: tuple[str, ...]) -> tuple[int, int] | None:
+        while start < len(text) and text[start].isspace():
+            start += 1
+        if not keys:
+            value, end = decoder.raw_decode(text, start)
+            return (start, end) if isinstance(value, str) else None
+        if text[start : start + 1] != "{":
+            return None
+        pos = start + 1
+        while True:
+            while text[pos].isspace():
+                pos += 1
+            if text[pos] == "}":
+                return None
+            key, pos = decoder.raw_decode(text, pos)
+            while text[pos].isspace():
+                pos += 1
+            pos += 1  # colon (the complete text was validated before walking)
+            while text[pos].isspace():
+                pos += 1
+            if key == keys[0]:
+                return timestamp_span(text, pos, keys[1:])
+            _, pos = decoder.raw_decode(text, pos)
+            while text[pos].isspace():
+                pos += 1
+            if text[pos] == "}":
+                return None
+            pos += 1  # comma
+
+    for block in out.get("content", [])[:1]:
+        if block.get("type") != "text" or not isinstance(block.get("text"), str):
+            continue
+        text = block["text"]
+        try:
+            json.loads(text)
+        except ValueError:
+            continue  # Plain error text is not a JSON response envelope.
+        span = timestamp_span(text, 0, path)
+        if span is not None:
+            start, end = span
+            block["text"] = text[:start] + '"<t>"' + text[end:]
+    return out
 
 
 def measure_fidelity(summary_path: str | Path) -> dict[str, Any]:
@@ -349,7 +405,7 @@ def measure_fidelity(summary_path: str | Path) -> dict[str, Any]:
         # Fail closed on legacy summaries: keys and excerpts are not fidelity evidence.
         if "result" not in n or "result" not in g:
             raise ValueError(f"Full result evidence missing for {probe}; recapture the summary")
-        nr, gr = _stable(n["result"]), _stable(g["result"])
+        nr, gr = _stable(n["result"], probe), _stable(g["result"], probe)
         same_flags = (
             bool(nr.get("isError")) == bool(gr.get("isError"))
             and ("structuredContent" in nr) == ("structuredContent" in gr)
