@@ -323,12 +323,18 @@ async def measure_argument_probes(
 # --- fidelity (real Superset app probes) --------------------------------------------
 
 
-_TIMESTAMP = re.compile(r'"timestamp":"[^"]*"')
+_TIMESTAMP = re.compile(r'"timestamp"\s*:\s*"[^"]*"')
 
 
-def _stable(text: str) -> str:
-    """Drop per-call timestamps so identical payloads compare equal."""
-    return _TIMESTAMP.sub('"timestamp":"<t>"', text)
+def _stable(value: Any) -> Any:
+    """Normalize per-call timestamps, retaining all other payload values."""
+    if isinstance(value, dict):
+        return {k: "<t>" if k == "timestamp" else _stable(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_stable(v) for v in value]
+    if isinstance(value, str):
+        return _TIMESTAMP.sub('"timestamp":"<t>"', value)
+    return value
 
 
 def measure_fidelity(summary_path: str | Path) -> dict[str, Any]:
@@ -340,14 +346,16 @@ def measure_fidelity(summary_path: str | Path) -> dict[str, Any]:
         g = generic.get(probe)
         if g is None:
             continue
+        # Fail closed on legacy summaries: keys and excerpts are not fidelity evidence.
+        if "result" not in n or "result" not in g:
+            raise ValueError(f"Full result evidence missing for {probe}; recapture the summary")
+        nr, gr = _stable(n["result"]), _stable(g["result"])
         same_flags = (
-            n["isError"] == g["isError"]
-            and n["has_structuredContent"] == g["has_structuredContent"]
-            and n["structured_keys"] == g["structured_keys"]
+            bool(nr.get("isError")) == bool(gr.get("isError"))
+            and ("structuredContent" in nr) == ("structuredContent" in gr)
+            and nr.get("structuredContent") == gr.get("structuredContent")
         )
-        same_text = _stable(n["text_head"]) == _stable(g["text_head"]) and (
-            n["text_len"] == g["text_len"]
-        )
+        same_text = nr.get("content") == gr.get("content")
         compared.append(
             {
                 "probe": probe,

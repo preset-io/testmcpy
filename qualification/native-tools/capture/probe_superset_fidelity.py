@@ -70,6 +70,7 @@ def _norm(result: Any) -> dict[str, Any]:
     d = result.model_dump(mode="json", by_alias=True, exclude_none=True)
     text = " ".join(c.get("text", "") for c in d.get("content", []) if c.get("type") == "text")
     return {
+        "result": d,  # Complete evidence; excerpts below are display-only.
         "isError": bool(d.get("isError")),
         "has_structuredContent": "structuredContent" in d,
         "structured_keys": sorted((d.get("structuredContent") or {}).keys())[:12],
@@ -115,7 +116,7 @@ async def _run(rec_mod: Any) -> tuple[Any, list[dict[str, Any]]]:
                                 res = await session.call_tool(name, arguments)
                                 out = _norm(res)
                             except Exception as exc:  # protocol-level error
-                                out = {"protocol_error": f"{type(exc).__name__}: {exc}"[:240]}
+                                out = {"protocol_error": f"{type(exc).__name__}: {exc}"}
                             summary.append({"surface": surface, "probe": probe["id"], **out})
                         if surface == "generic":
                             rec.mark(surface=surface, probe="P10-call-tool-recursion")

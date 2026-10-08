@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import json
 from pathlib import Path
 
@@ -448,10 +449,55 @@ class TestMeasurements:
                 "text_len": 50,
             },
         ]
+        for row in rows:
+            row["result"] = {
+                "isError": row["isError"],
+                "content": [{"type": "text", "text": row["text_head"]}],
+            }
+            if row["has_structuredContent"]:
+                row["result"]["structuredContent"] = {"timestamp": row["surface"], "a": 1}
         path = tmp_path / "s.json"
         path.write_text(json.dumps(rows))
         res = measure.measure_fidelity(path)
         assert res["identical"] == 1 and res["total"] == 2
+
+    @pytest.mark.parametrize("difference", ["text_tail", "structured_value", "content_metadata"])
+    def test_fidelity_compares_full_payload(self, tmp_path, difference):
+        from mcp import types
+
+        spec = importlib.util.spec_from_file_location(
+            "fidelity_probe", ROOT / "capture" / "probe_superset_fidelity.py"
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        text = json.dumps({"padding": "x" * 250, "value": 1})
+        native = types.CallToolResult(
+            content=[types.TextContent(type="text", text=text)], structuredContent={"value": 1}
+        )
+        generic = native.model_copy(deep=True)
+        if difference == "text_tail":
+            generic.content[0].text = text[:-2] + "2}"
+        elif difference == "structured_value":
+            generic.structuredContent["value"] = 2
+        else:
+            generic.content[0].annotations = types.Annotations(audience=["user"])
+        rows = [
+            {"surface": surface, "probe": "p", **mod._norm(result)}
+            for surface, result in [("native", native), ("generic", generic)]
+        ]
+        assert rows[0]["text_head"] == rows[1]["text_head"]
+        assert rows[0]["text_len"] == rows[1]["text_len"]
+        path = tmp_path / "summary.json"
+        path.write_text(json.dumps(rows))
+        assert measure.measure_fidelity(path)["identical"] == 0
+
+    def test_fidelity_rejects_excerpt_only_evidence(self, tmp_path):
+        path = tmp_path / "summary.json"
+        path.write_text(
+            json.dumps([{"surface": surface, "probe": "p"} for surface in ["native", "generic"]])
+        )
+        with pytest.raises(ValueError, match="Full result evidence missing"):
+            measure.measure_fidelity(path)
 
     def test_committed_real_probe_summary_shows_the_unknown_tool_difference(self):
         res = measure.measure_fidelity(ROOT / "traffic" / "superset-real-fidelity.summary.json")
