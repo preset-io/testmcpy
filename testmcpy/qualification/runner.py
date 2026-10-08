@@ -89,7 +89,7 @@ def _payload_failed(out: CallOutcome) -> bool:
     if out.is_error:
         return True
     s = out.structured if isinstance(out.structured, dict) else {}
-    return s.get("success") is False or "error_type" in s
+    return s.get("success") is False or "error_type" in s or bool(s.get("error"))
 
 
 def _names(text: str) -> list[str]:

@@ -24,7 +24,7 @@ from testmcpy.qualification import (
     tokens,
     world,
 )
-from testmcpy.qualification.client import ConnectRefused, connect
+from testmcpy.qualification.client import CallOutcome, ConnectRefused, connect
 
 ROOT = Path(__file__).resolve().parent.parent / "qualification" / "native-tools"
 STEM = ROOT / "fixtures" / "catalog.superset-master-100f5124"
@@ -312,6 +312,25 @@ class TestSuite:
         failed = [(r.surface, r.task, r.failures) for r in runs if not r.success]
         assert not failed, failed
         assert len(runs) == len(suite) * 3
+
+    @pytest.mark.parametrize("error", [{"error_type": "backend_failure"}, "failed"])
+    @pytest.mark.parametrize("kind", runner.SURFACE_KINDS)
+    def test_in_band_error_fails_even_when_earlier_result_matches_oracle(
+        self, actual, gateway_tools, suite, monkeypatch, error, kind
+    ):
+        monkeypatch.setattr(world.World, "_h_get_dashboard_info", lambda *args: {"error": error})
+        task = next(t for t in suite if t.id == "dashboard-lookup")
+        res = run(runner.SuiteRunner(actual, gateway_tools).run_task(task, kind))
+        assert not res.success
+        assert res.steps[0].disposition == "ok"
+        assert res.steps[-1].disposition == "error"
+        assert any("get_dashboard_info failed" in f for f in res.failures)
+        assert not any("answer missing" in f for f in res.failures)
+
+    @pytest.mark.parametrize("error", [None, "", {}, []])
+    def test_empty_error_fields_are_not_failures(self, error):
+        out = CallOutcome("read", {}, False, {"error": error, "value": 1}, "", 0)
+        assert not runner._payload_failed(out)
 
     def test_old_producer_gets_typed_error_natively_and_works_on_generic(
         self, actual, gateway_tools, suite
