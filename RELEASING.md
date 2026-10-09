@@ -69,14 +69,22 @@ verification release below has succeeded.
 1. **Bump versions in a normal PR.** Change `version` in `pyproject.toml`; change
    `oauth-probe/pyproject.toml` only if the probe changed, and keep
    `testmcpy`'s `testmcpy-oauth-probe` pin range containing the probe version.
-   Merge to `main`.
+   Merge to `main`. Pick a version that is not on PyPI yet: check
+   `https://pypi.org/pypi/testmcpy/json` and
+   `https://pypi.org/pypi/testmcpy-oauth-probe/json` first, because a version can
+   exist on PyPI without a matching commit or tag in this repository (testmcpy
+   0.11.21 was uploaded from a local, uncommitted bump before Trusted Publishing).
+   `scripts/publish.sh --dry-run` also refuses a version that is already published.
+   Add the `CHANGELOG.md` entry in the same PR.
 2. **Dry run** from an up-to-date `main`:
    ```bash
    scripts/publish.sh --dry-run
    ```
    Validates the tag against both versions and PyPI, runs lint and unit tests,
-   builds the wheel and sdist of each planned distribution, runs `twine check`,
-   and checks the `pypi` environment. It never creates a tag or touches PyPI.
+   builds the web UI (`npm ci && npm run build` in `testmcpy/ui`, so Node.js and
+   npm are required), builds the wheel and sdist of each planned distribution,
+   runs `twine check`, and checks the `pypi` environment. It never creates a tag
+   or touches PyPI.
 3. **Tag and push:**
    ```bash
    scripts/publish.sh
@@ -91,7 +99,7 @@ verification release below has succeeded.
 
 | Job        | Permissions                          | Does                                                                                                                                                                                     |
 | ---------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `build`    | `contents: read`, no OIDC            | Checks the tag is on `main`; validates tag vs. versions and PyPI; runs release/packaging tests; builds the planned dists; `twine check --strict`; installs the built wheels into clean venvs (`pip check`, CLI smoke); records checksums; uploads one artifact. |
+| `build`    | `contents: read`, no OIDC            | Checks the tag is on `main`; validates tag vs. versions and PyPI; runs release/packaging tests; builds the web UI (`testmcpy/ui/dist` is git-ignored but shipped in the `testmcpy` wheel and sdist, and `verify-dists` fails the release if it is missing); builds the planned dists; `twine check --strict`; installs the built wheels into clean venvs (`pip check`, CLI smoke); records checksums; uploads one artifact. |
 | `publish`  | `id-token: write`, environment `pypi` | Downloads the artifact and **runs no repository code**: verifies checksums and re-derives tag/version/filenames from the tag itself; uploads the probe (if planned); checks the exact probe version is installable from PyPI; uploads `testmcpy`. |
 | `homebrew` | `contents: write`, no OIDC           | After `testmcpy` is published, rewrites `Formula/testmcpy.rb` (see below) and pushes it to `main`.                                                                                        |
 
