@@ -56,6 +56,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 MAIN_DIST = "testmcpy"
 PROBE_DIST = "testmcpy-oauth-probe"
 
+# The web UI is built by npm and git-ignored, so a clean checkout has no bundle. The
+# `testmcpy` wheel and sdist must still carry it: `testmcpy serve` serves it straight
+# from the installed package, and without it falls back to running npm inside
+# site-packages.
+UI_BUNDLE_INDEX = "testmcpy/ui/dist/index.html"
+UI_BUNDLE_ASSETS = "testmcpy/ui/dist/assets/"
+
 _VERSION = r"\d+\.\d+\.\d+(?:(?:a|b|rc)\d+)?"
 MAIN_TAG_RE = re.compile(rf"^v({_VERSION})$")
 
@@ -177,6 +184,22 @@ def _sdist_metadata_version(path: Path) -> tuple[str, str]:
         return _parse_metadata(handle.read().decode("utf-8"), path.name)
 
 
+def _require_ui_bundle(wheel: Path, sdist: Path) -> None:
+    """Fail when the built web UI (``ui/dist``) is missing from the wheel or the sdist."""
+    with zipfile.ZipFile(wheel) as archive:
+        wheel_files = set(archive.namelist())
+    with tarfile.open(sdist, "r:gz") as archive:
+        sdist_files = {m.name.split("/", 1)[1] for m in archive.getmembers() if "/" in m.name}
+    for label, files in ((wheel.name, wheel_files), (sdist.name, sdist_files)):
+        has_assets = any(name.startswith(UI_BUNDLE_ASSETS) for name in files)
+        if UI_BUNDLE_INDEX not in files or not has_assets:
+            raise ReleaseError(
+                f"{label} does not contain the built web UI ({UI_BUNDLE_INDEX} and "
+                f"{UI_BUNDLE_ASSETS}*). Run `npm ci && npm run build` in testmcpy/ui "
+                "before building the distributions."
+            )
+
+
 def _parse_metadata(text: str, label: str) -> tuple[str, str]:
     fields: dict[str, str] = {}
     for line in text.split("\n\n", 1)[0].splitlines():
@@ -208,11 +231,15 @@ def build_dists(plan: dict[str, Any], release_dir: Path, root: Path = REPO_ROOT)
             raise ReleaseError(f"building {dist['name']} failed (exit {exc.returncode})") from exc
 
 
-def verify_dists(plan: dict[str, Any], release_dir: Path) -> None:
+def verify_dists(
+    plan: dict[str, Any], release_dir: Path, *, require_ui_bundle: bool = True
+) -> None:
     """Every planned distribution has exactly one wheel + sdist at the planned version.
 
     Also fails on anything *unplanned* (stale files of a distribution that is not
     part of this release, a second version of a dist, stray files) so nothing rides along.
+    The ``testmcpy`` wheel and sdist must also carry the built web UI (``ui/dist``);
+    ``require_ui_bundle=False`` exists only for tests that build from a tree without it.
     """
     if not plan["distributions"]:
         raise ReleaseError("release plan contains no distributions")
@@ -246,6 +273,8 @@ def verify_dists(plan: dict[str, Any], release_dir: Path) -> None:
                 raise ReleaseError(
                     f"{label} metadata says {name} {version}; expected {dist['name']} {dist['version']}"
                 )
+        if require_ui_bundle and dist["name"] == MAIN_DIST:
+            _require_ui_bundle(wheels[0], sdists[0])
 
 
 def main(argv: list[str] | None = None) -> int:

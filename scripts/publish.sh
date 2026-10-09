@@ -90,6 +90,12 @@ if [ "$SKIP_TESTS" != "true" ]; then
     "$PYTHON" -m pytest unit_tests/ -q
 fi
 
+# The testmcpy wheel ships the web UI, which is built by npm and git-ignored.
+# release_check.py verify-dists fails the release if the bundle is missing.
+echo -e "\n${GREEN}🖥️  Building the web UI bundle...${NC}"
+command -v npm >/dev/null 2>&1 || die "npm is required: the testmcpy wheel ships the built web UI (testmcpy/ui/dist)."
+(cd testmcpy/ui && npm ci --ignore-scripts --no-audit --no-fund && npm run build) || die "Building the web UI failed."
+
 echo -e "\n${GREEN}🔨 Building and checking the planned distributions...${NC}"
 "$PYTHON" scripts/release_check.py build --plan "$WORK/release/plan.json" --release-dir "$WORK/release"
 "$PYTHON" -m twine check --strict "$WORK"/release/*/*

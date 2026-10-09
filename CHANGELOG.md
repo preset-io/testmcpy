@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   producer and gateway work live in `qualification/native-tools/`. `tiktoken` joins
   the `dev` extra (the harness falls back to a labelled bytes/4 estimate without it).
 
+## [0.11.22] - 2026-10-08
+
 ### Fixed
 - Evaluators are now gateway-aware. `was_mcp_tool_called` no longer passes
   (score 0.8, `match_type: "search"`) when the model only ran
@@ -43,6 +45,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   MCP prefixes for plain expectations, but an explicitly prefixed expectation
   requires the exact raw name, including its namespace. The single-parameter
   evaluator reports unreadable arguments as malformed, not as a missing call.
+- The Homebrew formula sync only rewrote `sha256`, leaving a stale `url`, and
+  reported success on a failed download or push. It now derives both from the
+  verified sdist and fails loudly.
+
+### Changed
+- Releases are published to PyPI with GitHub OIDC Trusted Publishing instead of
+  an API token: a `vX.Y.Z` tag (releasing `testmcpy`, and `testmcpy-oauth-probe`
+  first when its in-tree version is not on PyPI) starts an unprivileged build/test job, then an
+  approval-gated `pypi` environment job uploads the verified artifacts. The tag
+  version must equal the package version. `scripts/publish.sh` now only prepares
+  and tags a release (it no longer uploads) and checks the `pypi` environment is
+  protected before pushing. A GitHub Release no longer triggers a publish. See
+  `RELEASING.md`.
+
+### Dependencies
+- Refreshed the npm dependency trees of the web UI (`testmcpy/ui`) and the
+  documentation site (`docs-site`) against current `main`: `next` 15.5.27
+  (still on Nextra 3; Next 16 and Nextra 4 are deferred because they break the
+  docs build), `react-router-dom` 6.30.6, `vitest` 4.1.11, `js-yaml` 4.3.2, and
+  in-range updates of `postcss`, `nanoid`, `undici`, `source-map-js`, `sharp`,
+  `mermaid`, `dompurify` and the browserslist data. `npm audit` high/critical
+  findings dropped from 23 to 10 across the two trees. The remaining findings
+  need Tailwind 4, React Router 7 or Nextra 4.
+- `testmcpy-oauth-probe` is unchanged and stays at 0.1.0 (already on PyPI).
+
+## [0.11.16 – 0.11.21] - 2026-07-31 to 2026-09-18
+
+These releases were published without per-version changelog entries; their
+changes (and anything else merged since 0.11.10) are listed together here.
+0.11.11 to 0.11.15 were never published to PyPI. `testmcpy-oauth-probe` 0.1.0
+was first published alongside 0.11.21.
 
 ### Added
 - A typed, vendor-neutral headless OAuth/MCP interoperability probe with
@@ -76,23 +109,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   matrix + leaderboard and the `leaderboard` CLI (`--by-effort` / `--by-suite`).
 
 ### Changed
-- Releases are published to PyPI with GitHub OIDC Trusted Publishing instead of
-  an API token: a `vX.Y.Z` tag (releasing `testmcpy`, and `testmcpy-oauth-probe`
-  first when its in-tree version is not on PyPI) starts an unprivileged build/test job, then an
-  approval-gated `pypi` environment job uploads the verified artifacts. The tag
-  version must equal the package version. `scripts/publish.sh` now only prepares
-  and tags a release (it no longer uploads) and checks the `pypi` environment is
-  protected before pushing. A GitHub Release no longer triggers a publish. See
-  `RELEASING.md`.
 - `testmcpy-oauth discover` now sets `error_probe: false` in the manifest it
   generates, so it stays read-only. `error_probe` defaults to true and applies
   to all flows, which otherwise would have made `discover` POST an unsupported
   grant to the discovered token endpoint.
 
 ### Fixed
-- The Homebrew formula sync only rewrote `sha256`, leaving a stale `url`, and
-  reported success on a failed download or push. It now derives both from the
-  verified sdist and fails loudly.
 - The headless probe no longer drops `oauth.token.error_contract` under
   `flow: bearer`. Token acquisition returned before the error-probe block, so a
   manifest could set `error_probe: true` and receive a report with the check

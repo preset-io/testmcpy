@@ -78,6 +78,21 @@ jobs:
       - name: Run release and packaging tests
         run: python -m pytest unit_tests/test_oauth_probe_packaging.py unit_tests/test_release_tooling.py -q
 
+      # The `testmcpy` wheel ships the web UI that `testmcpy serve` serves. It is
+      # built by npm and git-ignored, so a clean checkout has none; build it first.
+      # `release_check.py verify-dists` fails the release if it is missing from the
+      # wheel or the sdist. No npm cache and no install scripts: the bundle is uploaded as
+      # the release artifact, so nothing from node_modules should run beyond the build.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '20'
+
+      - name: Build the web UI bundle
+        run: |
+          cd testmcpy/ui
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build
+
       # Two distributions come out of this repo:
       #   testmcpy-oauth-probe  oauth-probe/ - httpx + pyyaml only; owns the
       #                         `testmcpy-oauth` console script
