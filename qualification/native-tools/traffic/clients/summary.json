@@ -1,0 +1,1452 @@
+{
+ "claude_code_version": "2.1.280 (Claude Code)",
+ "codex_version": "codex-cli 0.147.0",
+ "runs": [
+  {
+   "allowed": false,
+   "answer": "OK",
+   "answer_correct": null,
+   "api_key_source": "none",
+   "calls": [],
+   "catalog": "actual",
+   "client": "claude-code",
+   "client_version": "2.1.280",
+   "denials": [],
+   "mcp_servers": [
+    {
+     "name": "fixture",
+     "source": "dynamic",
+     "status": "connected"
+    }
+   ],
+   "mcp_tools_registered": 4,
+   "model": "anthropic/claude-haiku-4.5",
+   "permission_mode": "default",
+   "prompt_tokens_total": 29755,
+   "run": "cc-t1-generic",
+   "surface": "generic",
+   "task": "trivial",
+   "tool_search_builtin_present": false,
+   "tool_search_env": null,
+   "tools": [],
+   "tools_registered": 23,
+   "turns": 1,
+   "usage": {
+    "cache_creation": {
+     "ephemeral_1h_input_tokens": 0,
+     "ephemeral_5m_input_tokens": 29100
+    },
+    "cache_creation_input_tokens": 29100,
+    "cache_read_input_tokens": 0,
+    "inference_geo": "not_available",
+    "input_tokens": 655,
+    "iterations": [],
+    "output_tokens": 48,
+    "output_tokens_details": {
+     "thinking_tokens": 42
+    },
+    "server_tool_use": {
+     "web_fetch_requests": 0,
+     "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+   }
+  },
+  {
+   "allowed": false,
+   "answer": "OK",
+   "answer_correct": null,
+   "api_key_source": "none",
+   "calls": [],
+   "catalog": "actual",
+   "client": "claude-code",
+   "client_version": "2.1.280",
+   "denials": [],
+   "mcp_servers": [
+    {
+     "name": "fixture",
+     "source": "dynamic",
+     "status": "connected"
+    }
+   ],
+   "mcp_tools_registered": 81,
+   "model": "anthropic/claude-haiku-4.5",
+   "permission_mode": "default",
+   "prompt_tokens_total": 88463,
+   "run": "cc-t1-native",
+   "surface": "native_eager",
+   "task": "trivial",
+   "tool_search_builtin_present": false,
+   "tool_search_env": null,
+   "tools": [],
+   "tools_registered": 100,
+   "turns": 1,
+   "usage": {
+    "cache_creation": {
+     "ephemeral_1h_input_tokens": 0,
+     "ephemeral_5m_input_tokens": 87808
+    },
+    "cache_creation_input_tokens": 87808,
+    "cache_read_input_tokens": 0,
+    "inference_geo": "not_available",
+    "input_tokens": 655,
+    "iterations": [],
+    "output_tokens": 78,
+    "output_tokens_details": {
+     "thinking_tokens": 71
+    },
+    "server_tool_use": {
+     "web_fetch_requests": 0,
+     "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+   }
+  },
+  {
+   "allowed": false,
+   "answer": "OK",
+   "answer_correct": null,
+   "api_key_source": "none",
+   "calls": [],
+   "catalog": "scale",
+   "client": "claude-code",
+   "client_version": "2.1.280",
+   "denials": [],
+   "mcp_servers": [
+    {
+     "name": "fixture",
+     "source": "dynamic",
+     "status": "connected"
+    }
+   ],
+   "mcp_tools_registered": 152,
+   "model": "anthropic/claude-haiku-4.5",
+   "permission_mode": "default",
+   "prompt_tokens_total": 143282,
+   "run": "cc-t1-scale",
+   "surface": "native_eager",
+   "task": "trivial",
+   "tool_search_builtin_present": false,
+   "tool_search_env": null,
+   "tools": [],
+   "tools_registered": 171,
+   "turns": 1,
+   "usage": {
+    "cache_creation": {
+     "ephemeral_1h_input_tokens": 0,
+     "ephemeral_5m_input_tokens": 142627
+    },
+    "cache_creation_input_tokens": 142627,
+    "cache_read_input_tokens": 0,
+    "inference_geo": "not_available",
+    "input_tokens": 655,
+    "iterations": [],
+    "output_tokens": 69,
+    "output_tokens_details": {
+     "thinking_tokens": 62
+    },
+    "server_tool_use": {
+     "web_fetch_requests": 0,
+     "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+   }
+  },
+  {
+   "allowed": true,
+   "answer": "**Revenue by Region**",
+   "answer_correct": true,
+   "api_key_source": "none",
+   "calls": [
+    "mcp__fixture__search_tools",
+    "mcp__fixture__call_tool"
+   ],
+   "catalog": "actual",
+   "client": "claude-code",
+   "client_version": "2.1.280",
+   "denials": [],
+   "mcp_servers": [
+    {
+     "name": "fixture",
+     "source": "dynamic",
+     "status": "connected"
+    }
+   ],
+   "mcp_tools_registered": 4,
+   "model": "anthropic/claude-haiku-4.5",
+   "permission_mode": "default",
+   "prompt_tokens_total": 99003,
+   "run": "cc-t2-generic-allow",
+   "surface": "generic",
+   "task": "chart-find",
+   "tool_search_builtin_present": false,
+   "tool_search_env": null,
+   "tools": [],
+   "tools_registered": 23,
+   "turns": 3,
+   "usage": {
+    "cache_creation": {
+     "ephemeral_1h_input_tokens": 0,
+     "ephemeral_5m_input_tokens": 73
+    },
+    "cache_creation_input_tokens": 73,
+    "cache_read_input_tokens": 87336,
+    "inference_geo": "not_available",
+    "input_tokens": 11594,
+    "iterations": [],
+    "output_tokens": 414,
+    "output_tokens_details": {
+     "thinking_tokens": 253
+    },
+    "server_tool_use": {
+     "web_fetch_requests": 0,
+     "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+   }
+  },
+  {
+   "allowed": false,
+   "answer": "I need permission to access the workspace tools. Please grant permission for `mcp__fixture__search_tools` or `mcp__fixture__get_instance_info` so I can search for charts containing \"revenue\" in this workspace.",
+   "answer_correct": false,
+   "api_key_source": "none",
+   "calls": [
+    "mcp__fixture__search_tools",
+    "mcp__fixture__get_instance_info",
+    "mcp__fixture__health_check"
+   ],
+   "catalog": "actual",
+   "client": "claude-code",
+   "client_version": "2.1.280",
+   "denials": [
+    "mcp__fixture__search_tools",
+    "mcp__fixture__get_instance_info",
+    "mcp__fixture__health_check"
+   ],
+   "mcp_servers": [
+    {
+     "name": "fixture",
+     "source": "dynamic",
+     "status": "connected"
+    }
+   ],
+   "mcp_tools_registered": 4,
+   "model": "anthropic/claude-haiku-4.5",
+   "permission_mode": "default",
+   "prompt_tokens_total": 90444,
+   "run": "cc-t2-generic-noallow",
+   "surface": "generic",
+   "task": "chart-find",
+   "tool_search_builtin_present": false,
+   "tool_search_env": null,
+   "tools": [],
+   "tools_registered": 23,
+   "turns": 4,
+   "usage": {
+    "cache_creation": {
+     "ephemeral_1h_input_tokens": 0,
+     "ephemeral_5m_input_tokens": 73
+    },
+    "cache_creation_input_tokens": 73,
+    "cache_read_input_tokens": 87336,
+    "inference_geo": "not_available",
+    "input_tokens": 3035,
+    "iterations": [],
+    "output_tokens": 612,
+    "output_tokens_details": {
+     "thinking_tokens": 392
+    },
+    "server_tool_use": {
+     "web_fetch_requests": 0,
+     "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+   }
+  },
+  {
+   "allowed": true,
+   "answer": "Revenue by Region",
+   "answer_correct": true,
+   "api_key_source": "none",
+   "calls": [
+    "mcp__fixture__list_charts"
+   ],
+   "catalog": "actual",
+   "client": "claude-code",
+   "client_version": "2.1.280",
+   "denials": [],
+   "mcp_servers": [
+    {
+     "name": "fixture",
+     "source": "dynamic",
+     "status": "connected"
+    }
+   ],
+   "mcp_tools_registered": 81,
+   "model": "anthropic/claude-haiku-4.5",
+   "permission_mode": "default",
+   "prompt_tokens_total": 177258,
+   "run": "cc-t2-native-allow",
+   "surface": "native_eager",
+   "task": "chart-find",
+   "tool_search_builtin_present": false,
+   "tool_search_env": null,
+   "tools": [],
+   "tools_registered": 100,
+   "turns": 2,
+   "usage": {
+    "cache_creation": {
+     "ephemeral_1h_input_tokens": 0,
+     "ephemeral_5m_input_tokens": 38
+    },
+    "cache_creation_input_tokens": 38,
+    "cache_read_input_tokens": 175616,
+    "inference_geo": "not_available",
+    "input_tokens": 1604,
+    "iterations": [],
+    "output_tokens": 211,
+    "output_tokens_details": {
+     "thinking_tokens": 138
+    },
+    "server_tool_use": {
+     "web_fetch_requests": 0,
+     "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+   }
+  },
+  {
+   "allowed": false,
+   "answer": "I need permission to search for charts in your Superset workspace. Would you like me to use the `list_charts` tool to find the chart with 'revenue' in its name?",
+   "answer_correct": false,
+   "api_key_source": "none",
+   "calls": [
+    "mcp__fixture__list_charts"
+   ],
+   "catalog": "actual",
+   "client": "claude-code",
+   "client_version": "2.1.280",
+   "denials": [
+    "mcp__fixture__list_charts"
+   ],
+   "mcp_servers": [
+    {
+     "name": "fixture",
+     "source": "dynamic",
+     "status": "connected"
+    }
+   ],
+   "mcp_tools_registered": 81,
+   "model": "anthropic/claude-haiku-4.5",
+   "permission_mode": "default",
+   "prompt_tokens_total": 177209,
+   "run": "cc-t2-native-noallow",
+   "surface": "native_eager",
+   "task": "chart-find",
+   "tool_search_builtin_present": false,
+   "tool_search_env": null,
+   "tools": [],
+   "tools_registered": 100,
+   "turns": 2,
+   "usage": {
+    "cache_creation": {
+     "ephemeral_1h_input_tokens": 0,
+     "ephemeral_5m_input_tokens": 38
+    },
+    "cache_creation_input_tokens": 38,
+    "cache_read_input_tokens": 175616,
+    "inference_geo": "not_available",
+    "input_tokens": 1555,
+    "iterations": [],
+    "output_tokens": 247,
+    "output_tokens_details": {
+     "thinking_tokens": 135
+    },
+    "server_tool_use": {
+     "web_fetch_requests": 0,
+     "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+   }
+  },
+  {
+   "allowed": true,
+   "answer": "**Revenue by Region**",
+   "answer_correct": true,
+   "api_key_source": "none",
+   "calls": [
+    "ToolSearch",
+    "mcp__fixture__list_charts"
+   ],
+   "catalog": "scale",
+   "client": "claude-code",
+   "client_version": "2.1.280",
+   "denials": [],
+   "mcp_servers": [
+    {
+     "name": "fixture",
+     "source": "dynamic",
+     "status": "connected"
+    }
+   ],
+   "mcp_tools_registered": 152,
+   "model": "anthropic/claude-haiku-4.5",
+   "permission_mode": "default",
+   "prompt_tokens_total": 79422,
+   "run": "cc-t3-scale-ts-auto",
+   "surface": "native_eager",
+   "task": "chart-find",
+   "tool_search_builtin_present": true,
+   "tool_search_env": "auto",
+   "tools": [],
+   "tools_registered": 172,
+   "turns": 3,
+   "usage": {
+    "cache_creation": {
+     "ephemeral_1h_input_tokens": 0,
+     "ephemeral_5m_input_tokens": 80
+    },
+    "cache_creation_input_tokens": 80,
+    "cache_read_input_tokens": 72512,
+    "inference_geo": "not_available",
+    "input_tokens": 6830,
+    "iterations": [],
+    "output_tokens": 484,
+    "output_tokens_details": {
+     "thinking_tokens": 316
+    },
+    "server_tool_use": {
+     "web_fetch_requests": 0,
+     "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+   }
+  },
+  {
+   "allowed": true,
+   "answer": "**Revenue by Region**",
+   "answer_correct": true,
+   "api_key_source": "none",
+   "calls": [
+    "ToolSearch",
+    "mcp__fixture__list_charts"
+   ],
+   "catalog": "scale",
+   "client": "claude-code",
+   "client_version": "2.1.280",
+   "denials": [],
+   "mcp_servers": [
+    {
+     "name": "fixture",
+     "source": "dynamic",
+     "status": "connected"
+    }
+   ],
+   "mcp_tools_registered": 152,
+   "model": "anthropic/claude-haiku-4.5",
+   "permission_mode": "default",
+   "prompt_tokens_total": 79285,
+   "run": "cc-t3-scale-ts-true",
+   "surface": "native_eager",
+   "task": "chart-find",
+   "tool_search_builtin_present": true,
+   "tool_search_env": "true",
+   "tools": [],
+   "tools_registered": 172,
+   "turns": 3,
+   "usage": {
+    "cache_creation": {
+     "ephemeral_1h_input_tokens": 0,
+     "ephemeral_5m_input_tokens": 24232
+    },
+    "cache_creation_input_tokens": 24232,
+    "cache_read_input_tokens": 48350,
+    "inference_geo": "not_available",
+    "input_tokens": 6703,
+    "iterations": [],
+    "output_tokens": 418,
+    "output_tokens_details": {
+     "thinking_tokens": 243
+    },
+    "server_tool_use": {
+     "web_fetch_requests": 0,
+     "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+   }
+  },
+  {
+   "allowed": false,
+   "answer": "OK",
+   "answer_correct": null,
+   "api_key_source": "none",
+   "calls": [],
+   "catalog": "actual",
+   "client": "claude-code",
+   "client_version": "2.1.280",
+   "denials": [],
+   "mcp_servers": [
+    {
+     "name": "fixture",
+     "source": "dynamic",
+     "status": "connected"
+    }
+   ],
+   "mcp_tools_registered": 4,
+   "model": "anthropic/claude-haiku-4.5",
+   "permission_mode": "default",
+   "prompt_tokens_total": 29891,
+   "run": "cc-t4-generic-auto-trivial",
+   "surface": "generic",
+   "task": "trivial",
+   "tool_search_builtin_present": true,
+   "tool_search_env": "auto",
+   "tools": [],
+   "tools_registered": 24,
+   "turns": 1,
+   "usage": {
+    "cache_creation": {
+     "ephemeral_1h_input_tokens": 0,
+     "ephemeral_5m_input_tokens": 712
+    },
+    "cache_creation_input_tokens": 712,
+    "cache_read_input_tokens": 28524,
+    "inference_geo": "not_available",
+    "input_tokens": 655,
+    "iterations": [],
+    "output_tokens": 63,
+    "output_tokens_details": {
+     "thinking_tokens": 57
+    },
+    "server_tool_use": {
+     "web_fetch_requests": 0,
+     "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+   }
+  },
+  {
+   "allowed": true,
+   "answer": "**Revenue by Region**",
+   "answer_correct": true,
+   "api_key_source": "none",
+   "calls": [
+    "ToolSearch",
+    "mcp__fixture__list_charts"
+   ],
+   "catalog": "actual",
+   "client": "claude-code",
+   "client_version": "2.1.280",
+   "denials": [],
+   "mcp_servers": [
+    {
+     "name": "fixture",
+     "source": "dynamic",
+     "status": "connected"
+    }
+   ],
+   "mcp_tools_registered": 81,
+   "model": "anthropic/claude-haiku-4.5",
+   "permission_mode": "default",
+   "prompt_tokens_total": 76439,
+   "run": "cc-t4-native-auto-task",
+   "surface": "native_eager",
+   "task": "chart-find",
+   "tool_search_builtin_present": true,
+   "tool_search_env": "auto",
+   "tools": [],
+   "tools_registered": 101,
+   "turns": 3,
+   "usage": {
+    "cache_creation": {
+     "ephemeral_1h_input_tokens": 0,
+     "ephemeral_5m_input_tokens": 80
+    },
+    "cache_creation_input_tokens": 80,
+    "cache_read_input_tokens": 69839,
+    "inference_geo": "not_available",
+    "input_tokens": 6520,
+    "iterations": [],
+    "output_tokens": 317,
+    "output_tokens_details": {
+     "thinking_tokens": 156
+    },
+    "server_tool_use": {
+     "web_fetch_requests": 0,
+     "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+   }
+  },
+  {
+   "allowed": false,
+   "answer": "OK",
+   "answer_correct": null,
+   "api_key_source": "none",
+   "calls": [],
+   "catalog": "actual",
+   "client": "claude-code",
+   "client_version": "2.1.280",
+   "denials": [],
+   "mcp_servers": [
+    {
+     "name": "fixture",
+     "source": "dynamic",
+     "status": "connected"
+    }
+   ],
+   "mcp_tools_registered": 81,
+   "model": "anthropic/claude-haiku-4.5",
+   "permission_mode": "default",
+   "prompt_tokens_total": 23922,
+   "run": "cc-t4-native-auto-trivial",
+   "surface": "native_eager",
+   "task": "trivial",
+   "tool_search_builtin_present": true,
+   "tool_search_env": "auto",
+   "tools": [],
+   "tools_registered": 101,
+   "turns": 1,
+   "usage": {
+    "cache_creation": {
+     "ephemeral_1h_input_tokens": 0,
+     "ephemeral_5m_input_tokens": 1520
+    },
+    "cache_creation_input_tokens": 1520,
+    "cache_read_input_tokens": 21747,
+    "inference_geo": "not_available",
+    "input_tokens": 655,
+    "iterations": [],
+    "output_tokens": 43,
+    "output_tokens_details": {
+     "thinking_tokens": 36
+    },
+    "server_tool_use": {
+     "web_fetch_requests": 0,
+     "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+   }
+  },
+  {
+   "allowed": false,
+   "answer": "OK",
+   "answer_correct": null,
+   "api_key_source": "none",
+   "calls": [],
+   "catalog": "scale",
+   "client": "claude-code",
+   "client_version": "2.1.280",
+   "denials": [],
+   "mcp_servers": [
+    {
+     "name": "fixture",
+     "source": "dynamic",
+     "status": "connected"
+    }
+   ],
+   "mcp_tools_registered": 152,
+   "model": "anthropic/claude-haiku-4.5",
+   "permission_mode": "default",
+   "prompt_tokens_total": 24812,
+   "run": "cc-t4-scale-auto-trivial",
+   "surface": "native_eager",
+   "task": "trivial",
+   "tool_search_builtin_present": true,
+   "tool_search_env": "auto",
+   "tools": [],
+   "tools_registered": 172,
+   "turns": 1,
+   "usage": {
+    "cache_creation": {
+     "ephemeral_1h_input_tokens": 0,
+     "ephemeral_5m_input_tokens": 0
+    },
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 24157,
+    "inference_geo": "not_available",
+    "input_tokens": 655,
+    "iterations": [],
+    "output_tokens": 46,
+    "output_tokens_details": {
+     "thinking_tokens": 40
+    },
+    "server_tool_use": {
+     "web_fetch_requests": 0,
+     "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+   }
+  },
+  {
+   "allowed": true,
+   "answer": "**Workspaces & Charts:**\n\n1. **Acme Analytics**\n   - Revenue by Region\n   - Monthly Orders\n\n2. **Beta Retail**\n   - Store Footfall\n\n3. **Legacy Co**\n   - Revenue by Region\n   - Monthly Orders",
+   "answer_correct": true,
+   "api_key_source": "none",
+   "calls": [
+    "mcp__fixture__list_workspaces",
+    "mcp__fixture__get_workspace_catalog",
+    "mcp__fixture__get_workspace_catalog",
+    "mcp__fixture__get_workspace_catalog"
+   ],
+   "catalog": "actual",
+   "client": "claude-code",
+   "client_version": "2.1.280",
+   "denials": [],
+   "mcp_servers": [
+    {
+     "name": "fixture",
+     "source": "dynamic",
+     "status": "connected"
+    }
+   ],
+   "mcp_tools_registered": 5,
+   "model": "anthropic/claude-haiku-4.5",
+   "permission_mode": "default",
+   "prompt_tokens_total": 93888,
+   "run": "cc-t5-ws-generic",
+   "surface": "generic",
+   "task": "workspace-switch",
+   "tool_search_builtin_present": false,
+   "tool_search_env": null,
+   "tools": [],
+   "tools_registered": 24,
+   "topology": "gateway",
+   "turns": 5,
+   "usage": {
+    "cache_creation": {
+     "ephemeral_1h_input_tokens": 0,
+     "ephemeral_5m_input_tokens": 30353
+    },
+    "cache_creation_input_tokens": 30353,
+    "cache_read_input_tokens": 60592,
+    "inference_geo": "not_available",
+    "input_tokens": 2943,
+    "iterations": [],
+    "output_tokens": 586,
+    "output_tokens_details": {
+     "thinking_tokens": 255
+    },
+    "server_tool_use": {
+     "web_fetch_requests": 0,
+     "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+   }
+  },
+  {
+   "allowed": true,
+   "answer": "**Acme Analytics (ws-a)**\n- Revenue by Region\n- Monthly Orders\n\n**Beta Retail (ws-b)**\n- Store Footfall\n\n**Legacy Co (ws-old)**\n- Unable to retrieve (workspace runs incompatible producer)",
+   "answer_correct": true,
+   "api_key_source": "none",
+   "calls": [
+    "mcp__fixture__list_workspaces",
+    "mcp__fixture__list_charts",
+    "mcp__fixture__list_charts",
+    "mcp__fixture__list_charts"
+   ],
+   "catalog": "actual",
+   "client": "claude-code",
+   "client_version": "2.1.280",
+   "denials": [],
+   "mcp_servers": [
+    {
+     "name": "fixture",
+     "source": "dynamic",
+     "status": "connected"
+    }
+   ],
+   "mcp_tools_registered": 82,
+   "model": "anthropic/claude-haiku-4.5",
+   "permission_mode": "default",
+   "prompt_tokens_total": 276644,
+   "run": "cc-t5-ws-native",
+   "surface": "native_eager",
+   "task": "workspace-switch",
+   "tool_search_builtin_present": false,
+   "tool_search_env": null,
+   "tools": [],
+   "tools_registered": 101,
+   "topology": "gateway",
+   "turns": 5,
+   "usage": {
+    "cache_creation": {
+     "ephemeral_1h_input_tokens": 0,
+     "ephemeral_5m_input_tokens": 91232
+    },
+    "cache_creation_input_tokens": 91232,
+    "cache_read_input_tokens": 182350,
+    "inference_geo": "not_available",
+    "input_tokens": 3062,
+    "iterations": [],
+    "output_tokens": 569,
+    "output_tokens_details": {
+     "thinking_tokens": 221
+    },
+    "server_tool_use": {
+     "web_fetch_requests": 0,
+     "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+   }
+  },
+  {
+   "allowed": true,
+   "answer": "I don't have a tool available to execute arbitrary SQL queries directly against a database. The available tools are limited to querying datasets, viewing saved queries, and accessing metadata about databases and charts, but they don't include direct SQL execution capabilities.",
+   "answer_correct": null,
+   "api_key_source": "none",
+   "calls": [
+    "mcp__fixture__search_tools",
+    "mcp__fixture__search_tools",
+    "mcp__fixture__search_tools",
+    "mcp__fixture__search_tools"
+   ],
+   "catalog": "actual",
+   "client": "claude-code",
+   "client_version": "2.1.280",
+   "denials": [],
+   "mcp_servers": [
+    {
+     "name": "fixture",
+     "source": "dynamic",
+     "status": "connected"
+    }
+   ],
+   "mcp_tools_registered": 4,
+   "model": "anthropic/claude-haiku-4.5",
+   "permission_mode": "default",
+   "prompt_tokens_total": 175929,
+   "run": "cc-t6-bob-generic",
+   "surface": "generic",
+   "task": "restricted-role",
+   "tool_search_builtin_present": false,
+   "tool_search_env": null,
+   "tools": [],
+   "tools_registered": 23,
+   "turns": 5,
+   "usage": {
+    "cache_creation": {
+     "ephemeral_1h_input_tokens": 0,
+     "ephemeral_5m_input_tokens": 735
+    },
+    "cache_creation_input_tokens": 735,
+    "cache_read_input_tokens": 145168,
+    "inference_geo": "not_available",
+    "input_tokens": 30026,
+    "iterations": [],
+    "output_tokens": 621,
+    "output_tokens_details": {
+     "thinking_tokens": 332
+    },
+    "server_tool_use": {
+     "web_fetch_requests": 0,
+     "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+   }
+  },
+  {
+   "allowed": true,
+   "answer": "I cannot run this query. The available tools only support Superset-specific operations (querying datasets, charts, dashboards, and semantic layers). There is no `execute_sql` tool to run arbitrary queries directly against database connections.",
+   "answer_correct": null,
+   "api_key_source": "none",
+   "calls": [],
+   "catalog": "actual",
+   "client": "claude-code",
+   "client_version": "2.1.280",
+   "denials": [],
+   "mcp_servers": [
+    {
+     "name": "fixture",
+     "source": "dynamic",
+     "status": "connected"
+    }
+   ],
+   "mcp_tools_registered": 50,
+   "model": "anthropic/claude-haiku-4.5",
+   "permission_mode": "default",
+   "prompt_tokens_total": 63624,
+   "run": "cc-t6-bob-native",
+   "surface": "native_eager",
+   "task": "restricted-role",
+   "tool_search_builtin_present": false,
+   "tool_search_env": null,
+   "tools": [],
+   "tools_registered": 69,
+   "turns": 1,
+   "usage": {
+    "cache_creation": {
+     "ephemeral_1h_input_tokens": 0,
+     "ephemeral_5m_input_tokens": 62948
+    },
+    "cache_creation_input_tokens": 62948,
+    "cache_read_input_tokens": 0,
+    "inference_geo": "not_available",
+    "input_tokens": 676,
+    "iterations": [],
+    "output_tokens": 288,
+    "output_tokens_details": {
+     "thinking_tokens": 233
+    },
+    "server_tool_use": {
+     "web_fetch_requests": 0,
+     "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+   }
+  },
+  {
+   "allowed": true,
+   "answer": "Knowledge is not available in this environment. The available MCP tools are for dashboards, datasets, and charts, but there's no Knowledge base search tool.",
+   "answer_correct": null,
+   "api_key_source": "none",
+   "calls": [
+    "mcp__fixture__search_tools"
+   ],
+   "catalog": "actual",
+   "client": "claude-code",
+   "client_version": "2.1.280",
+   "denials": [],
+   "mcp_servers": [
+    {
+     "name": "fixture",
+     "source": "dynamic",
+     "status": "connected"
+    }
+   ],
+   "mcp_tools_registered": 4,
+   "model": "anthropic/claude-haiku-4.5",
+   "permission_mode": "default",
+   "prompt_tokens_total": 65771,
+   "run": "cc-t7-kd-generic",
+   "surface": "generic",
+   "task": "knowledge-disabled",
+   "tool_search_builtin_present": false,
+   "tool_search_env": null,
+   "tools": [],
+   "tools_registered": 23,
+   "turns": 2,
+   "usage": {
+    "cache_creation": {
+     "ephemeral_1h_input_tokens": 0,
+     "ephemeral_5m_input_tokens": 614
+    },
+    "cache_creation_input_tokens": 614,
+    "cache_read_input_tokens": 57624,
+    "inference_geo": "not_available",
+    "input_tokens": 7533,
+    "iterations": [],
+    "output_tokens": 573,
+    "output_tokens_details": {
+     "thinking_tokens": 472
+    },
+    "server_tool_use": {
+     "web_fetch_requests": 0,
+     "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+   }
+  },
+  {
+   "allowed": true,
+   "answer": "I don't have access to a Knowledge base tool. The tools available to me are file system operations, git commands, and code search, but no integrated knowledge management system.\n\nI can search the workspace files for \"revenue\" definition if you'd like\u2014would that help? Or if there's a specific Knowledge base system or file you're referring to, let me know where it is.",
+   "answer_correct": null,
+   "api_key_source": "none",
+   "calls": [],
+   "catalog": "actual",
+   "client": "claude-code",
+   "client_version": "2.1.280",
+   "denials": [],
+   "mcp_servers": [
+    {
+     "name": "fixture",
+     "source": "dynamic",
+     "status": "connected"
+    }
+   ],
+   "mcp_tools_registered": 79,
+   "model": "anthropic/claude-haiku-4.5",
+   "permission_mode": "default",
+   "prompt_tokens_total": 88251,
+   "run": "cc-t7-kd-native",
+   "surface": "native_eager",
+   "task": "knowledge-disabled",
+   "tool_search_builtin_present": false,
+   "tool_search_env": null,
+   "tools": [],
+   "tools_registered": 98,
+   "turns": 1,
+   "usage": {
+    "cache_creation": {
+     "ephemeral_1h_input_tokens": 0,
+     "ephemeral_5m_input_tokens": 87583
+    },
+    "cache_creation_input_tokens": 87583,
+    "cache_read_input_tokens": 0,
+    "inference_geo": "not_available",
+    "input_tokens": 668,
+    "iterations": [],
+    "output_tokens": 269,
+    "output_tokens_details": {
+     "thinking_tokens": 184
+    },
+    "server_tool_use": {
+     "web_fetch_requests": 0,
+     "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+   }
+  },
+  {
+   "answer": "No MCP resources/templates found \u2014 no chart with \"revenue\" present.",
+   "answer_correct": false,
+   "approved": true,
+   "call_status": [
+    "completed",
+    "completed"
+   ],
+   "calls": [
+    "codex.list_mcp_resources",
+    "codex.list_mcp_resource_templates"
+   ],
+   "catalog": "actual",
+   "client": "codex",
+   "prompt_tokens_total": 39025,
+   "run": "cx-n-generic-1",
+   "surface": "generic",
+   "task": "chart-find",
+   "trial": 1,
+   "usage": {
+    "cache_write_input_tokens": 0,
+    "cached_input_tokens": 25728,
+    "input_tokens": 39025,
+    "output_tokens": 381,
+    "reasoning_output_tokens": 192
+   }
+  },
+  {
+   "answer": "No MCP resources were found in this workspace, so I couldn't locate any chart containing \"revenue.\"",
+   "answer_correct": false,
+   "approved": true,
+   "call_status": [
+    "failed",
+    "completed",
+    "completed",
+    "failed"
+   ],
+   "calls": [
+    "fixture.call_tool",
+    "codex.list_mcp_resources",
+    "codex.list_mcp_resource_templates",
+    "fixture.call_tool"
+   ],
+   "catalog": "actual",
+   "client": "codex",
+   "prompt_tokens_total": 66091,
+   "run": "cx-n-generic-2",
+   "surface": "generic",
+   "task": "chart-find",
+   "trial": 2,
+   "usage": {
+    "cache_write_input_tokens": 0,
+    "cached_input_tokens": 59008,
+    "input_tokens": 66091,
+    "output_tokens": 761,
+    "reasoning_output_tokens": 560
+   }
+  },
+  {
+   "answer": "I couldn't retrieve chart names via the MCP tools \u2014 `get_catalog` returned a fixture stub. I need filesystem or API access to list the chart exact name.",
+   "answer_correct": false,
+   "approved": true,
+   "call_status": [
+    "completed",
+    "completed",
+    "completed",
+    "completed",
+    "completed",
+    "failed",
+    "completed",
+    "completed",
+    "completed",
+    "completed",
+    "completed"
+   ],
+   "calls": [
+    "codex.list_mcp_resources",
+    "codex.list_mcp_resource_templates",
+    "codex.list_mcp_resources",
+    "codex.list_mcp_resource_templates",
+    "codex.list_mcp_resources",
+    "local.read_mcp_resource",
+    "fixture.search_tools",
+    "fixture.call_tool",
+    "fixture.call_tool",
+    "fixture.get_instance_info",
+    "fixture.call_tool"
+   ],
+   "catalog": "actual",
+   "client": "codex",
+   "errors": [
+    "resources/read failed: unknown MCP server 'local'"
+   ],
+   "prompt_tokens_total": 175142,
+   "run": "cx-n-generic-3",
+   "surface": "generic",
+   "task": "chart-find",
+   "trial": 3,
+   "usage": {
+    "cache_write_input_tokens": 0,
+    "cached_input_tokens": 157824,
+    "input_tokens": 175142,
+    "output_tokens": 2774,
+    "reasoning_output_tokens": 2277
+   }
+  },
+  {
+   "answer": "Revenue by Region",
+   "answer_correct": true,
+   "approved": true,
+   "call_status": [
+    "completed",
+    "failed",
+    "completed",
+    "completed",
+    "completed"
+   ],
+   "calls": [
+    "codex.list_mcp_resources",
+    "mcp__fixture.list_mcp_resources",
+    "codex.list_mcp_resources",
+    "codex.list_mcp_resources",
+    "fixture.list_charts"
+   ],
+   "catalog": "actual",
+   "client": "codex",
+   "errors": [
+    "resources/list failed: unknown MCP server 'mcp__fixture'"
+   ],
+   "prompt_tokens_total": 335779,
+   "run": "cx-n-native-1",
+   "surface": "native_eager",
+   "task": "chart-find",
+   "trial": 1,
+   "usage": {
+    "cache_write_input_tokens": 0,
+    "cached_input_tokens": 287616,
+    "input_tokens": 335779,
+    "output_tokens": 1877,
+    "reasoning_output_tokens": 1472
+   }
+  },
+  {
+   "answer": "Revenue by Region",
+   "answer_correct": true,
+   "approved": true,
+   "call_status": [
+    "completed"
+   ],
+   "calls": [
+    "fixture.list_charts"
+   ],
+   "catalog": "actual",
+   "client": "codex",
+   "prompt_tokens_total": 94259,
+   "run": "cx-n-native-2",
+   "surface": "native_eager",
+   "task": "chart-find",
+   "trial": 2,
+   "usage": {
+    "cache_write_input_tokens": 0,
+    "cached_input_tokens": 46848,
+    "input_tokens": 94259,
+    "output_tokens": 275,
+    "reasoning_output_tokens": 192
+   }
+  },
+  {
+   "answer": "Revenue by Region",
+   "answer_correct": true,
+   "approved": true,
+   "call_status": [
+    "completed"
+   ],
+   "calls": [
+    "fixture.list_charts"
+   ],
+   "catalog": "actual",
+   "client": "codex",
+   "prompt_tokens_total": 94380,
+   "run": "cx-n-native-3",
+   "surface": "native_eager",
+   "task": "chart-find",
+   "trial": 3,
+   "usage": {
+    "cache_write_input_tokens": 0,
+    "cached_input_tokens": 46848,
+    "input_tokens": 94380,
+    "output_tokens": 396,
+    "reasoning_output_tokens": 320
+   }
+  },
+  {
+   "answer": "Revenue by Region",
+   "answer_correct": true,
+   "approved": true,
+   "call_status": [
+    "completed"
+   ],
+   "calls": [
+    "fixture.list_charts"
+   ],
+   "catalog": "scale",
+   "client": "codex",
+   "prompt_tokens_total": 158452,
+   "run": "cx-n-scale-1",
+   "surface": "native_eager",
+   "task": "chart-find",
+   "trial": 1,
+   "usage": {
+    "cache_write_input_tokens": 0,
+    "cached_input_tokens": 79104,
+    "input_tokens": 158452,
+    "output_tokens": 250,
+    "reasoning_output_tokens": 128
+   }
+  },
+  {
+   "answer": "Revenue by Region",
+   "answer_correct": true,
+   "approved": true,
+   "call_status": [
+    "completed"
+   ],
+   "calls": [
+    "fixture.list_charts"
+   ],
+   "catalog": "scale",
+   "client": "codex",
+   "prompt_tokens_total": 399382,
+   "run": "cx-n-scale-2",
+   "surface": "native_eager",
+   "task": "chart-find",
+   "trial": 2,
+   "usage": {
+    "cache_write_input_tokens": 0,
+    "cached_input_tokens": 318976,
+    "input_tokens": 399382,
+    "output_tokens": 1414,
+    "reasoning_output_tokens": 1024
+   }
+  },
+  {
+   "answer": "Revenue by Region",
+   "answer_correct": true,
+   "approved": true,
+   "call_status": [
+    "completed"
+   ],
+   "calls": [
+    "fixture.list_charts"
+   ],
+   "catalog": "scale",
+   "client": "codex",
+   "prompt_tokens_total": 158566,
+   "run": "cx-n-scale-3",
+   "surface": "native_eager",
+   "task": "chart-find",
+   "trial": 3,
+   "usage": {
+    "cache_write_input_tokens": 0,
+    "cached_input_tokens": 158080,
+    "input_tokens": 158566,
+    "output_tokens": 364,
+    "reasoning_output_tokens": 256
+   }
+  },
+  {
+   "answer": "OK",
+   "answer_correct": null,
+   "approved": false,
+   "call_status": [],
+   "calls": [],
+   "catalog": "actual",
+   "client": "codex",
+   "prompt_tokens_total": 12873,
+   "run": "cx-t1-generic",
+   "surface": "generic",
+   "task": "trivial",
+   "usage": {
+    "cache_write_input_tokens": 0,
+    "cached_input_tokens": 0,
+    "input_tokens": 12873,
+    "output_tokens": 49,
+    "reasoning_output_tokens": 0
+   }
+  },
+  {
+   "answer": "OK",
+   "answer_correct": null,
+   "approved": false,
+   "call_status": [],
+   "calls": [],
+   "catalog": "actual",
+   "client": "codex",
+   "prompt_tokens_total": 46941,
+   "run": "cx-t1-native",
+   "surface": "native_eager",
+   "task": "trivial",
+   "usage": {
+    "cache_write_input_tokens": 0,
+    "cached_input_tokens": 0,
+    "input_tokens": 46941,
+    "output_tokens": 105,
+    "reasoning_output_tokens": 64
+   }
+  },
+  {
+   "answer": "OK",
+   "answer_correct": null,
+   "approved": false,
+   "call_status": [],
+   "calls": [],
+   "catalog": "scale",
+   "client": "codex",
+   "prompt_tokens_total": 79050,
+   "run": "cx-t1-scale",
+   "surface": "native_eager",
+   "task": "trivial",
+   "usage": {
+    "cache_write_input_tokens": 0,
+    "cached_input_tokens": 0,
+    "input_tokens": 79050,
+    "output_tokens": 45,
+    "reasoning_output_tokens": 0
+   }
+  },
+  {
+   "answer": "No matching chart found \u2014 MCP resource list is empty.",
+   "answer_correct": false,
+   "approved": false,
+   "call_status": [
+    "completed",
+    "completed",
+    "failed"
+   ],
+   "calls": [
+    "codex.list_mcp_resources",
+    "codex.list_mcp_resource_templates",
+    "fixture.search_tools"
+   ],
+   "catalog": "actual",
+   "client": "codex",
+   "errors": [
+    "user cancelled MCP tool call"
+   ],
+   "prompt_tokens_total": 52514,
+   "run": "cx-t2-generic",
+   "surface": "generic",
+   "task": "chart-find",
+   "usage": {
+    "cache_write_input_tokens": 0,
+    "cached_input_tokens": 38912,
+    "input_tokens": 52514,
+    "output_tokens": 723,
+    "reasoning_output_tokens": 680
+   }
+  },
+  {
+   "answer": "Revenue by Region",
+   "answer_correct": true,
+   "approved": false,
+   "call_status": [
+    "completed"
+   ],
+   "calls": [
+    "fixture.list_charts"
+   ],
+   "catalog": "actual",
+   "client": "codex",
+   "prompt_tokens_total": 94379,
+   "run": "cx-t2-native",
+   "surface": "native_eager",
+   "task": "chart-find",
+   "usage": {
+    "cache_write_input_tokens": 0,
+    "cached_input_tokens": 46848,
+    "input_tokens": 94379,
+    "output_tokens": 395,
+    "reasoning_output_tokens": 320
+   }
+  },
+  {
+   "answer": "Revenue by Region",
+   "answer_correct": true,
+   "approved": false,
+   "call_status": [
+    "completed"
+   ],
+   "calls": [
+    "fixture.list_charts"
+   ],
+   "catalog": "scale",
+   "client": "codex",
+   "prompt_tokens_total": 238175,
+   "run": "cx-t2-scale",
+   "surface": "native_eager",
+   "task": "chart-find",
+   "usage": {
+    "cache_write_input_tokens": 0,
+    "cached_input_tokens": 158592,
+    "input_tokens": 238175,
+    "output_tokens": 633,
+    "reasoning_output_tokens": 481
+   }
+  },
+  {
+   "answer": "No MCP resources found \u2014 cannot locate any chart containing \"revenue\".",
+   "answer_correct": false,
+   "approved": true,
+   "call_status": [
+    "completed",
+    "completed"
+   ],
+   "calls": [
+    "codex.list_mcp_resources",
+    "codex.list_mcp_resource_templates"
+   ],
+   "catalog": "actual",
+   "client": "codex",
+   "prompt_tokens_total": 38995,
+   "run": "cx-t3-generic-approve",
+   "surface": "generic",
+   "task": "chart-find",
+   "usage": {
+    "cache_write_input_tokens": 0,
+    "cached_input_tokens": 32384,
+    "input_tokens": 38995,
+    "output_tokens": 457,
+    "reasoning_output_tokens": 426
+   }
+  }
+ ]
+}

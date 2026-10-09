@@ -1,0 +1,8 @@
+{"thread_id":"01a11a9b-e3a0-7e20-87ef-dafb87f46c66","type":"thread.started"}
+{"item":{"id":"item_0","message":"Model metadata for `openai/gpt-5-mini` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.","type":"error"},"type":"item.completed"}
+{"type":"turn.started"}
+{"item":{"id":"item_1","text":"I'll search the workspace charts for any chart names containing \"revenue\".","type":"agent_message"},"type":"item.completed"}
+{"item":{"arguments":{"request":{"page_size":100,"search":"revenue"}},"error":null,"id":"item_2","result":null,"server":"fixture","status":"in_progress","tool":"list_charts","type":"mcp_tool_call"},"type":"item.started"}
+{"item":{"arguments":{"request":{"page_size":100,"search":"revenue"}},"error":null,"id":"item_2","result":{"content":[{"text":"{\"count\":1,\"total_count\":1,\"page\":1,\"page_size\":100,\"has_next\":false,\"charts\":[{\"id\":100,\"slice_name\":\"Revenue by Region\",\"viz_type\":\"echarts_timeseries_bar\"}]}","type":"text"}],"structured_content":{"charts":[{"id":100,"slice_name":"Revenue by Region","viz_type":"echarts_timeseries_bar"}],"count":1,"has_next":false,"page":1,"page_size":100,"total_count":1}},"server":"fixture","status":"completed","tool":"list_charts","type":"mcp_tool_call"},"type":"item.completed"}
+{"item":{"id":"item_3","text":"Revenue by Region","type":"agent_message"},"type":"item.completed"}
+{"type":"turn.completed","usage":{"cache_write_input_tokens":0,"cached_input_tokens":46848,"input_tokens":94380,"output_tokens":396,"reasoning_output_tokens":320}}

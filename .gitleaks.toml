@@ -36,4 +36,7 @@ paths = [
   '''(^|/)context/archives/AUTH_FLOW_DIAGRAM\.md$''',
   '''(^|/)context/concepts/authentication\.md$''',
   '''(^|/)docs-site/pages/concepts/authentication\.mdx$''',
+  # Shell script that clears ANTHROPIC_API_KEY (an empty assignment, no value) before driving a
+  # real client; commit e0f04cf matched generic-api-key on that line.
+  '''(^|/)qualification/native-tools/capture/clients/run_claude_code\.sh$''',
 ]

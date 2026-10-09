@@ -1,0 +1,896 @@
+[
+ {
+  "has_structuredContent": true,
+  "isError": false,
+  "probe": "P01-list-empty",
+  "result": {
+   "content": [
+    {
+     "text": "{\"count\":0,\"total_count\":0,\"page\":1,\"page_size\":10,\"total_pages\":0,\"has_previous\":false,\"has_next\":false,\"columns_requested\":[\"id\",\"slice_name\",\"viz_type\",\"description\",\"certified_by\",\"certification_details\",\"url\",\"changed_on\",\"changed_on_humanized\"],\"columns_loaded\":[\"id\",\"slice_name\",\"viz_type\",\"description\",\"certified_by\",\"certification_details\",\"url\",\"changed_on\",\"changed_on_humanized\"],\"columns_available\":[\"id\",\"slice_name\",\"datasource_id\",\"datasource_type\",\"datasource_name\",\"viz_type\",\"params\",\"query_context\",\"description\",\"cache_timeout\",\"perm\",\"schema_perm\",\"catalog_perm\",\"last_saved_at\",\"certified_by\",\"certification_details\",\"is_managed_externally\",\"external_url\",\"deleted_at\",\"created_on\",\"changed_on\",\"uuid\",\"url\",\"form_data\",\"changed_on_humanized\",\"created_on_humanized\",\"tags\"],\"sortable_columns\":[\"id\",\"slice_name\",\"viz_type\",\"description\",\"changed_on\",\"changed_on_delta_humanized\",\"created_on\"],\"filters_applied\":[],\"pagination\":{\"page\":1,\"page_size\":10,\"total_count\":0,\"total_pages\":0,\"has_next\":false,\"has_previous\":false},\"timestamp\":\"2026-10-08T08:02:54.229810Z\",\"charts\":[]}",
+     "type": "text"
+    }
+   ],
+   "isError": false,
+   "structuredContent": {
+    "charts": [],
+    "columns_available": [
+     "id",
+     "slice_name",
+     "datasource_id",
+     "datasource_type",
+     "datasource_name",
+     "viz_type",
+     "params",
+     "query_context",
+     "description",
+     "cache_timeout",
+     "perm",
+     "schema_perm",
+     "catalog_perm",
+     "last_saved_at",
+     "certified_by",
+     "certification_details",
+     "is_managed_externally",
+     "external_url",
+     "deleted_at",
+     "created_on",
+     "changed_on",
+     "uuid",
+     "url",
+     "form_data",
+     "changed_on_humanized",
+     "created_on_humanized",
+     "tags"
+    ],
+    "columns_loaded": [
+     "id",
+     "slice_name",
+     "viz_type",
+     "description",
+     "certified_by",
+     "certification_details",
+     "url",
+     "changed_on",
+     "changed_on_humanized"
+    ],
+    "columns_requested": [
+     "id",
+     "slice_name",
+     "viz_type",
+     "description",
+     "certified_by",
+     "certification_details",
+     "url",
+     "changed_on",
+     "changed_on_humanized"
+    ],
+    "count": 0,
+    "filters_applied": [],
+    "has_next": false,
+    "has_previous": false,
+    "page": 1,
+    "page_size": 10,
+    "pagination": {
+     "has_next": false,
+     "has_previous": false,
+     "page": 1,
+     "page_size": 10,
+     "total_count": 0,
+     "total_pages": 0
+    },
+    "sortable_columns": [
+     "id",
+     "slice_name",
+     "viz_type",
+     "description",
+     "changed_on",
+     "changed_on_delta_humanized",
+     "created_on"
+    ],
+    "timestamp": "2026-10-08T08:02:54.229810Z",
+    "total_count": 0,
+    "total_pages": 0
+   }
+  },
+  "structured_keys": [
+   "charts",
+   "columns_available",
+   "columns_loaded",
+   "columns_requested",
+   "count",
+   "filters_applied",
+   "has_next",
+   "has_previous",
+   "page",
+   "page_size",
+   "pagination",
+   "sortable_columns"
+  ],
+  "surface": "native",
+  "text_head": "{\"count\":0,\"total_count\":0,\"page\":1,\"page_size\":10,\"total_pages\":0,\"has_previous\":false,\"has_next\":false,\"columns_requested\":[\"id\",\"slice_name\",\"viz_type\",\"description\",\"certified_by\",\"certification_details\",\"url\",\"changed_on\",\"changed_on_h",
+  "text_len": 1102
+ },
+ {
+  "has_structuredContent": true,
+  "isError": false,
+  "probe": "P02-get-missing",
+  "result": {
+   "content": [
+    {
+     "text": "{\"error_type\":\"not_found\",\"message\":\"ChartInfo with identifier '999999' not found\",\"timestamp\":\"2026-10-08T08:02:54.406787Z\",\"details\":null,\"suggestions\":[],\"error_code\":null,\"error\":\"ChartInfo with identifier '999999' not found\"}",
+     "type": "text"
+    }
+   ],
+   "isError": false,
+   "structuredContent": {
+    "details": null,
+    "error": "ChartInfo with identifier '999999' not found",
+    "error_code": null,
+    "error_type": "not_found",
+    "message": "ChartInfo with identifier '999999' not found",
+    "suggestions": [],
+    "timestamp": "2026-10-08T08:02:54.406787Z"
+   }
+  },
+  "structured_keys": [
+   "details",
+   "error",
+   "error_code",
+   "error_type",
+   "message",
+   "suggestions",
+   "timestamp"
+  ],
+  "surface": "native",
+  "text_head": "{\"error_type\":\"not_found\",\"message\":\"ChartInfo with identifier '999999' not found\",\"timestamp\":\"2026-10-08T08:02:54.406787Z\",\"details\":null,\"suggestions\":[],\"error_code\":null,\"error\":\"ChartInfo with identifier '999999' not found\"}",
+  "text_len": 230
+ },
+ {
+  "has_structuredContent": true,
+  "isError": false,
+  "probe": "P03-sql-bad-db",
+  "result": {
+   "content": [
+    {
+     "text": "{\"success\":false,\"rows\":null,\"columns\":null,\"row_count\":null,\"affected_rows\":null,\"execution_time\":null,\"error\":\"Database with ID 999999 not found. Use list_databases to get valid database IDs.\",\"error_type\":\"DATABASE_NOT_FOUND_ERROR\",\"statements\":null,\"multi_statement_warning\":null,\"template_warning\":null}",
+     "type": "text"
+    }
+   ],
+   "isError": false,
+   "structuredContent": {
+    "affected_rows": null,
+    "columns": null,
+    "error": "Database with ID 999999 not found. Use list_databases to get valid database IDs.",
+    "error_type": "DATABASE_NOT_FOUND_ERROR",
+    "execution_time": null,
+    "multi_statement_warning": null,
+    "row_count": null,
+    "rows": null,
+    "statements": null,
+    "success": false,
+    "template_warning": null
+   }
+  },
+  "structured_keys": [
+   "affected_rows",
+   "columns",
+   "error",
+   "error_type",
+   "execution_time",
+   "multi_statement_warning",
+   "row_count",
+   "rows",
+   "statements",
+   "success",
+   "template_warning"
+  ],
+  "surface": "native",
+  "text_head": "{\"success\":false,\"rows\":null,\"columns\":null,\"row_count\":null,\"affected_rows\":null,\"execution_time\":null,\"error\":\"Database with ID 999999 not found. Use list_databases to get valid database IDs.\",\"error_type\":\"DATABASE_NOT_FOUND_ERROR\",\"stat",
+  "text_len": 308
+ },
+ {
+  "has_structuredContent": true,
+  "isError": false,
+  "probe": "P04-instance-info",
+  "result": {
+   "content": [
+    {
+     "text": "{\"instance_summary\":{\"total_dashboards\":0,\"total_charts\":0,\"total_datasets\":0,\"total_databases\":0,\"total_users\":1,\"total_roles\":5,\"total_tags\":0,\"avg_charts_per_dashboard\":0.0},\"recent_activity\":{\"dashboards_created_last_30_days\":0,\"charts_created_last_30_days\":0,\"datasets_created_last_30_days\":0,\"dashboards_modified_last_7_days\":0,\"charts_modified_last_7_days\":0,\"datasets_modified_last_7_days\":0},\"dashboard_breakdown\":{\"published\":0,\"unpublished\":0,\"certified\":0,\"with_charts\":0,\"without_charts\":0},\"database_breakdown\":{\"by_type\":{}},\"popular_content\":{\"top_tags\":[],\"top_creators\":[]},\"current_user\":{\"id\":1,\"username\":\"admin\",\"first_name\":\"a\",\"last_name\":\"b\",\"email\":\"a@example.com\",\"active\":true,\"roles\":[\"Admin\"]},\"feature_availability\":{\"accessible_menus\":[\"Action Log\",\"Alerts & Report\",\"Annotation Layers\",\"CSS Templates\",\"Charts\",\"Dashboards\",\"Data\",\"Databases\",\"Datasets\",\"Extensions\",\"Home\",\"List Groups\",\"List Roles\",\"List Users\",\"Manage\",\"Plugins\",\"Query Search\",\"Recently Archived\",\"Row Level Security\",\"SQL Editor\",\"SQL Lab\",\"Saved Queries\",\"Security\",\"Tags\",\"Tasks\",\"Themes\",\"User Registrations\"]},\"data_model_metadata_redacted\":false,\"timestamp\":\"2026-10-08T08:02:54.686805Z\"}",
+     "type": "text"
+    }
+   ],
+   "isError": false,
+   "structuredContent": {
+    "current_user": {
+     "active": true,
+     "email": "a@example.com",
+     "first_name": "a",
+     "id": 1,
+     "last_name": "b",
+     "roles": [
+      "Admin"
+     ],
+     "username": "admin"
+    },
+    "dashboard_breakdown": {
+     "certified": 0,
+     "published": 0,
+     "unpublished": 0,
+     "with_charts": 0,
+     "without_charts": 0
+    },
+    "data_model_metadata_redacted": false,
+    "database_breakdown": {
+     "by_type": {}
+    },
+    "feature_availability": {
+     "accessible_menus": [
+      "Action Log",
+      "Alerts & Report",
+      "Annotation Layers",
+      "CSS Templates",
+      "Charts",
+      "Dashboards",
+      "Data",
+      "Databases",
+      "Datasets",
+      "Extensions",
+      "Home",
+      "List Groups",
+      "List Roles",
+      "List Users",
+      "Manage",
+      "Plugins",
+      "Query Search",
+      "Recently Archived",
+      "Row Level Security",
+      "SQL Editor",
+      "SQL Lab",
+      "Saved Queries",
+      "Security",
+      "Tags",
+      "Tasks",
+      "Themes",
+      "User Registrations"
+     ]
+    },
+    "instance_summary": {
+     "avg_charts_per_dashboard": 0.0,
+     "total_charts": 0,
+     "total_dashboards": 0,
+     "total_databases": 0,
+     "total_datasets": 0,
+     "total_roles": 5,
+     "total_tags": 0,
+     "total_users": 1
+    },
+    "popular_content": {
+     "top_creators": [],
+     "top_tags": []
+    },
+    "recent_activity": {
+     "charts_created_last_30_days": 0,
+     "charts_modified_last_7_days": 0,
+     "dashboards_created_last_30_days": 0,
+     "dashboards_modified_last_7_days": 0,
+     "datasets_created_last_30_days": 0,
+     "datasets_modified_last_7_days": 0
+    },
+    "timestamp": "2026-10-08T08:02:54.686805Z"
+   }
+  },
+  "structured_keys": [
+   "current_user",
+   "dashboard_breakdown",
+   "data_model_metadata_redacted",
+   "database_breakdown",
+   "feature_availability",
+   "instance_summary",
+   "popular_content",
+   "recent_activity",
+   "timestamp"
+  ],
+  "surface": "native",
+  "text_head": "{\"instance_summary\":{\"total_dashboards\":0,\"total_charts\":0,\"total_datasets\":0,\"total_databases\":0,\"total_users\":1,\"total_roles\":5,\"total_tags\":0,\"avg_charts_per_dashboard\":0.0},\"recent_activity\":{\"dashboards_created_last_30_days\":0,\"charts_",
+  "text_len": 1198
+ },
+ {
+  "has_structuredContent": false,
+  "isError": true,
+  "probe": "P05-arg-wrong-type",
+  "result": {
+   "content": [
+    {
+     "text": "1 validation error for call[list_charts]\nrequest.page\n  Input should be a valid integer, unable to parse string as an integer [type=int_parsing, input_value='not-a-number', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/int_parsing",
+     "type": "text"
+    }
+   ],
+   "isError": true
+  },
+  "structured_keys": [],
+  "surface": "native",
+  "text_head": "1 validation error for call[list_charts]\nrequest.page\n  Input should be a valid integer, unable to parse string as an integer [type=int_parsing, input_value='not-a-number', input_type=str]\n    For further information visit https://errors.py",
+  "text_len": 269
+ },
+ {
+  "has_structuredContent": false,
+  "isError": true,
+  "probe": "P06-arg-unknown-key",
+  "result": {
+   "content": [
+    {
+     "text": "1 validation error for call[list_charts]\nunexpected\n  Unexpected keyword argument [type=unexpected_keyword_argument, input_value=1, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/unexpected_keyword_argument",
+     "type": "text"
+    }
+   ],
+   "isError": true
+  },
+  "structured_keys": [],
+  "surface": "native",
+  "text_head": "1 validation error for call[list_charts]\nunexpected\n  Unexpected keyword argument [type=unexpected_keyword_argument, input_value=1, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/unexpected_keyword_argu",
+  "text_len": 244
+ },
+ {
+  "has_structuredContent": false,
+  "isError": true,
+  "probe": "P07-unknown-tool",
+  "result": {
+   "content": [
+    {
+     "text": "Unknown tool: 'no_such_tool'",
+     "type": "text"
+    }
+   ],
+   "isError": true
+  },
+  "structured_keys": [],
+  "surface": "native",
+  "text_head": "Unknown tool: 'no_such_tool'",
+  "text_len": 28
+ },
+ {
+  "has_structuredContent": false,
+  "isError": true,
+  "probe": "P08-arg-missing-required",
+  "result": {
+   "content": [
+    {
+     "text": "2 validation errors for call[generate_chart]\nrequest.dataset_id\n  Field required [type=missing, input_value={'sanitization_warnings': []}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nrequest.config\n  Field required [type=missing, input_value={'sanitization_warnings': []}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing",
+     "type": "text"
+    }
+   ],
+   "isError": true
+  },
+  "structured_keys": [],
+  "surface": "native",
+  "text_head": "2 validation errors for call[generate_chart]\nrequest.dataset_id\n  Field required [type=missing, input_value={'sanitization_warnings': []}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nrequest",
+  "text_len": 416
+ },
+ {
+  "has_structuredContent": true,
+  "isError": false,
+  "probe": "P09-write-missing-dataset",
+  "result": {
+   "content": [
+    {
+     "text": "{\"chart\":null,\"previews\":{},\"capabilities\":null,\"semantics\":null,\"explore_url\":null,\"chart_type_label\":null,\"embed_code\":null,\"api_endpoints\":{},\"form_data\":{},\"form_data_key\":null,\"performance\":{\"query_duration_ms\":20,\"estimated_cost\":null,\"cache_status\":\"error\",\"optimization_suggestions\":[]},\"accessibility\":null,\"success\":false,\"error\":{\"error_type\":\"dataset_not_found\",\"message\":\"Dataset not found: 999999\",\"timestamp\":\"2026-10-08T08:02:54.934745Z\",\"details\":\"No dataset found with identifier '999999'. Please verify the dataset ID or UUID is correct.\",\"suggestions\":[\"Check that the dataset ID is correct\",\"Verify you have access to this dataset\",\"Use the list_datasets tool to find available datasets\"],\"error_code\":\"CHART_DATASET_NOT_FOUND\",\"validation_errors\":[],\"dataset_context\":null,\"query_info\":null,\"help_url\":null,\"error\":\"Dataset not found: 999999\"},\"warnings\":[],\"schema_version\":\"2.0\",\"api_version\":\"v1\"}",
+     "type": "text"
+    }
+   ],
+   "isError": false,
+   "structuredContent": {
+    "accessibility": null,
+    "api_endpoints": {},
+    "api_version": "v1",
+    "capabilities": null,
+    "chart": null,
+    "chart_type_label": null,
+    "embed_code": null,
+    "error": {
+     "dataset_context": null,
+     "details": "No dataset found with identifier '999999'. Please verify the dataset ID or UUID is correct.",
+     "error": "Dataset not found: 999999",
+     "error_code": "CHART_DATASET_NOT_FOUND",
+     "error_type": "dataset_not_found",
+     "help_url": null,
+     "message": "Dataset not found: 999999",
+     "query_info": null,
+     "suggestions": [
+      "Check that the dataset ID is correct",
+      "Verify you have access to this dataset",
+      "Use the list_datasets tool to find available datasets"
+     ],
+     "timestamp": "2026-10-08T08:02:54.934745Z",
+     "validation_errors": []
+    },
+    "explore_url": null,
+    "form_data": {},
+    "form_data_key": null,
+    "performance": {
+     "cache_status": "error",
+     "estimated_cost": null,
+     "optimization_suggestions": [],
+     "query_duration_ms": 20
+    },
+    "previews": {},
+    "schema_version": "2.0",
+    "semantics": null,
+    "success": false,
+    "warnings": []
+   }
+  },
+  "structured_keys": [
+   "accessibility",
+   "api_endpoints",
+   "api_version",
+   "capabilities",
+   "chart",
+   "chart_type_label",
+   "embed_code",
+   "error",
+   "explore_url",
+   "form_data",
+   "form_data_key",
+   "performance"
+  ],
+  "surface": "native",
+  "text_head": "{\"chart\":null,\"previews\":{},\"capabilities\":null,\"semantics\":null,\"explore_url\":null,\"chart_type_label\":null,\"embed_code\":null,\"api_endpoints\":{},\"form_data\":{},\"form_data_key\":null,\"performance\":{\"query_duration_ms\":20,\"estimated_cost\":null",
+  "text_len": 922
+ },
+ {
+  "has_structuredContent": true,
+  "isError": false,
+  "probe": "P01-list-empty",
+  "result": {
+   "content": [
+    {
+     "text": "{\"count\":0,\"total_count\":0,\"page\":1,\"page_size\":10,\"total_pages\":0,\"has_previous\":false,\"has_next\":false,\"columns_requested\":[\"id\",\"slice_name\",\"viz_type\",\"description\",\"certified_by\",\"certification_details\",\"url\",\"changed_on\",\"changed_on_humanized\"],\"columns_loaded\":[\"id\",\"slice_name\",\"viz_type\",\"description\",\"certified_by\",\"certification_details\",\"url\",\"changed_on\",\"changed_on_humanized\"],\"columns_available\":[\"id\",\"slice_name\",\"datasource_id\",\"datasource_type\",\"datasource_name\",\"viz_type\",\"params\",\"query_context\",\"description\",\"cache_timeout\",\"perm\",\"schema_perm\",\"catalog_perm\",\"last_saved_at\",\"certified_by\",\"certification_details\",\"is_managed_externally\",\"external_url\",\"deleted_at\",\"created_on\",\"changed_on\",\"uuid\",\"url\",\"form_data\",\"changed_on_humanized\",\"created_on_humanized\",\"tags\"],\"sortable_columns\":[\"id\",\"slice_name\",\"viz_type\",\"description\",\"changed_on\",\"changed_on_delta_humanized\",\"created_on\"],\"filters_applied\":[],\"pagination\":{\"page\":1,\"page_size\":10,\"total_count\":0,\"total_pages\":0,\"has_next\":false,\"has_previous\":false},\"timestamp\":\"2026-10-08T08:02:55.163857Z\",\"charts\":[]}",
+     "type": "text"
+    }
+   ],
+   "isError": false,
+   "structuredContent": {
+    "charts": [],
+    "columns_available": [
+     "id",
+     "slice_name",
+     "datasource_id",
+     "datasource_type",
+     "datasource_name",
+     "viz_type",
+     "params",
+     "query_context",
+     "description",
+     "cache_timeout",
+     "perm",
+     "schema_perm",
+     "catalog_perm",
+     "last_saved_at",
+     "certified_by",
+     "certification_details",
+     "is_managed_externally",
+     "external_url",
+     "deleted_at",
+     "created_on",
+     "changed_on",
+     "uuid",
+     "url",
+     "form_data",
+     "changed_on_humanized",
+     "created_on_humanized",
+     "tags"
+    ],
+    "columns_loaded": [
+     "id",
+     "slice_name",
+     "viz_type",
+     "description",
+     "certified_by",
+     "certification_details",
+     "url",
+     "changed_on",
+     "changed_on_humanized"
+    ],
+    "columns_requested": [
+     "id",
+     "slice_name",
+     "viz_type",
+     "description",
+     "certified_by",
+     "certification_details",
+     "url",
+     "changed_on",
+     "changed_on_humanized"
+    ],
+    "count": 0,
+    "filters_applied": [],
+    "has_next": false,
+    "has_previous": false,
+    "page": 1,
+    "page_size": 10,
+    "pagination": {
+     "has_next": false,
+     "has_previous": false,
+     "page": 1,
+     "page_size": 10,
+     "total_count": 0,
+     "total_pages": 0
+    },
+    "sortable_columns": [
+     "id",
+     "slice_name",
+     "viz_type",
+     "description",
+     "changed_on",
+     "changed_on_delta_humanized",
+     "created_on"
+    ],
+    "timestamp": "2026-10-08T08:02:55.163857Z",
+    "total_count": 0,
+    "total_pages": 0
+   }
+  },
+  "structured_keys": [
+   "charts",
+   "columns_available",
+   "columns_loaded",
+   "columns_requested",
+   "count",
+   "filters_applied",
+   "has_next",
+   "has_previous",
+   "page",
+   "page_size",
+   "pagination",
+   "sortable_columns"
+  ],
+  "surface": "generic",
+  "text_head": "{\"count\":0,\"total_count\":0,\"page\":1,\"page_size\":10,\"total_pages\":0,\"has_previous\":false,\"has_next\":false,\"columns_requested\":[\"id\",\"slice_name\",\"viz_type\",\"description\",\"certified_by\",\"certification_details\",\"url\",\"changed_on\",\"changed_on_h",
+  "text_len": 1102
+ },
+ {
+  "has_structuredContent": true,
+  "isError": false,
+  "probe": "P02-get-missing",
+  "result": {
+   "content": [
+    {
+     "text": "{\"error_type\":\"not_found\",\"message\":\"ChartInfo with identifier '999999' not found\",\"timestamp\":\"2026-10-08T08:02:55.209284Z\",\"details\":null,\"suggestions\":[],\"error_code\":null,\"error\":\"ChartInfo with identifier '999999' not found\"}",
+     "type": "text"
+    }
+   ],
+   "isError": false,
+   "structuredContent": {
+    "details": null,
+    "error": "ChartInfo with identifier '999999' not found",
+    "error_code": null,
+    "error_type": "not_found",
+    "message": "ChartInfo with identifier '999999' not found",
+    "suggestions": [],
+    "timestamp": "2026-10-08T08:02:55.209284Z"
+   }
+  },
+  "structured_keys": [
+   "details",
+   "error",
+   "error_code",
+   "error_type",
+   "message",
+   "suggestions",
+   "timestamp"
+  ],
+  "surface": "generic",
+  "text_head": "{\"error_type\":\"not_found\",\"message\":\"ChartInfo with identifier '999999' not found\",\"timestamp\":\"2026-10-08T08:02:55.209284Z\",\"details\":null,\"suggestions\":[],\"error_code\":null,\"error\":\"ChartInfo with identifier '999999' not found\"}",
+  "text_len": 230
+ },
+ {
+  "has_structuredContent": true,
+  "isError": false,
+  "probe": "P03-sql-bad-db",
+  "result": {
+   "content": [
+    {
+     "text": "{\"success\":false,\"rows\":null,\"columns\":null,\"row_count\":null,\"affected_rows\":null,\"execution_time\":null,\"error\":\"Database with ID 999999 not found. Use list_databases to get valid database IDs.\",\"error_type\":\"DATABASE_NOT_FOUND_ERROR\",\"statements\":null,\"multi_statement_warning\":null,\"template_warning\":null}",
+     "type": "text"
+    }
+   ],
+   "isError": false,
+   "structuredContent": {
+    "affected_rows": null,
+    "columns": null,
+    "error": "Database with ID 999999 not found. Use list_databases to get valid database IDs.",
+    "error_type": "DATABASE_NOT_FOUND_ERROR",
+    "execution_time": null,
+    "multi_statement_warning": null,
+    "row_count": null,
+    "rows": null,
+    "statements": null,
+    "success": false,
+    "template_warning": null
+   }
+  },
+  "structured_keys": [
+   "affected_rows",
+   "columns",
+   "error",
+   "error_type",
+   "execution_time",
+   "multi_statement_warning",
+   "row_count",
+   "rows",
+   "statements",
+   "success",
+   "template_warning"
+  ],
+  "surface": "generic",
+  "text_head": "{\"success\":false,\"rows\":null,\"columns\":null,\"row_count\":null,\"affected_rows\":null,\"execution_time\":null,\"error\":\"Database with ID 999999 not found. Use list_databases to get valid database IDs.\",\"error_type\":\"DATABASE_NOT_FOUND_ERROR\",\"stat",
+  "text_len": 308
+ },
+ {
+  "has_structuredContent": true,
+  "isError": false,
+  "probe": "P04-instance-info",
+  "result": {
+   "content": [
+    {
+     "text": "{\"instance_summary\":{\"total_dashboards\":0,\"total_charts\":0,\"total_datasets\":0,\"total_databases\":0,\"total_users\":1,\"total_roles\":5,\"total_tags\":0,\"avg_charts_per_dashboard\":0.0},\"recent_activity\":{\"dashboards_created_last_30_days\":0,\"charts_created_last_30_days\":0,\"datasets_created_last_30_days\":0,\"dashboards_modified_last_7_days\":0,\"charts_modified_last_7_days\":0,\"datasets_modified_last_7_days\":0},\"dashboard_breakdown\":{\"published\":0,\"unpublished\":0,\"certified\":0,\"with_charts\":0,\"without_charts\":0},\"database_breakdown\":{\"by_type\":{}},\"popular_content\":{\"top_tags\":[],\"top_creators\":[]},\"current_user\":{\"id\":1,\"username\":\"admin\",\"first_name\":\"a\",\"last_name\":\"b\",\"email\":\"a@example.com\",\"active\":true,\"roles\":[\"Admin\"]},\"feature_availability\":{\"accessible_menus\":[\"Action Log\",\"Alerts & Report\",\"Annotation Layers\",\"CSS Templates\",\"Charts\",\"Dashboards\",\"Data\",\"Databases\",\"Datasets\",\"Extensions\",\"Home\",\"List Groups\",\"List Roles\",\"List Users\",\"Manage\",\"Plugins\",\"Query Search\",\"Recently Archived\",\"Row Level Security\",\"SQL Editor\",\"SQL Lab\",\"Saved Queries\",\"Security\",\"Tags\",\"Tasks\",\"Themes\",\"User Registrations\"]},\"data_model_metadata_redacted\":false,\"timestamp\":\"2026-10-08T08:02:55.321852Z\"}",
+     "type": "text"
+    }
+   ],
+   "isError": false,
+   "structuredContent": {
+    "current_user": {
+     "active": true,
+     "email": "a@example.com",
+     "first_name": "a",
+     "id": 1,
+     "last_name": "b",
+     "roles": [
+      "Admin"
+     ],
+     "username": "admin"
+    },
+    "dashboard_breakdown": {
+     "certified": 0,
+     "published": 0,
+     "unpublished": 0,
+     "with_charts": 0,
+     "without_charts": 0
+    },
+    "data_model_metadata_redacted": false,
+    "database_breakdown": {
+     "by_type": {}
+    },
+    "feature_availability": {
+     "accessible_menus": [
+      "Action Log",
+      "Alerts & Report",
+      "Annotation Layers",
+      "CSS Templates",
+      "Charts",
+      "Dashboards",
+      "Data",
+      "Databases",
+      "Datasets",
+      "Extensions",
+      "Home",
+      "List Groups",
+      "List Roles",
+      "List Users",
+      "Manage",
+      "Plugins",
+      "Query Search",
+      "Recently Archived",
+      "Row Level Security",
+      "SQL Editor",
+      "SQL Lab",
+      "Saved Queries",
+      "Security",
+      "Tags",
+      "Tasks",
+      "Themes",
+      "User Registrations"
+     ]
+    },
+    "instance_summary": {
+     "avg_charts_per_dashboard": 0.0,
+     "total_charts": 0,
+     "total_dashboards": 0,
+     "total_databases": 0,
+     "total_datasets": 0,
+     "total_roles": 5,
+     "total_tags": 0,
+     "total_users": 1
+    },
+    "popular_content": {
+     "top_creators": [],
+     "top_tags": []
+    },
+    "recent_activity": {
+     "charts_created_last_30_days": 0,
+     "charts_modified_last_7_days": 0,
+     "dashboards_created_last_30_days": 0,
+     "dashboards_modified_last_7_days": 0,
+     "datasets_created_last_30_days": 0,
+     "datasets_modified_last_7_days": 0
+    },
+    "timestamp": "2026-10-08T08:02:55.321852Z"
+   }
+  },
+  "structured_keys": [
+   "current_user",
+   "dashboard_breakdown",
+   "data_model_metadata_redacted",
+   "database_breakdown",
+   "feature_availability",
+   "instance_summary",
+   "popular_content",
+   "recent_activity",
+   "timestamp"
+  ],
+  "surface": "generic",
+  "text_head": "{\"instance_summary\":{\"total_dashboards\":0,\"total_charts\":0,\"total_datasets\":0,\"total_databases\":0,\"total_users\":1,\"total_roles\":5,\"total_tags\":0,\"avg_charts_per_dashboard\":0.0},\"recent_activity\":{\"dashboards_created_last_30_days\":0,\"charts_",
+  "text_len": 1198
+ },
+ {
+  "has_structuredContent": false,
+  "isError": true,
+  "probe": "P05-arg-wrong-type",
+  "result": {
+   "content": [
+    {
+     "text": "1 validation error for call[list_charts]\nrequest.page\n  Input should be a valid integer, unable to parse string as an integer [type=int_parsing, input_value='not-a-number', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/int_parsing",
+     "type": "text"
+    }
+   ],
+   "isError": true
+  },
+  "structured_keys": [],
+  "surface": "generic",
+  "text_head": "1 validation error for call[list_charts]\nrequest.page\n  Input should be a valid integer, unable to parse string as an integer [type=int_parsing, input_value='not-a-number', input_type=str]\n    For further information visit https://errors.py",
+  "text_len": 269
+ },
+ {
+  "has_structuredContent": false,
+  "isError": true,
+  "probe": "P06-arg-unknown-key",
+  "result": {
+   "content": [
+    {
+     "text": "1 validation error for call[list_charts]\nunexpected\n  Unexpected keyword argument [type=unexpected_keyword_argument, input_value=1, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/unexpected_keyword_argument",
+     "type": "text"
+    }
+   ],
+   "isError": true
+  },
+  "structured_keys": [],
+  "surface": "generic",
+  "text_head": "1 validation error for call[list_charts]\nunexpected\n  Unexpected keyword argument [type=unexpected_keyword_argument, input_value=1, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/unexpected_keyword_argu",
+  "text_len": 244
+ },
+ {
+  "has_structuredContent": false,
+  "isError": true,
+  "probe": "P07-unknown-tool",
+  "result": {
+   "content": [
+    {
+     "text": "Error calling tool 'call_tool': Unknown tool: 'no_such_tool'",
+     "type": "text"
+    }
+   ],
+   "isError": true
+  },
+  "structured_keys": [],
+  "surface": "generic",
+  "text_head": "Error calling tool 'call_tool': Unknown tool: 'no_such_tool'",
+  "text_len": 60
+ },
+ {
+  "has_structuredContent": false,
+  "isError": true,
+  "probe": "P08-arg-missing-required",
+  "result": {
+   "content": [
+    {
+     "text": "2 validation errors for call[generate_chart]\nrequest.dataset_id\n  Field required [type=missing, input_value={'sanitization_warnings': []}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nrequest.config\n  Field required [type=missing, input_value={'sanitization_warnings': []}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing",
+     "type": "text"
+    }
+   ],
+   "isError": true
+  },
+  "structured_keys": [],
+  "surface": "generic",
+  "text_head": "2 validation errors for call[generate_chart]\nrequest.dataset_id\n  Field required [type=missing, input_value={'sanitization_warnings': []}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nrequest",
+  "text_len": 416
+ },
+ {
+  "has_structuredContent": true,
+  "isError": false,
+  "probe": "P09-write-missing-dataset",
+  "result": {
+   "content": [
+    {
+     "text": "{\"chart\":null,\"previews\":{},\"capabilities\":null,\"semantics\":null,\"explore_url\":null,\"chart_type_label\":null,\"embed_code\":null,\"api_endpoints\":{},\"form_data\":{},\"form_data_key\":null,\"performance\":{\"query_duration_ms\":20,\"estimated_cost\":null,\"cache_status\":\"error\",\"optimization_suggestions\":[]},\"accessibility\":null,\"success\":false,\"error\":{\"error_type\":\"dataset_not_found\",\"message\":\"Dataset not found: 999999\",\"timestamp\":\"2026-10-08T08:02:55.391186Z\",\"details\":\"No dataset found with identifier '999999'. Please verify the dataset ID or UUID is correct.\",\"suggestions\":[\"Check that the dataset ID is correct\",\"Verify you have access to this dataset\",\"Use the list_datasets tool to find available datasets\"],\"error_code\":\"CHART_DATASET_NOT_FOUND\",\"validation_errors\":[],\"dataset_context\":null,\"query_info\":null,\"help_url\":null,\"error\":\"Dataset not found: 999999\"},\"warnings\":[],\"schema_version\":\"2.0\",\"api_version\":\"v1\"}",
+     "type": "text"
+    }
+   ],
+   "isError": false,
+   "structuredContent": {
+    "accessibility": null,
+    "api_endpoints": {},
+    "api_version": "v1",
+    "capabilities": null,
+    "chart": null,
+    "chart_type_label": null,
+    "embed_code": null,
+    "error": {
+     "dataset_context": null,
+     "details": "No dataset found with identifier '999999'. Please verify the dataset ID or UUID is correct.",
+     "error": "Dataset not found: 999999",
+     "error_code": "CHART_DATASET_NOT_FOUND",
+     "error_type": "dataset_not_found",
+     "help_url": null,
+     "message": "Dataset not found: 999999",
+     "query_info": null,
+     "suggestions": [
+      "Check that the dataset ID is correct",
+      "Verify you have access to this dataset",
+      "Use the list_datasets tool to find available datasets"
+     ],
+     "timestamp": "2026-10-08T08:02:55.391186Z",
+     "validation_errors": []
+    },
+    "explore_url": null,
+    "form_data": {},
+    "form_data_key": null,
+    "performance": {
+     "cache_status": "error",
+     "estimated_cost": null,
+     "optimization_suggestions": [],
+     "query_duration_ms": 20
+    },
+    "previews": {},
+    "schema_version": "2.0",
+    "semantics": null,
+    "success": false,
+    "warnings": []
+   }
+  },
+  "structured_keys": [
+   "accessibility",
+   "api_endpoints",
+   "api_version",
+   "capabilities",
+   "chart",
+   "chart_type_label",
+   "embed_code",
+   "error",
+   "explore_url",
+   "form_data",
+   "form_data_key",
+   "performance"
+  ],
+  "surface": "generic",
+  "text_head": "{\"chart\":null,\"previews\":{},\"capabilities\":null,\"semantics\":null,\"explore_url\":null,\"chart_type_label\":null,\"embed_code\":null,\"api_endpoints\":{},\"form_data\":{},\"form_data_key\":null,\"performance\":{\"query_duration_ms\":20,\"estimated_cost\":null",
+  "text_len": 922
+ },
+ {
+  "has_structuredContent": false,
+  "isError": true,
+  "probe": "P10-call-tool-recursion",
+  "result": {
+   "content": [
+    {
+     "text": "'call_tool' is a synthetic search tool and cannot be called via the call_tool proxy",
+     "type": "text"
+    }
+   ],
+   "isError": true
+  },
+  "structured_keys": [],
+  "surface": "generic",
+  "text_head": "'call_tool' is a synthetic search tool and cannot be called via the call_tool proxy",
+  "text_len": 83
+ }
+]

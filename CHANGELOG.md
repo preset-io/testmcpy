@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `testmcpy.qualification`: a harness for qualifying MCP tool surfaces (generic
+  `search_tools`/`call_tool`, native eager, native deferred) against local fixtures
+  only, with pre-registered budgets, a 12-task suite, a fixture MCP server (roles,
+  workspace grants, Knowledge flag, old-producer workspace, write ledger), raw
+  JSON-RPC traffic recording, a real-Superset catalog capture and dispatcher
+  fidelity probe, and a generated results report. Run with
+  `python -m testmcpy.qualification run`; serve a fixture surface to a real client
+  with `python -m testmcpy.qualification serve`. Data, budgets, the client matrix,
+  the baseline report, the staged rollout draft and the list of items waiting on the
+  producer and gateway work live in `qualification/native-tools/`. `tiktoken` joins
+  the `dev` extra (the harness falls back to a labelled bytes/4 estimate without it).
+
 ## [0.11.22] - 2026-10-08
 
 ### Fixed

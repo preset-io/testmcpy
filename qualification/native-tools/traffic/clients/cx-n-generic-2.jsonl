@@ -1,0 +1,14 @@
+{"thread_id":"01a11a9b-5d8c-7102-88aa-abdc15c3cd26","type":"thread.started"}
+{"item":{"id":"item_0","message":"Model metadata for `openai/gpt-5-mini` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.","type":"error"},"type":"item.completed"}
+{"type":"turn.started"}
+{"item":{"id":"item_1","text":"I'll list available MCP resources to find chart names that contain \"revenue\".","type":"agent_message"},"type":"item.completed"}
+{"item":{"arguments":{},"error":null,"id":"item_2","result":null,"server":"fixture","status":"in_progress","tool":"call_tool","type":"mcp_tool_call"},"type":"item.started"}
+{"item":{"arguments":{},"error":null,"id":"item_2","result":{"content":[{"text":"\"Input validation error: 'name' is a required property\"","type":"text"}],"structured_content":{"result":"Input validation error: 'name' is a required property"}},"server":"fixture","status":"failed","tool":"call_tool","type":"mcp_tool_call"},"type":"item.completed"}
+{"item":{"arguments":{},"error":null,"id":"item_4","result":null,"server":"codex","status":"in_progress","tool":"list_mcp_resources","type":"mcp_tool_call"},"type":"item.started"}
+{"item":{"arguments":{},"error":null,"id":"item_4","result":{"content":[{"text":"{\"resources\":[]}","type":"text"}],"structured_content":null},"server":"codex","status":"completed","tool":"list_mcp_resources","type":"mcp_tool_call"},"type":"item.completed"}
+{"item":{"arguments":{},"error":null,"id":"item_6","result":null,"server":"codex","status":"in_progress","tool":"list_mcp_resource_templates","type":"mcp_tool_call"},"type":"item.started"}
+{"item":{"arguments":{},"error":null,"id":"item_6","result":{"content":[{"text":"{\"resourceTemplates\":[]}","type":"text"}],"structured_content":null},"server":"codex","status":"completed","tool":"list_mcp_resource_templates","type":"mcp_tool_call"},"type":"item.completed"}
+{"item":{"arguments":{"arguments":{},"name":"list_mcp_resources"},"error":null,"id":"item_8","result":null,"server":"fixture","status":"in_progress","tool":"call_tool","type":"mcp_tool_call"},"type":"item.started"}
+{"item":{"arguments":{"arguments":{},"name":"list_mcp_resources"},"error":null,"id":"item_8","result":{"content":[{"text":"{\"error\":{\"code\":\"UNKNOWN_TOOL\",\"message\":\"Unknown tool: 'list_mcp_resources'\",\"tool\":\"list_mcp_resources\"}}","type":"text"}],"structured_content":{"error":{"code":"UNKNOWN_TOOL","message":"Unknown tool: 'list_mcp_resources'","tool":"list_mcp_resources"}}},"server":"fixture","status":"failed","tool":"call_tool","type":"mcp_tool_call"},"type":"item.completed"}
+{"item":{"id":"item_10","text":"No MCP resources were found in this workspace, so I couldn't locate any chart containing \"revenue.\"","type":"agent_message"},"type":"item.completed"}
+{"type":"turn.completed","usage":{"cache_write_input_tokens":0,"cached_input_tokens":59008,"input_tokens":66091,"output_tokens":761,"reasoning_output_tokens":560}}

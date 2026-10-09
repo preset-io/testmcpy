@@ -1,0 +1,12 @@
+{"thread_id":"01a11a99-cbae-7f41-b13d-af9e97979e8d","type":"thread.started"}
+{"item":{"id":"item_0","message":"Model metadata for `openai/gpt-5-mini` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.","type":"error"},"type":"item.completed"}
+{"type":"turn.started"}
+{"item":{"id":"item_1","text":"I'll list available MCP resources in this workspace and search for names containing \"revenue\". I'll call the resource listing tool now.","type":"agent_message"},"type":"item.completed"}
+{"item":{"arguments":{},"error":null,"id":"item_2","result":null,"server":"codex","status":"in_progress","tool":"list_mcp_resources","type":"mcp_tool_call"},"type":"item.started"}
+{"item":{"arguments":{},"error":null,"id":"item_2","result":{"content":[{"text":"{\"resources\":[]}","type":"text"}],"structured_content":null},"server":"codex","status":"completed","tool":"list_mcp_resources","type":"mcp_tool_call"},"type":"item.completed"}
+{"item":{"arguments":{},"error":null,"id":"item_4","result":null,"server":"codex","status":"in_progress","tool":"list_mcp_resource_templates","type":"mcp_tool_call"},"type":"item.started"}
+{"item":{"arguments":{},"error":null,"id":"item_4","result":{"content":[{"text":"{\"resourceTemplates\":[]}","type":"text"}],"structured_content":null},"server":"codex","status":"completed","tool":"list_mcp_resource_templates","type":"mcp_tool_call"},"type":"item.completed"}
+{"item":{"arguments":{"query":"revenue"},"error":null,"id":"item_5","result":null,"server":"fixture","status":"in_progress","tool":"search_tools","type":"mcp_tool_call"},"type":"item.started"}
+{"item":{"arguments":{"query":"revenue"},"error":{"message":"user cancelled MCP tool call"},"id":"item_5","result":null,"server":"fixture","status":"failed","tool":"search_tools","type":"mcp_tool_call"},"type":"item.completed"}
+{"item":{"id":"item_7","text":"No matching chart found \u2014 MCP resource list is empty.","type":"agent_message"},"type":"item.completed"}
+{"type":"turn.completed","usage":{"cache_write_input_tokens":0,"cached_input_tokens":38912,"input_tokens":52514,"output_tokens":723,"reasoning_output_tokens":680}}

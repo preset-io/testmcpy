@@ -1,0 +1,260 @@
+# Pre-registered qualification budgets for SC-125472 (MCP native-tool migration).
+#
+# Registration rule: this file is committed BEFORE any token count, latency
+# sample, task run or catalog capture exists in the repository. Thresholds are
+# derived from context-window arithmetic and interaction-cost reasoning, not
+# from observed numbers.
+#
+# Amendment rule: never edit a threshold in place after measurement starts.
+# Append an entry to `amendments:` (date, id, old, new, reason, and whether the
+# measurement had been seen). Reports must cite the amendment list.
+#
+# Prior knowledge declared at registration (2026-10-08): the author had seen the
+# Superset MCP source contains roughly 70 tool decorators and that the
+# production compatibility surface exposes search_tools + call_tool +
+# get_instance_info + health_check. No token counts, latencies or schema sizes
+# had been computed.
+
+version: 1
+registered: "2026-10-08"
+story: "https://app.shortcut.com/preset/story/125472"
+
+measurement_conventions:
+  tokenizer:
+    primary: "tiktoken o200k_base"
+    note: >
+      Anthropic's tokenizer is not computable offline without an API key; the
+      budgets carry headroom (hard limits are 2x the targets) so a +-20%
+      tokenizer difference cannot flip a verdict. Results from a provider
+      count-tokens endpoint, when available, are reported next to the
+      o200k_base number and never replace it silently.
+  serialization: >
+    A tool definition is counted as the compact JSON of
+    {"type":"function","name","description","parameters"} (the shape every
+    major provider API accepts). MCP annotations and title are not counted
+    because most clients do not forward them to the model.
+  reference_context_window_tokens: 128000
+  reference_window_note: >
+    128k is the smallest window among the models the client matrix targets, so
+    percentages are conservative for larger-window models.
+  catalogs:
+    - "actual: tools/list captured from a real Superset MCP build (provenance recorded in the fixture)"
+    - "scale150: synthetic 150-tool catalog, generated deterministically, used only because the actual catalog is below 150 tools"
+  surfaces:
+    - "generic: search_tools + call_tool compatibility surface (current)"
+    - "native_eager: every operation listed as its own typed tool"
+    - "native_deferred: named tools with defer_loading / client or provider tool search, only where support is verified"
+  task_suite:
+    version: 1
+    ids:
+      - "chart-find"
+      - "chart-create"
+      - "sql-query"
+      - "dataset-lookup"
+      - "dashboard-lookup"
+      - "workspace-switch"
+      - "old-producer-unsupported"
+      - "revoked-access"
+      - "restricted-role"
+      - "knowledge-disabled"
+      - "write-approval-readonly"
+      - "write-approval-write"
+  evidence_classes:
+    measured: "observed against local fixtures by this harness"
+    simulated: "computed from an explicit client-policy model, not observed in a real client"
+    blocked: "could not be run; reason recorded; no value is inferred"
+
+budgets:
+  - id: B01-initial-context-tokens
+    metric: "Tokens of tool definitions a client puts in the model prompt before the first user turn"
+    unit: tokens
+    aggregation: "per surface and catalog, single value"
+    hard_limit: 10000
+    target: 5000
+    applies_to: [native_eager, native_deferred, generic]
+    gating: true
+    justification: >
+      10k tokens is 7.8% of the 128k reference window. Vendors recommend
+      deferred discovery at about this size, which is used here only as a
+      design heuristic, never as a savings claim. A surface above the limit
+      costs more than 1 in 13 prompt tokens before the user speaks and repeats
+      on every turn. Decision rule if native_eager exceeds it on the actual
+      catalog: eager exposure of the full catalog is not acceptable by default;
+      a curated default-visible core within the limit plus deferred or
+      discoverable remainder is required.
+
+  - id: B02-schema-tokens-per-tool
+    metric: "Tokens per tool definition (name, description, parameters)"
+    unit: tokens
+    aggregation: "median, p95 and max across the catalog"
+    hard_limit: {median: 400, p95: 1200, max: 2500}
+    target: {median: 250, p95: 700, max: 1500}
+    applies_to: [native_eager, native_deferred]
+    gating: true
+    justification: >
+      A task needs one to three tools. If a median tool costs 400 tokens a
+      three-tool task loads about 1.2k tokens of schema, under 1% of the
+      window. The tail limits stop a single operation (for example a
+      chart-config union) from dominating a deferred search result, where
+      several definitions arrive at once.
+
+  - id: B03-cumulative-tokens-per-task
+    metric: "Tokens the tool plane adds over one task: tool definitions present or loaded + tool calls + tool results + discovery responses; excludes model reasoning and the system prompt"
+    unit: tokens
+    aggregation: "median and p90 across the task suite, per surface"
+    hard_limit: {median: 15000, p90: 30000}
+    target: {median: 8000, p90: 16000}
+    applies_to: [native_eager, native_deferred, generic]
+    gating: true
+    relative_rule: "candidate median must be <= 1.25x the generic baseline median unless task accuracy (B06) improves by >= 10 percentage points"
+    justification: >
+      Median 15k is under 12% of the window, leaving room for multi-step
+      conversation; p90 30k is under 24%, still leaving three quarters of the
+      window. The relative rule stops a migration that trades discovery
+      round trips for a larger standing cost without a measurable accuracy
+      gain.
+
+  - id: B04-latency
+    metric: "Tool-plane latency per task: wall-clock of MCP requests (initialize, tools/list, discovery, calls) against the local fixture, excluding model time"
+    unit: milliseconds
+    aggregation: "median and p95 across the task suite"
+    hard_limit: {median: 400, p95: 1500}
+    target: {median: 150, p95: 600}
+    relative_rule: "candidate p95 must be <= generic baseline p95 + 250 ms"
+    applies_to: [native_eager, native_deferred, generic]
+    gating: false
+    justification: >
+      Fixture latency measures protocol overhead only (pagination round trips,
+      extra discovery calls), not model or network time, so it is informational
+      this phase: a local number cannot stand in for a production RTT. The
+      limits bound protocol overhead to under half a second at the median so
+      it stays well below a typical model turn (seconds). Becomes gating when
+      measured against a staging endpoint.
+
+  - id: B05-discovery-round-trips
+    metric: "Discovery calls (search_tools, tool-search, tools/list re-fetch after list_changed) per task, scripted reference agent"
+    unit: calls
+    aggregation: "median and max across the task suite"
+    hard_limit: {median: 1, max: 2}
+    target: {median: 0, max: 1}
+    applies_to: [native_eager, native_deferred, generic]
+    gating: true
+    justification: >
+      Each discovery call is a model turn plus a result the model must read. One
+      per task is tolerable (deferred search); two is the ceiling. Native eager
+      should need none. The generic surface is expected to sit at one or more;
+      this budget quantifies by how much.
+
+  - id: B06-task-accuracy
+    metric: "Fraction of tasks whose terminal fixture state and returned answer match the task oracle"
+    unit: fraction
+    aggregation: "over the supported task suite; the scripted reference agent is a deterministic capability check, LLM-driven runs report separately with n and the model id"
+    hard_limit: {scripted: 1.0, llm_read_tasks: 0.85}
+    target: {scripted: 1.0, llm_read_tasks: 0.95}
+    relative_rule: "candidate LLM accuracy must be >= generic baseline - 5 percentage points"
+    applies_to: [native_eager, native_deferred, generic]
+    gating: true
+    justification: >
+      A scripted reference agent that knows the right tool and arguments can
+      only fail if the surface cannot express the task, so anything below 100%
+      is a surface defect, not noise. LLM-driven runs on a small suite are
+      noisy; the 5-point non-inferiority margin is stated knowing that with n
+      below about 40 trials it detects only large regressions, which is
+      reported with the result.
+
+  - id: B07-missing-tool-rate
+    metric: "Fraction of required operations that are neither visible nor discoverable on the surface for a supported producer"
+    unit: fraction
+    aggregation: "over required operations in the task suite"
+    hard_limit: 0.0
+    target: 0.0
+    applies_to: [native_eager, native_deferred, generic]
+    gating: true
+    justification: >
+      A required operation that cannot be reached is a functional regression
+      with no acceptable nonzero rate. For the unsupported old producer case
+      the requirement is a typed, explicit unsupported error on 100% of
+      attempts, never a silent empty result.
+
+  - id: B08-argument-failure-rate
+    metric: "Fraction of first-attempt tool calls rejected for argument/schema reasons"
+    unit: fraction
+    aggregation: "over first-attempt calls from schema-conforming and deliberately malformed argument probes, per surface"
+    hard_limit: 0.05
+    target: 0.02
+    relative_rule: "native must be <= generic baseline"
+    applies_to: [native_eager, native_deferred, generic]
+    gating: true
+    justification: >
+      One failed first attempt in twenty costs a full extra model turn and its
+      tokens. The deterministic probes also record where malformed arguments
+      are rejected (client-side schema validation versus server) because a
+      generic arguments:object envelope removes the typed schema the client
+      could validate against.
+
+  - id: B09-approval-prompts-per-task
+    metric: "User approval prompts per task under a stated client approval policy"
+    unit: prompts
+    aggregation: "mean per read-only task, mean per write task, per surface and per policy"
+    hard_limit: {read_only_task: 0.0, write_task_per_write_op: 1.0}
+    target: {read_only_task: 0.0, write_task_per_write_op: 1.0}
+    applies_to: [native_eager, native_deferred, generic]
+    gating: true
+    evidence_class_default: simulated
+    justification: >
+      Reads must not inherit the generic dispatcher's destructive
+      classification, and a write should cost exactly one deliberate
+      confirmation. Policies modelled: honours-annotations (readOnlyHint
+      auto-approves), prompts-on-everything, and untrusted-server (always
+      prompts). The model is explicit and the result is labelled simulated.
+      It never claims annotations override client policy; observed client
+      behaviour is recorded only in the client matrix.
+
+  - id: B10-listing-completeness
+    metric: "Tools returned by paginated tools/list divided by tools the fixture catalog defines"
+    unit: fraction
+    aggregation: "per surface and catalog, with the page size varied"
+    hard_limit: 1.0
+    target: 1.0
+    applies_to: [native_eager, native_deferred]
+    gating: true
+    justification: "A truncated list silently deletes operations; 100% is the only meaningful bar."
+
+  - id: B11-permission-isolation
+    metric: "Cross-principal or cross-workspace leaks (a tool visible/callable, or data returned, that the principal's role or workspace does not grant)"
+    unit: leaks
+    aggregation: "count over the isolation probe matrix"
+    hard_limit: 0
+    target: 0
+    applies_to: [native_eager, native_deferred, generic]
+    gating: true
+    justification: "Any leak is a security defect."
+
+  - id: B12-result-error-fidelity
+    metric: "Fraction of probe results where isError, structuredContent and error code/message arrive unchanged through the surface"
+    unit: fraction
+    aggregation: "over the error and result probes"
+    hard_limit: 1.0
+    target: 1.0
+    applies_to: [native_eager, native_deferred, generic]
+    gating: true
+    justification: >
+      A dispatcher that flattens errors into prose hides revoked-access and
+      unsupported-producer signals from the model and from evaluators.
+
+decision_rules:
+  - "A surface passes the phase only if every gating budget is within its hard_limit; targets are reported as met/unmet."
+  - "Every number is labelled measured, simulated or blocked; blocked metrics are never filled from vendor documentation."
+  - "A relative_rule is evaluated against the generic baseline captured in the same run, same catalog, same fixtures."
+  - "Latency (B04) is informational until measured against a staging endpoint."
+  - "This phase produces baselines and the harness. A final go/no-go requires the producer (SC-125470) and gateway (SC-125471) code and is out of scope here."
+
+amendments:
+  - id: A1
+    date: "2026-10-08"
+    budget: B08-argument-failure-rate
+    kind: clarification
+    old: "aggregation: over first-attempt calls from schema-conforming and deliberately malformed argument probes"
+    new: "no threshold change: the gate is the rejection rate of schema-conforming first-attempt calls made by the scripted agent; malformed-argument probes are reported separately, with where each is rejected"
+    reason: "Mixing conforming calls with deliberately malformed probes yields a rate that depends only on how many malformed probes were chosen."
+    measurement_seen: true
