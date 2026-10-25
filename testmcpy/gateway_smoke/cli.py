@@ -104,9 +104,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         except RuntimeError as exc:  # SecretRegistry.assert_clean refused to emit
             print(f"error: {exc}", file=sys.stderr)
             return EXIT_CODES[Status.ERROR]
-    _write(args.output, to_json(report) if args.format == "json" else to_human(report))
-    if args.junit:
-        _write(args.junit, to_junit(report))
+    try:
+        _write(args.output, to_json(report) if args.format == "json" else to_human(report))
+        if args.junit:
+            _write(args.junit, to_junit(report))
+    except OSError as exc:
+        # The run happened but its result could not be recorded. That is not a
+        # gateway FAIL (exit 1); report it as ERROR so nothing reads it as one.
+        print(f"error: cannot write report: {exc.strerror or type(exc).__name__}", file=sys.stderr)
+        return EXIT_CODES[Status.ERROR]
     return report.exit_code
 
 

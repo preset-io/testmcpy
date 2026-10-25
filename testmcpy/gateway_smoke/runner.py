@@ -86,6 +86,7 @@ class _Run:
         self.steps = [Step(id=step_id, title=title) for step_id, title in STEP_IDS]
         self.current = self.steps[0]
         self.tools: dict[str, dict[str, Any]] | None = None
+        self.catalogue_complete = True
         self.session: McpSession | None = None
 
     def step(self, step_id: str) -> Step:
@@ -460,6 +461,7 @@ async def _step_discovery(config: SmokeConfig, transport: LimitedTransport, run:
         return
 
     run.tools = tools
+    run.catalogue_complete = exhausted
     step.checks.append(
         _mcp_check(
             "tools_list.catalogue",
@@ -609,7 +611,10 @@ async def _step_fixture(config: SmokeConfig, transport: LimitedTransport, run: _
             _mcp_check(
                 "fixture.tool.advertised",
                 Status.FAIL,
-                f"fixture tool {fixture.tool!r} is not advertised; no call was made",
+                f"fixture tool {fixture.tool!r} is not advertised; no call was made"
+                if run.catalogue_complete
+                else f"fixture tool {fixture.tool!r} was not seen, but the catalogue was cut off "
+                "at the page cap; raise discovery.max_pages. No call was made",
                 started,
             )
         )

@@ -753,3 +753,23 @@ def test_message_text_and_urls_are_scrubbed_before_emission() -> None:
     assert "registered-secret-value-123" not in rendered
     assert "token=Q" not in rendered and "#f" not in rendered
     assert clean.steps[0].checks[-1].evidence["authorization"] == "[REDACTED]"
+
+
+@pytest.mark.asyncio
+async def test_truncated_catalogue_is_named_as_the_reason_a_fixture_tool_was_not_seen() -> None:
+    with gateway(page_size=1) as (url, behavior):
+        report = await smoke(url, discovery={"max_pages": 1})
+    item = check(report, "fixture.tool.advertised")
+    assert item.status is Status.FAIL and "page cap" in item.message
+    assert behavior.tool_calls == []
+
+
+def test_unwritable_output_is_error_not_fail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = tmp_path / "c.yaml"
+    config.write_text(json.dumps(doc("http://127.0.0.1:1")))
+    code = smoke_cli.main(
+        ["run", "--config", str(config), "--output", str(tmp_path / "no-such-dir" / "r.json")]
+    )
+    assert code == 2
