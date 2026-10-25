@@ -1,0 +1,76 @@
+# Gateway smoke lane: example config. Every value below is a placeholder.
+# Running this file unedited is refused (BLOCKED) before any network call.
+# Copy it, fill in the approved environment and canary fixture, keep the copy out
+# of version control if it names anything you consider sensitive.
+#
+#   testmcpy gateway-smoke validate --config gateway-smoke.yaml
+#   testmcpy gateway-smoke run --config gateway-smoke.yaml --format json \
+#       --output gateway-smoke.json --junit gateway-smoke.xml
+#
+# Secrets are named environment variables; there is no way to put one in here.
+schema: testmcpy.io/gateway-smoke/v1
+
+# Labels recorded in every result. The lane contacts exactly `mcp_url` and
+# exactly the workspace below; it never lists workspaces or tries another host.
+environment: REPLACE_ME-environment-label
+mcp_url: https://gateway.example.com/mcp
+spec_profile: mcp-2025-06-18
+workspace:
+  id: REPLACE_ME-workspace-id
+  name: REPLACE_ME-canary-workspace-name
+
+auth:
+  mode: client_credentials          # or: bearer (existing token in an env var)
+  client_id: {env: GATEWAY_SMOKE_CLIENT_ID}
+  client_secret: {env: GATEWAY_SMOKE_CLIENT_SECRET}
+  client_auth_method: client_secret_basic
+  # scopes: [mcp.read]
+  # token_endpoint: https://auth.example.com/oauth/token   # skips AS metadata lookup
+  # expected_audiences: [gateway-api]        # guards against the wrong kind of token
+  # For bearer mode instead:
+  #   mode: bearer
+  #   access_token: {env: GATEWAY_SMOKE_ACCESS_TOKEN}
+
+# Step 1: unauthenticated request must be challenged, then the credential must
+# initialize a session.
+challenge:
+  unauthorized_status: 401
+  require_metadata: true            # RFC 9728 protected-resource metadata
+protocol:
+  required_capabilities: [tools]
+
+# Hard limits. Exceeding one stops the run with ERROR; it is never a PASS.
+limits:
+  total_timeout_seconds: 60
+  per_call_timeout_seconds: 15
+  max_calls: 16                     # every HTTP request, including metadata and token
+  max_response_bytes: 262144        # per response
+  max_total_bytes: 1048576          # across the run
+
+# Step 2: bounded tool discovery.
+discovery:
+  max_pages: 3
+  max_tools: 50
+  max_bytes: 65536                  # budget for the sum of tools/list bodies
+  required_tools:
+    - name: list_workspace_services
+      properties: [workspace_id]
+      required: [workspace_id]
+    - name: call_tool
+
+# Step 3: ONE approved read-only call against the named fixture.
+fixture:
+  read_only: true                   # explicit acknowledgement; required
+  tool: list_workspace_services
+  arguments:
+    workspace_id: REPLACE_ME-workspace-id
+  workspace_argument: workspace_id  # must equal workspace.id, so the call cannot drift
+  # For a dispatching tool such as call_tool, name the argument that carries the
+  # dispatched tool so the write guard can check it:
+  #   tool: call_tool
+  #   inner_tool_argument: tool_name
+  #   arguments: {workspace_id: ..., tool_name: get_workspace_catalog, args: {...}}
+  expect:                           # deterministic fields only
+    - {path: workspace_id, equals: REPLACE_ME-workspace-id}
+    - {path: services, type: array}
+    - {path: services, contains: datasets}
