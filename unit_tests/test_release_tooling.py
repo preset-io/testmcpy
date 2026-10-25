@@ -614,7 +614,7 @@ def test_oidc_is_scoped_to_the_publish_job_only() -> None:
     assert set(jobs) == {"build", "publish", "homebrew"}
     assert jobs["publish"]["permissions"] == {"id-token": "write"}
     assert jobs["build"]["permissions"] == {"contents": "read"}
-    assert jobs["homebrew"]["permissions"] == {"contents": "write"}
+    assert jobs["homebrew"]["permissions"] == {"contents": "write", "pull-requests": "write"}
     for name in ("build", "homebrew"):
         assert "id-token" not in jobs[name]["permissions"]
         assert "environment" not in jobs[name]
@@ -704,6 +704,291 @@ def test_homebrew_job_cannot_swallow_failures() -> None:
     assert "|| true" not in runs and "|| echo" not in runs, (
         "a failed download or push must fail the job, not be reported as success"
     )
+    assert "HEAD:main" not in runs and "origin main" not in runs.replace("pull --rebase", ""), (
+        "main is protected: the job must open a PR, never push to main"
+    )
+    for step in steps:
+        assert "continue-on-error" not in step and "if" not in step, step.get("name")
+
+
+def test_homebrew_job_asks_for_no_more_than_a_branch_push_and_a_pr() -> None:
+    job = _workflow()["jobs"]["homebrew"]
+    assert job["permissions"] == {"contents": "write", "pull-requests": "write"}
+    assert "environment" not in job
+    checkout = next(s for s in job["steps"] if s.get("uses", "").startswith("actions/checkout@"))
+    assert checkout["with"] == {"ref": "main"}
+
+
+# --------------------------------- executing the real homebrew shell steps against a local git
+
+_FORMULA_STEP = "Update Formula/testmcpy.rb from the released sdist"
+_PR_STEP = "Commit the formula to a release branch and open a PR"
+_STUB_GH = """#!/bin/sh
+echo "$@" >> "$GH_STUB_LOG"
+case "$1 $2" in
+  "pr list") [ -n "$GH_STUB_EXISTING" ] && echo "$GH_STUB_EXISTING"; exit 0 ;;
+  "pr create") [ -n "$GH_STUB_CREATE_FAIL" ] && { echo "GraphQL: not permitted" >&2; exit 1; }
+               echo "https://github.com/example/repo/pull/1"; exit 0 ;;
+esac
+exit 99
+"""
+
+
+def _git(cwd: Path, *args: str) -> str:
+    result = subprocess.run(
+        ["git", *args], cwd=cwd, capture_output=True, text=True, check=True, timeout=60
+    )
+    return result.stdout.strip()
+
+
+class _HomebrewRepo:
+    """A checkout of `main` (old formula) with a bare origin and a stub `gh` on PATH."""
+
+    def __init__(self, tmp_path: Path) -> None:
+        self.origin = tmp_path / "origin.git"
+        self.work = tmp_path / "work"
+        self.log = tmp_path / "gh.log"
+        self.log.write_text("")
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        gh = bin_dir / "gh"
+        gh.write_text(_STUB_GH)
+        gh.chmod(0o755)
+        self.bin = bin_dir
+        _git(tmp_path, "init", "--bare", "-b", "main", str(self.origin))
+        _git(tmp_path, "clone", str(self.origin), str(self.work))
+        _git(self.work, "config", "user.name", "t")
+        _git(self.work, "config", "user.email", "t@example.test")
+        (self.work / "Formula").mkdir()
+        (self.work / "Formula/testmcpy.rb").write_text(FORMULA)
+        _git(self.work, "add", "Formula/testmcpy.rb")
+        _git(self.work, "commit", "-m", "base")
+        _git(self.work, "push", "origin", "HEAD:main")
+        shutil.copy(REPO_ROOT / "scripts/update_homebrew_formula.py", self.work / "update.py")
+
+    def set_formula(self, text: str) -> None:
+        (self.work / "Formula/testmcpy.rb").write_text(text)
+
+    def run(self, step: str, **extra: str) -> subprocess.CompletedProcess[str]:
+        env = {
+            **os.environ,
+            "PATH": f"{self.bin}{os.pathsep}{os.environ['PATH']}",
+            "VERSION": "v0.2.0",
+            "GITHUB_REF_NAME": "v0.2.0",
+            "GH_TOKEN": "stub",
+            "GH_REPO": "example/repo",
+            "RUN_URL": "https://github.com/example/repo/actions/runs/1",
+            "GH_STUB_LOG": str(self.log),
+            "GH_STUB_EXISTING": "",
+            "GH_STUB_CREATE_FAIL": "",
+            **extra,
+        }
+        script = self.work / "step.sh"
+        # GitHub runs `run:` steps with `bash -e`; the steps add `pipefail` themselves.
+        script.write_text("set -e\n" + _step_run("homebrew", step))
+        return subprocess.run(
+            ["bash", str(script)],
+            cwd=self.work,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+    def update_formula_step(self, index: str) -> subprocess.CompletedProcess[str]:
+        """The real update step, pointed at the fake PyPI instead of pypi.org."""
+        run = _step_run("homebrew", _FORMULA_STEP)
+        assert "scripts/update_homebrew_formula.py" in run
+        redirected = run.replace(
+            "scripts/update_homebrew_formula.py",
+            f"update.py --index {index} --attempts 1 --formula Formula/testmcpy.rb",
+        )
+        script = self.work / "update_step.sh"
+        script.write_text("set -e\n" + redirected)
+        return subprocess.run(
+            ["bash", str(script)],
+            cwd=self.work,
+            env=dict(os.environ, GITHUB_REF_NAME="v0.2.0"),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+    def gh_calls(self) -> list[str]:
+        return self.log.read_text().splitlines()
+
+    def origin_branches(self) -> set[str]:
+        out = _git(self.origin, "for-each-ref", "--format=%(refname:short)", "refs/heads")
+        return set(out.split())
+
+
+@pytest.fixture
+def homebrew_repo(tmp_path: Path) -> _HomebrewRepo:
+    return _HomebrewRepo(tmp_path)
+
+
+_UPDATED = FORMULA.replace("0.1.0", "0.2.0").replace("0" * 64, "a" * 64)
+_BRANCH = "chore/homebrew-formula-0.2.0"
+
+
+def test_homebrew_step_pushes_a_release_branch_and_opens_a_pr_never_main(
+    homebrew_repo: _HomebrewRepo,
+) -> None:
+    homebrew_repo.set_formula(_UPDATED)
+    main_before = _git(homebrew_repo.origin, "rev-parse", "main")
+
+    result = homebrew_repo.run(_PR_STEP)
+
+    assert result.returncode == 0, result.stderr
+    assert _git(homebrew_repo.origin, "rev-parse", "main") == main_before, "main must not move"
+    assert homebrew_repo.origin_branches() == {"main", _BRANCH}
+    assert _git(homebrew_repo.origin, "show", f"{_BRANCH}:Formula/testmcpy.rb") + "\n" == _UPDATED
+    assert _git(homebrew_repo.origin, "log", "-1", "--format=%s", _BRANCH) == (
+        "chore: update Homebrew formula for v0.2.0"
+    )
+    creates = [c for c in homebrew_repo.gh_calls() if c.startswith("pr create")]
+    assert len(creates) == 1
+    assert "--base main" in creates[0] and f"--head {_BRANCH}" in creates[0]
+    assert "--title chore: update Homebrew formula for v0.2.0" in creates[0]
+    assert "--draft" not in creates[0]
+
+
+def test_homebrew_step_does_nothing_when_the_formula_is_already_current(
+    homebrew_repo: _HomebrewRepo,
+) -> None:
+    result = homebrew_repo.run(_PR_STEP)
+
+    assert result.returncode == 0, result.stderr
+    assert "already current" in result.stdout
+    assert homebrew_repo.origin_branches() == {"main"}
+    assert homebrew_repo.gh_calls() == []
+
+
+def test_homebrew_step_fails_when_the_branch_push_is_rejected(
+    homebrew_repo: _HomebrewRepo,
+) -> None:
+    hook = homebrew_repo.origin / "hooks/pre-receive"
+    hook.write_text("#!/bin/sh\necho 'remote: GH006: Protected branch update failed' >&2\nexit 1\n")
+    hook.chmod(0o755)
+    homebrew_repo.set_formula(_UPDATED)
+
+    result = homebrew_repo.run(_PR_STEP)
+
+    assert result.returncode != 0
+    assert "could not push" in result.stdout + result.stderr
+    assert homebrew_repo.origin_branches() == {"main"}
+    assert not any(c.startswith("pr create") for c in homebrew_repo.gh_calls()), (
+        "no PR may be opened for a branch that was not pushed"
+    )
+
+
+def test_homebrew_step_fails_naming_the_setting_when_pr_creation_is_refused(
+    homebrew_repo: _HomebrewRepo,
+) -> None:
+    homebrew_repo.set_formula(_UPDATED)
+
+    result = homebrew_repo.run(_PR_STEP, GH_STUB_CREATE_FAIL="1")
+
+    output = result.stdout + result.stderr
+    assert result.returncode != 0, "a refused PR must never be reported as success"
+    assert "Allow GitHub Actions to create and approve pull requests" in output
+    assert f"gh pr create --repo example/repo --base main --head {_BRANCH}" in output
+    assert homebrew_repo.origin_branches() == {"main", _BRANCH}, (
+        "the branch stays for the manual PR"
+    )
+
+
+def test_homebrew_step_rerun_after_a_refused_pr_reuses_the_branch_and_opens_the_pr(
+    homebrew_repo: _HomebrewRepo,
+) -> None:
+    homebrew_repo.set_formula(_UPDATED)
+    assert homebrew_repo.run(_PR_STEP, GH_STUB_CREATE_FAIL="1").returncode != 0
+    branch_sha = _git(homebrew_repo.origin, "rev-parse", _BRANCH)
+
+    # "Re-run failed jobs" starts from a fresh checkout of main with the formula rewritten.
+    _git(homebrew_repo.work, "checkout", "-f", "main")
+    homebrew_repo.set_formula(_UPDATED)
+    result = homebrew_repo.run(_PR_STEP)
+
+    assert result.returncode == 0, result.stderr
+    assert "Reusing existing branch" in result.stdout
+    assert _git(homebrew_repo.origin, "rev-parse", _BRANCH) == branch_sha, "no new push"
+    assert len([c for c in homebrew_repo.gh_calls() if c.startswith("pr create")]) == 2
+
+
+def test_homebrew_step_rerun_with_a_pr_already_open_does_not_duplicate_it(
+    homebrew_repo: _HomebrewRepo,
+) -> None:
+    homebrew_repo.set_formula(_UPDATED)
+    assert homebrew_repo.run(_PR_STEP).returncode == 0
+    _git(homebrew_repo.work, "checkout", "-f", "main")
+    homebrew_repo.set_formula(_UPDATED)
+
+    result = homebrew_repo.run(_PR_STEP, GH_STUB_EXISTING="https://github.com/example/repo/pull/1")
+
+    assert result.returncode == 0, result.stderr
+    assert "already open" in result.stdout
+    assert len([c for c in homebrew_repo.gh_calls() if c.startswith("pr create")]) == 1
+
+
+def test_homebrew_step_refuses_to_overwrite_a_branch_with_different_content(
+    homebrew_repo: _HomebrewRepo,
+) -> None:
+    homebrew_repo.set_formula(_UPDATED)
+    assert homebrew_repo.run(_PR_STEP).returncode == 0
+    _git(homebrew_repo.work, "checkout", "-f", "main")
+    homebrew_repo.set_formula(_UPDATED.replace("a" * 64, "b" * 64))
+    branch_sha = _git(homebrew_repo.origin, "rev-parse", _BRANCH)
+
+    result = homebrew_repo.run(_PR_STEP)
+
+    assert result.returncode != 0
+    assert "different Formula/testmcpy.rb" in result.stdout + result.stderr
+    assert _git(homebrew_repo.origin, "rev-parse", _BRANCH) == branch_sha, "never force-push"
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["http_error", "empty_body", "digest_mismatch", "not_a_tarball", "wrong_version", "wrong_name"],
+)
+def test_homebrew_job_publishes_nothing_when_the_download_is_invalid(
+    homebrew_repo: _HomebrewRepo, fake_pypi: _PyPI, case: str
+) -> None:
+    good = _sdist_bytes()
+    if case == "http_error":
+        fake_pypi.publish("0.2.0", good, file_status=500)
+    elif case == "empty_body":
+        fake_pypi.publish("0.2.0", b"", digest=hashlib.sha256(b"").hexdigest())
+    elif case == "digest_mismatch":
+        fake_pypi.publish("0.2.0", good, digest="f" * 64)
+    elif case == "not_a_tarball":
+        fake_pypi.publish("0.2.0", b"<html>CDN error page</html>")
+    elif case == "wrong_version":
+        fake_pypi.publish("0.2.0", _sdist_bytes(pkg_version="0.1.0"))
+    else:
+        fake_pypi.publish("0.2.0", _sdist_bytes(name="other"))
+
+    update = homebrew_repo.update_formula_step(fake_pypi.base)
+
+    assert update.returncode != 0, "the job stops here (GitHub runs steps with `bash -e`)"
+    assert (homebrew_repo.work / "Formula/testmcpy.rb").read_text() == FORMULA
+    # The PR step would find a clean formula and do nothing, but the job never reaches it.
+    assert homebrew_repo.origin_branches() == {"main"}
+    assert homebrew_repo.gh_calls() == []
+
+
+def test_homebrew_job_with_a_valid_download_produces_the_pr_end_to_end(
+    homebrew_repo: _HomebrewRepo, fake_pypi: _PyPI
+) -> None:
+    payload = _sdist_bytes()
+    fake_pypi.publish("0.2.0", payload)
+
+    assert homebrew_repo.update_formula_step(fake_pypi.base).returncode == 0
+    result = homebrew_repo.run(_PR_STEP)
+
+    assert result.returncode == 0, result.stderr
+    shown = _git(homebrew_repo.origin, "show", f"{_BRANCH}:Formula/testmcpy.rb")
+    assert hashlib.sha256(payload).hexdigest() in shown
 
 
 # ------------------------------------------------- executing the real workflow shell steps
