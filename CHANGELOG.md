@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `testmcpy gateway-smoke` (`python -m testmcpy.gateway_smoke`): a compact, read-only,
+  deterministic smoke lane for an MCP gateway with no LLM calls. It checks the
+  unauthenticated challenge and a credentialed `initialize`, runs bounded tool
+  discovery with a page cap and byte budget, and makes one approved read-only fixture
+  call against a named environment and workspace. Hard limits on time, calls and
+  bytes; redacted JSON and JUnit output; statuses PASS / FAIL / BLOCKED / ERROR with
+  exit codes 0 / 1 / 3 / 2, where missing credentials, a missing fixture or an
+  unavailable machine OAuth is BLOCKED and never PASS. Built on the headless OAuth
+  probe; see `docs/gateway-smoke-lane.md` and `examples/gateway-smoke/`.
 - `testmcpy.qualification`: a harness for qualifying MCP tool surfaces (generic
   `search_tools`/`call_tool`, native eager, native deferred) against local fixtures
   only, with pre-registered budgets, a 12-task suite, a fixture MCP server (roles,
