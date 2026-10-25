@@ -12,6 +12,7 @@ from testmcpy.cli.commands import (
     bench,  # noqa: F401
     conformance,  # noqa: F401
     export_db,  # noqa: F401
+    gateway_smoke,  # noqa: F401
     mcp,  # noqa: F401
     metamorphic,  # noqa: F401
     multi_env,  # noqa: F401
