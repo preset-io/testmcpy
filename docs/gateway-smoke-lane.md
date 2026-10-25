@@ -216,12 +216,13 @@ indistinguishable from no check.
 
 ## Live status
 
-The checked-in config is placeholders only. No approved sandbox canary workspace or
-fixture is documented in this repository, so no live run was made from it. The
-known live blocker is that the sandbox gateway's machine (client-credentials) OAuth
-is currently unavailable: an administrator must check the client credentials in the
-OAuth settings, and browser sign-in cannot repair it. Until that is fixed a live run
-is expected to report `BLOCKED` at `oauth.token.acquire`, not PASS.
+The checked-in config is placeholders only. No approved canary workspace or fixture
+is documented in this repository, so no live run was made from it. The known live
+blocker is that machine (client-credentials) OAuth for the intended gateway
+environment is currently unavailable: an administrator must check the client
+credentials in its OAuth settings, and browser sign-in cannot repair it. Until that
+is fixed a live run is expected to report `BLOCKED` at `oauth.token.acquire`, not
+PASS.
 
 ## What this does not prove
 
