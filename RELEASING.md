@@ -101,7 +101,7 @@ verification release below has succeeded.
 | ---------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `build`    | `contents: read`, no OIDC            | Checks the tag is on `main`; validates tag vs. versions and PyPI; runs release/packaging tests; builds the web UI (`testmcpy/ui/dist` is git-ignored but shipped in the `testmcpy` wheel and sdist, and `verify-dists` fails the release if it is missing); builds the planned dists; `twine check --strict`; installs the built wheels into clean venvs (`pip check`, CLI smoke); records checksums; uploads one artifact. |
 | `publish`  | `id-token: write`, environment `pypi` | Downloads the artifact and **runs no repository code**: verifies checksums and re-derives tag/version/filenames from the tag itself; uploads the probe (if planned); checks the exact probe version is installable from PyPI; uploads `testmcpy`. |
-| `homebrew` | `contents: write`, no OIDC           | After `testmcpy` is published, rewrites `Formula/testmcpy.rb` (see below) and pushes it to `main`.                                                                                        |
+| `homebrew` | `contents: write`, `pull-requests: write`, no OIDC | After `testmcpy` is published, rewrites `Formula/testmcpy.rb` (see below), pushes it to `chore/homebrew-formula-X.Y.Z` and opens a PR against `main`. Never pushes to `main`. |
 
 All actions are pinned by full commit SHA, with the version in a comment. Bump
 them deliberately.
@@ -118,10 +118,32 @@ of that version, downloads it, and refuses to touch the formula unless the
 download is HTTP 200, non-empty, a valid gzip tarball whose `PKG-INFO` names
 `testmcpy` `VERSION`, and its sha256 equals the digest PyPI reports. It then
 rewrites both the `url` and `sha256` lines (they must move together) and reads
-the file back. Any failure exits non-zero and fails the job; a failed `git push`
-fails the job too. PyPI is already published when this job runs, so if it fails
-fix the cause and use **Re-run failed jobs**: the publish job is not repeated.
-You can also run the script yourself and commit the result.
+the file back. Any failure exits non-zero and fails the job.
+
+`main` is protected (changes must go through a pull request), so the job does
+not push to it. It commits the formula to `chore/homebrew-formula-X.Y.Z` and
+opens a PR against `main` with the job's own `GITHUB_TOKEN`; **a maintainer
+merges that PR** to finish the release. A failed branch push, or a PR that
+cannot be opened, fails the job. Re-runs are idempotent: an existing branch with
+the same formula is reused (never force-pushed), and an already-open PR is
+left alone. If the branch exists with a *different* formula the job fails
+rather than overwrite it.
+
+Two things to know:
+
+- Opening PRs from Actions needs the repository setting *Settings → Actions →
+  General → Workflow permissions → Allow GitHub Actions to create and approve
+  pull requests*. If it is off, the job fails with a message naming that setting
+  and the manual command. Enable it and re-run, or run the printed
+  `gh pr create --base main --head chore/homebrew-formula-X.Y.Z ...` yourself:
+  the branch is already pushed.
+- Events created with `GITHUB_TOKEN` do not start other workflows, so CI does
+  not run on this PR by itself. If checks are required, close and reopen the PR
+  to start them.
+
+PyPI is already published when this job runs, so if it fails fix the cause and
+use **Re-run failed jobs**: the publish job is not repeated. You can also run
+the script yourself and open the PR by hand.
 
 ### Failure and recovery
 
@@ -133,7 +155,8 @@ You can also run the script yourself and commit the result.
   is built and uploaded. PyPI files are immutable and `skip-existing` is
   deliberately not used, since it would hide an artifact that differs from the one
   on PyPI.
-- **`testmcpy` published but Homebrew sync failed** → *Re-run failed jobs* (see above).
+- **`testmcpy` published but Homebrew sync failed** → *Re-run failed jobs* (see above;
+  for a refused PR, fix the setting first or open the PR by hand).
   Re-running the whole workflow instead fails at the "already on PyPI" check.
 - **Rejected approval** → nothing was uploaded; delete the tag.
 
@@ -154,8 +177,9 @@ not part of the change that introduced this workflow:
    Publishing from this workflow.
 5. In a clean venv, `pip install testmcpy==X.Y.Z` resolves `testmcpy-oauth-probe`
    and `testmcpy --help` runs.
-6. Confirm the Homebrew job pushed a formula whose `url` and `sha256` both name
-   `X.Y.Z`.
+6. Confirm the Homebrew job opened a PR from `chore/homebrew-formula-X.Y.Z` whose
+   formula `url` and `sha256` both name `X.Y.Z`, start its checks (close and
+   reopen), and merge it.
 7. Only then delete the `PYPI_API_TOKEN` secret and revoke the PyPI token.
 
 ## Known gaps

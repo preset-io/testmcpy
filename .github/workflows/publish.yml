@@ -21,7 +21,8 @@ name: Publish to PyPI
 #   publish   `id-token: write` + environment `pypi` (approval-gated). Runs NO
 #             repository code: it downloads the build artifact, re-verifies it,
 #             and uploads. Anything running here can mint a PyPI upload token.
-#   homebrew  `contents: write` only, after a successful publish. No OIDC.
+#   homebrew  `contents: write` + `pull-requests: write` only, after a successful
+#             publish. No OIDC. Pushes a release branch and opens a PR; never main.
 #
 # Every action is pinned to a full commit SHA (version in the trailing comment).
 # This is stricter than ci.yml's tag pins on purpose: this is the privileged path.
@@ -271,7 +272,8 @@ jobs:
     needs: [build, publish]
     runs-on: ubuntu-latest
     permissions:
-      contents: write # push the formula update to main
+      contents: write # push the release's formula branch (never main itself)
+      pull-requests: write # open the PR that carries the formula to main
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -284,24 +286,56 @@ jobs:
       - name: Update Formula/testmcpy.rb from the released sdist
         run: python3 scripts/update_homebrew_formula.py "${GITHUB_REF_NAME#v}"
 
-      - name: Commit and push the formula
+      # `main` is protected ("Changes must be made through a pull request"), so the
+      # formula goes to a branch named for the release and a PR carries it to main;
+      # a human merges it. Nothing here pushes to main, and a failed push or a
+      # refused PR fails the job. Re-runs reuse the branch and the open PR.
+      - name: Commit the formula to a release branch and open a PR
         env:
           VERSION: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
+          set -euo pipefail
+          BRANCH="chore/homebrew-formula-${VERSION#v}"
+          TITLE="chore: update Homebrew formula for ${VERSION}"
+
           if git diff --quiet -- Formula/testmcpy.rb; then
             echo "Formula already current for ${VERSION}"
             exit 0
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Formula/testmcpy.rb
-          git commit -m "chore: update Homebrew formula for ${VERSION}"
-          # A failed push fails the job; main moving underneath us gets rebased and retried.
-          for attempt in 1 2 3; do
-            if git push origin HEAD:main; then
-              exit 0
+
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null; then
+            # A previous run already pushed this release's branch. The formula for a
+            # published version is deterministic, so identical content means reuse it;
+            # anything else is not ours to overwrite (never force-push).
+            git fetch --no-tags --depth=1 origin "$BRANCH"
+            if ! git diff --quiet FETCH_HEAD -- Formula/testmcpy.rb; then
+              echo "::error::origin/${BRANCH} already exists with a different Formula/testmcpy.rb; inspect or delete that branch, then re-run the failed job"
+              exit 1
             fi
-            git pull --rebase origin main
-          done
-          echo "::error::could not push the formula update to main"
-          exit 1
+            echo "Reusing existing branch ${BRANCH}"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git checkout -b "$BRANCH"
+            git add Formula/testmcpy.rb
+            git commit -m "$TITLE"
+            if ! git push origin "HEAD:refs/heads/${BRANCH}"; then
+              echo "::error::could not push ${BRANCH}; the formula update was not published"
+              exit 1
+            fi
+          fi
+
+          EXISTING="$(gh pr list --head "$BRANCH" --base main --state open --json url --jq '.[0].url // empty')"
+          if [ -n "$EXISTING" ]; then
+            echo "Formula PR already open: ${EXISTING}"
+            exit 0
+          fi
+
+          BODY="Points Formula/testmcpy.rb at the published ${VERSION} sdist (url and sha256 derived from PyPI and verified by scripts/update_homebrew_formula.py). Opened by ${RUN_URL}. Checks do not start automatically on a PR opened with the workflow token: close and reopen this PR to run them."
+          if ! gh pr create --base main --head "$BRANCH" --title "$TITLE" --body "$BODY"; then
+            echo "::error::could not open the formula PR. Enable Settings > Actions > General > Workflow permissions > 'Allow GitHub Actions to create and approve pull requests', then re-run this job; or open it by hand (the branch is already pushed): gh pr create --repo ${GH_REPO} --base main --head ${BRANCH} --title '${TITLE}'"
+            exit 1
+          fi
